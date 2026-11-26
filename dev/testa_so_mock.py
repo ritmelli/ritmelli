@@ -412,11 +412,14 @@ def starts():
 
 
 class FakeKernel:
-    def __init__(self, processes, exits_on_first_name=None):
+    def __init__(self, processes, exits_on_first_name=None, ended_before_listing=()):
         self.processes, self.named = {h: list(v) for h, v in processes.items()}, []
-        self.exits_on_first_name = exits_on_first_name
+        self.exits_on_first_name, self.ended_before_listing, self.asked = exits_on_first_name, ended_before_listing, set()
 
     def WaitForSingleObject(self, handle, ms):
+        if handle.value not in self.asked:
+            self.asked.add(handle.value)
+            return 0 if handle.value in self.ended_before_listing else so_mock.WAIT_TIMEOUT
         return so_mock.WAIT_TIMEOUT if self.processes[handle.value][2] else 0
 
     def QueryFullProcessImageNameW(self, handle, flags, buf, size):
@@ -438,10 +441,11 @@ class FakeKernel:
         return 1
 
 
-def leftovers(processes, active, exits_on_first_name=None):
+def leftovers(processes, active, exits_on_first_name=None, ended_before_listing=(), born_in_wait=()):
     job = object.__new__(so_mock._Job)
-    job.k = FakeKernel(processes, exits_on_first_name)
-    with mock.patch.object(so_mock._Job, "members", lambda self: list(processes)),             mock.patch.object(so_mock._Job, "active", lambda self: active):
+    listings = [[h for h in processes if h not in born_in_wait], list(processes)]
+    job.k = FakeKernel(processes, exits_on_first_name, ended_before_listing)
+    with mock.patch.object(so_mock._Job, "members", lambda self: listings.pop(0) if len(listings) > 1 else listings[0]),             mock.patch.object(so_mock._Job, "active", lambda self: active):
         try:
             return job.left_after(0.01), job.k.named
         except so_mock.Recusa as ex:
@@ -462,6 +466,18 @@ def left_after_names():
                                 exits_on_first_name=2)
     check(seen == [("ffmpeg.exe", True), ("conhost.exe", True)],
           f"each process is reported as it was when the wait ended, even one that exits while the names are read ({seen})")
+    (left, seen), named = leftovers({1: (None, 0, False)}, 1, ended_before_listing={1})
+    check(left == 0 and seen == [] and named == [],
+          f"a server that had already exited when the job was listed, still in the job's count, is not a process left "
+          f"running ({left}, {seen}, {named})")
+    (left, seen), named = leftovers({1: (None, 0, False), 2: ("python.exe", 259, True)}, 1, ended_before_listing={1})
+    check(left == 1 and seen == [("python.exe", True)] and named == [2],
+          f"a process that had already ended when the job was listed, as the server whose wait returned, is not named "
+          f"as left in the job ({seen}, {named})")
+    (left, seen), _ = leftovers({1: ("python.exe", 0, False), 2: ("ffmpeg.exe", 259, True)}, 0, born_in_wait={2})
+    check(left == 1 and seen == [("python.exe", False)],
+          f"a process started during the wait counts as left, and the names are those running when the job was listed "
+          f"({left}, {seen})")
 
 
 app_port()

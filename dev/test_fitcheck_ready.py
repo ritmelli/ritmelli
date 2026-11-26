@@ -4,6 +4,7 @@ import io
 import json
 import os
 import re
+import socket
 import subprocess
 import sys
 import tempfile
@@ -114,6 +115,53 @@ print("RESULT " + json.dumps({"r": r, "waits": len(waits)}))
 """
 LATE_S = fitcheck.AVISO_ESPERA_S + 2
 LATE_ASKED = "/__ritmelli-test-late-notice"
+LATE_STATE_S = 2.0
+STACKS_HOOK = ROOT / "dev" / "stacks_hook"
+STACKS_MARK = "---- the server's stacks, asked by the test"
+STACKS_END = "---- end of the server's stacks"
+HELD_CHILD = '''
+import sys
+import threading
+
+
+def held_in_this_function():
+    print("ready", flush=True)
+    threading.Event().wait()
+
+
+held_in_this_function()
+'''
+SLOW_UPSTREAM = '''
+import http.server
+import sys
+import threading
+
+
+class Slow(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        state_held_upstream()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", "2")
+        self.end_headers()
+        self.wfile.write(b"{}")
+
+    def log_message(self, *args):
+        pass
+
+
+released = threading.Event()
+
+
+def state_held_upstream():
+    released.wait(float(sys.argv[2]))
+
+
+threading.Thread(target=lambda: (sys.stdin.readline(), released.set()), daemon=True).start()
+server = http.server.HTTPServer(("127.0.0.1", int(sys.argv[1])), Slow)
+print("listening", flush=True)
+server.serve_forever()
+'''
 LATE_NOTICE = ("<script>(() => { const show = HTMLDialogElement.prototype.showModal; "
                "HTMLDialogElement.prototype.showModal = function () { if (this.id !== 'dlg-metricas') "
                f"return show.call(this); fetch('{LATE_ASKED}'); "
@@ -129,12 +177,47 @@ def check(ok, msg):
         failures.append(msg)
 
 
+class ServerStacks:
+    def __init__(self):
+        self.listener = socket.create_server(("127.0.0.1", 0))
+        self.port, self.asker, self.asked = self.listener.getsockname()[1], None, False
+        self.accepted = threading.Event()
+        threading.Thread(target=self.accept, daemon=True).start()
+
+    def accept(self):
+        with contextlib.suppress(OSError):
+            self.asker, _ = self.listener.accept()
+        self.accepted.set()
+
+    def env(self):
+        path = os.pathsep.join(p for p in (str(STACKS_HOOK), os.environ.get("PYTHONPATH")) if p)
+        return {"PYTHONPATH": path, "RITMELLI_STACKS_PORT": str(self.port)}
+
+    def ask(self):
+        if self.asker is not None and not self.asked:
+            self.asked = True
+            self.asker.sendall(b"x")
+
+    def of(self, log):
+        text = Path(log).read_text(encoding="utf-8", errors="replace")
+        if not self.asked or STACKS_MARK not in text:
+            return None
+        start = text.index(STACKS_MARK)
+        end = text.find(STACKS_END, start)
+        return text[start:] if end < 0 else text[start:end + len(STACKS_END)]
+
+    def close(self):
+        if self.asker is not None:
+            self.asker.close()
+        self.listener.close()
+
+
 class ThemeProxy:
-    def __init__(self, target, hold_page_s=0, hold_state_s=0, late_notice=False):
+    def __init__(self, target, hold_page_s=0, hold_state_s=0, late_notice=False, stacks=None):
         self.target, self.port = target, so_mock.free_port()
         self.base = f"http://127.0.0.1:{self.port}"
         self.hold_page_s, self.hold_state_s, self.late_notice = hold_page_s, hold_state_s, late_notice
-        self.held, self.started = [], threading.Event()
+        self.held, self.started, self.stacks = [], threading.Event(), stacks
 
     def hold_for(self, request):
         from_browser = "Chrome" in request.headers.get("User-Agent", "")
@@ -152,8 +235,21 @@ class ThemeProxy:
         headers = {k: v for k, v in request.headers.items() if k.lower() not in HOP_HEADERS | {"accept-encoding"}}
         if "Origin" in request.headers:
             headers["Origin"] = self.target
+        late = None
+        if (self.stacks is not None and request.method == "GET" and request.path == "/api/state"
+                and "Chrome" in request.headers.get("User-Agent", "")):
+            late = asyncio.get_running_loop().call_later(LATE_STATE_S, self.stacks.ask)
+        try:
+            return await self.relay(request, headers, late)
+        finally:
+            if late is not None:
+                late.cancel()
+
+    async def relay(self, request, headers, late):
         async with self.session.request(request.method, self.target + request.path_qs, headers=headers,
                                         data=await request.read(), allow_redirects=False) as upstream:
+            if late is not None:
+                late.cancel()
             response = web.StreamResponse(status=upstream.status, headers={
                 k: v for k, v in upstream.headers.items() if k.lower() not in HOP_HEADERS})
             await response.prepare(request)
@@ -189,10 +285,12 @@ class ThemeProxy:
 def notice_through(proxy_options, config, button=None):
     with tempfile.TemporaryDirectory(prefix="ritmelli-notice-") as tmp:
         tmp = Path(tmp)
+        stacks = ServerStacks()
         with open(tmp / "server.log", "w", encoding="utf-8") as log:
-            srv = compara.sobe_servidor(tmp, so_mock.free_port(), log, config=config, extras=["--metricas-teste"])
+            srv = compara.sobe_servidor(tmp, so_mock.free_port(), log, config=config, extras=["--metricas-teste"],
+                                        env=stacks.env())
             try:
-                proxy = ThemeProxy(srv.base, **proxy_options)
+                proxy = ThemeProxy(srv.base, stacks=stacks, **proxy_options)
                 loop, stop = asyncio.new_event_loop(), asyncio.Event()
                 thread = threading.Thread(target=loop.run_until_complete, args=(proxy.serve(stop),), daemon=True)
                 thread.start()
@@ -203,8 +301,102 @@ def notice_through(proxy_options, config, button=None):
                     loop.call_soon_threadsafe(stop.set)
                     thread.join(10)
             finally:
-                compara.para_servidor(srv)
+                try:
+                    compara.para_servidor(srv)
+                finally:
+                    stacks.close()
+                    found = stacks.of(tmp / "server.log")
+                    if found:
+                        print(found, file=sys.stderr, flush=True)
+        if found:
+            r["server_stacks"] = found
     return r, proxy
+
+
+def child_stacks(code, stacks, ready, *args):
+    child = subprocess.Popen([sys.executable, "-c", code, *args], env=dict(os.environ, **stacks.env()),
+                             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                             encoding="utf-8")
+    said, came = [], threading.Event()
+    reader = threading.Thread(target=lambda: (said.append(child.stdout.readline()), came.set()), daemon=True)
+    reader.start()
+    if came.wait(10) and said[0].strip() == ready:
+        stacks.accepted.wait(10)
+        return child
+    try:
+        child.kill()
+        child.wait()
+        reader.join(10)
+        child.communicate()
+    finally:
+        stacks.close()
+    raise TimeoutError(f"the child did not say {ready!r} in 10 s ({said})")
+
+
+def stacks_of_a_held_process():
+    stacks = ServerStacks()
+    child = child_stacks(HELD_CHILD, stacks, "ready")
+    try:
+        stacks.ask()
+        seen, dumped = [], threading.Event()
+
+        def read():
+            for line in child.stderr:
+                seen.append(line)
+                if STACKS_END in line:
+                    dumped.set()
+
+        threading.Thread(target=read, daemon=True).start()
+        dumped.wait(10)
+    finally:
+        child.kill()
+        child.wait()
+        stacks.close()
+    text = "".join(seen)
+    check(STACKS_MARK in text and "held_in_this_function" in text.split(STACKS_END)[0] and STACKS_END in text,
+          f"a test server asked for its stacks prints every thread's, with the function it is held in ({text[-300:]!r})")
+
+
+def proxy_asks_when_the_state_is_late():
+    stacks, port = ServerStacks(), so_mock.free_port()
+    child = child_stacks(SLOW_UPSTREAM, stacks, "listening", str(port), "30")
+    err, held = [], threading.Event()
+
+    def read():
+        for line in child.stderr:
+            err.append(line)
+            if "state_held_upstream" in line:
+                held.set()
+
+    threading.Thread(target=read, daemon=True).start()
+    status, seen = None, False
+    try:
+        proxy = ThemeProxy(f"http://127.0.0.1:{port}", stacks=stacks)
+        loop, stop = asyncio.new_event_loop(), asyncio.Event()
+        thread = threading.Thread(target=loop.run_until_complete, args=(proxy.serve(stop),), daemon=True)
+        thread.start()
+        proxy.started.wait(10)
+
+        async def state():
+            async with ClientSession() as session:
+                pending = asyncio.ensure_future(session.get(proxy.base + "/api/state", headers={"User-Agent": "Chrome"}))
+                found = await asyncio.to_thread(held.wait, 10)
+                child.stdin.write("release\n")
+                child.stdin.flush()
+                async with await pending as r:
+                    return r.status, found
+
+        status, seen = asyncio.run(state())
+        loop.call_soon_threadsafe(stop.set)
+        thread.join(10)
+    finally:
+        child.kill()
+        child.wait()
+        stacks.close()
+    text = "".join(err)
+    check(status == 200 and stacks.asked and seen,
+          f"the proxy asks the server for its stacks once its GET /api/state is {LATE_STATE_S:.0f} s late, and they show "
+          f"where the server is held ({status}, asked {stacks.asked}, {text[-300:]!r})")
 
 
 def notice_on_slow_load():
@@ -477,6 +669,8 @@ def main():
     clock_from_the_event_not_from_its_handling()
     no_wall_clock_in_the_conversion()
     ready_answer_past_the_deadline()
+    stacks_of_a_held_process()
+    proxy_asks_when_the_state_is_late()
     notice_on_slow_load()
     notice_on_slow_state()
     notice_reopens_on_slow_state()

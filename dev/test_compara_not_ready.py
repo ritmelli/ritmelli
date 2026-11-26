@@ -15,7 +15,9 @@ CONSOLE_MARK = "ritmelli-test-console-error"
 SCRIPT_MARK = "ritmelli-test-missing.js"
 NEVER_READY = ("(() => { if (!window.__ritmelliTest && document.head) { console.error('" + CONSOLE_MARK + "'); "
                "const s = document.createElement('script'); s.src = '" + SCRIPT_MARK + "'; "
+               "s.onerror = () => { window.__ritmelliTestFailed = true; }; "
                "document.head.appendChild(s); window.__ritmelliTest = true; } return false; })()")
+LOADED_S = 60.0
 DRIVER = r"""
 import sys
 from pathlib import Path
@@ -24,6 +26,21 @@ import compara
 import fitcheck
 compara.PRONTO = sys.argv[4]
 fitcheck.PRONTA_S = 3.0
+real_wait = fitcheck.wait_ready
+LOADED = "document.readyState === 'complete' && window.__ritmelliTestFailed === true"
+LOADED_S = float(sys.argv[5])
+
+
+async def wait_ready(cmd, expr, blocked, timeout_s):
+    loaded = await real_wait(cmd, f"({expr}, {LOADED})", blocked, LOADED_S)
+    if loaded is fitcheck.Ready.TIMED_OUT:
+        sys.exit(f"setup: the page did not load with the injected script failed in {LOADED_S:.0f} s")
+    if loaded is not fitcheck.Ready.READY:
+        return loaded
+    return await real_wait(cmd, expr, blocked, timeout_s)
+
+
+fitcheck.wait_ready = wait_ready
 sys.argv = ["compara.py", "--ref", "--sizes", sys.argv[2], "--pasta", sys.argv[3]]
 sys.exit(compara.main())
 """
@@ -71,7 +88,8 @@ def check(ok, msg):
 
 def never_ready(size, density, mesa):
     with tempfile.TemporaryDirectory(prefix="ritmelli-nao-pronto-") as tmp:
-        p = subprocess.run([sys.executable, "-c", DRIVER, str(ROOT), f"{size}@{density}", tmp, NEVER_READY], cwd=ROOT,
+        p = subprocess.run([sys.executable, "-c", DRIVER, str(ROOT), f"{size}@{density}", tmp, NEVER_READY, str(LOADED_S)],
+                           cwd=ROOT,
                            env=dict(os.environ, PYTHONUTF8="1"), capture_output=True, text=True, encoding="utf-8",
                            errors="replace", timeout=180)
         out = p.stdout + p.stderr
