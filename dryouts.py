@@ -116,8 +116,8 @@ class VoicePedalStart:
         if empty_at is not None and up_at > empty_at + TICK_S:
             return on_at, f"{pedal}, its voice track came up {now - up_at:.2f} s ago, after the ring ran dry"
         if lo is not None and up_at > lo - TICK_S:
-            return on_at, (f"{pedal}, its voice track came up {now - up_at:.2f} s ago, after the ring was last filled, "
-                           "so which came first is not known")
+            return on_at, (f"{pedal}, its voice track came up {now - up_at:.2f} s ago, within a tick of the ring's last "
+                           "fill, so which came first is not known")
         return on_at, f"{pedal}, its voice track came up {now - up_at:.2f} s ago"
 
 

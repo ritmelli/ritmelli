@@ -315,11 +315,13 @@ class TestVoicePedalStart(unittest.TestCase):
                 self.assertIn("which came first is not known", log)
 
     def test_a_track_up_within_a_tick_of_the_read_has_no_order(self):
-        for up_at, empty_at in ((0.09, 0.756), (0.51, 0.5)):
+        for up_at, empty_at, said in ((0.09, 0.756, "within a tick of the ring's last fill, so which came first is not "
+                                                    "known"),
+                                      (0.51, 0.5, "which came first is not known")):
             with self.subTest(up_at=up_at, empty_at=empty_at):
                 counted, log = self.away(0.0, up_at, empty_at=empty_at)
                 self.assertEqual(counted, 1)
-                self.assertIn("which came first is not known", log)
+                self.assertIn(said, log, "a track up just before the last fill isn't after it")
 
     def test_a_track_up_past_a_tick_of_the_read_has_its_order(self):
         for up_at, empty_at, said in ((0.08, 0.756, "came up 0.68 s ago;"), (0.52, 0.5, "after the ring ran dry")):
@@ -576,7 +578,7 @@ class TestVoicePedalStart(unittest.TestCase):
     def test_an_ended_start_takes_its_track_read_after_it_ended(self):
         counted, log = self.ended_start_with_a_track_read_late(0.456)
         self.assertEqual(counted, 1)
-        self.assertIn("came up 0.46 s ago, after the ring was last filled, so which came first is not known", log)
+        self.assertIn("came up 0.46 s ago, within a tick of the ring's last fill, so which came first is not known", log)
 
     def test_an_ended_start_does_not_take_a_track_up_after_it_ended(self):
         counted, log = self.ended_start_with_a_track_read_late(0.056)
@@ -585,7 +587,7 @@ class TestVoicePedalStart(unittest.TestCase):
         self.assertNotIn("voice pedal: its voice track came up", log, "a track up after the pedal turned off")
 
     def test_an_ended_start_takes_a_track_within_a_tick_of_its_end(self):
-        for up_s_ago, said in ((0.246, "came up 0.25 s ago, after the ring was last filled, so which came first is not "
+        for up_s_ago, said in ((0.246, "came up 0.25 s ago, within a tick of the ring's last fill, so which came first is not "
                                        "known"),
                                (0.236, "its voice track isn't up yet")):
             with self.subTest(up_s_ago=up_s_ago):
@@ -1043,7 +1045,7 @@ class TestVoicePedalDryOut(unittest.TestCase):
         self.drain.set()
         self.read_gate.set()
         self.assertTrue(self.dry_done.wait(3.0), "the ring never ran dry")
-        self.assertIn("came up 0.00 s ago, after the ring was last filled, so which came first is not known",
+        self.assertIn("came up 0.00 s ago, within a tick of the ring's last fill, so which came first is not known",
                       self.pedal_lines()[-1])
 
     def test_a_slow_log_does_not_hold_the_ring(self):
@@ -1119,7 +1121,7 @@ class TestVoicePedalDryOut(unittest.TestCase):
         self.drain.set()
         self.gate.set()
         self.assertTrue(self.dry_done.wait(3.0), "the ring never ran dry")
-        self.assertIn("came up 0.00 s ago, after the ring was last filled, so which came first is not known",
+        self.assertIn("came up 0.00 s ago, within a tick of the ring's last fill, so which came first is not known",
                       self.pedal_lines()[-1])
         self.assertEqual(self.logged().count("voice pedal: its voice track came up"), 1,
                          "one line for the track coming up")
@@ -1138,7 +1140,7 @@ class TestVoicePedalDryOut(unittest.TestCase):
         self.drain.set()
         self.gate.set()
         self.assertTrue(self.dry_done.wait(3.0), "the ring never ran dry")
-        self.assertIn("came up 0.10 s ago, after the ring was last filled, so which came first is not known",
+        self.assertIn("came up 0.10 s ago, within a tick of the ring's last fill, so which came first is not known",
                       self.pedal_lines()[-1])
 
     def test_track_up_after_the_ring_was_seen_empty(self):
