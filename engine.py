@@ -26,6 +26,7 @@ from scipy import signal
 
 import batida
 import compasso
+import dryouts
 import fx
 import i18n
 import metricas
@@ -936,7 +937,7 @@ class Injetor:
         self.secas = 0
         self.volta_max = 0.0
         self.voltas = np.zeros(VOLTA_MS, np.int64)
-        self._seca_dita = -1e9
+        self.dry_outs = dryouts.RingDryOuts(motor.voice_pedal)
         # a mesma medida e mais um pouco por janela, para o evento "audio" (metricas.py): a de cima segue a do
         # /api/state, desde que o Injetor abriu. Na reabertura do leitor perdido, a janela do de antes continua (saude)
         self.saude = saude if saude is not None else metricas.SaudeAudio(SR)
@@ -957,7 +958,7 @@ class Injetor:
         return {"anel": self.m is not None, "leitores": self.leitores,
                 "folga_min_ms": None if self.folga_min is None else round(self.folga_min * 1000 / SR, 1),
                 "secas": self.secas, "volta_max_ms": round(self.volta_max * 1000, 1),
-                "efeito_no_filtro": self.efeito_no_filtro}
+                "secas_pedal": self.dry_outs.while_pedal_starting, "efeito_no_filtro": self.efeito_no_filtro}
 
     def _volta(self, s):
         self.volta_max = max(self.volta_max, s)
@@ -972,10 +973,7 @@ class Injetor:
         self.saude.fila(fila, passagem=seca and self.motor.em_passagem(), esticando=seca and RUBBER_BAND.em_curso())
         if seca:
             self.secas += 1
-            if time.monotonic() - self._seca_dita > 10.0:
-                self._seca_dita = time.monotonic()
-                print(f"game output: the microphone ring ran dry (the thread came back after {volta * 1000:.0f} ms; "
-                      f"{self.secas} so far)", file=sys.stderr, flush=True)
+            self.dry_outs.ran_dry(volta, self.secas)
 
     def para(self):
         self._vai = False
@@ -1026,7 +1024,7 @@ class Injetor:
     def _solta_efeito(self):
         self.efeito_no_filtro = False
         self.motor._fx_filtro = self.motor._fx_pendente = False
-        self.motor._pista_viva = False
+        self.motor._pista_viva = self.motor.voice_pedal.track(False)
         self._preset = None
         self.voz_taxa = 0  # o anel que vier depois diz a dele
 
@@ -1044,7 +1042,7 @@ class Injetor:
         # medidor levam a voz dela, que e o que o jogo ouve, e nao a crua
         p = m.pista_le()  # sempre le: a posicao anda junto com o escritor
         viva = m.pista_viva()
-        self.motor._pista_viva = viva
+        self.motor._pista_viva = self.motor.voice_pedal.track(viva)
         if viva and len(p):
             p = np.concatenate([self._resto_pista, p])
             n = len(p) // BLOCK * BLOCK
@@ -1174,6 +1172,7 @@ class Engine:
         self._mina = None
         self._pv_fila = None   # a fila do liga() do pedal de troca de voz, lida pela thread dele (so com o modulo dele)
         self._pv_fechada = False
+        self.voice_pedal = dryouts.VoicePedalStart()
         self._mina_buf = np.zeros(0, np.float32)
         self._mina_lock = threading.Lock()
         self._mina_voz_em = -1e9  # monotonic do ultimo pedaco com voz dela que tocou
@@ -1726,6 +1725,7 @@ class Engine:
         pv = fx.pistavoz
         if pv is None or self._pv_fechada:
             return
+        self.voice_pedal.pedal(ligado)
         if self._pv_fila is None:
             self._pv_fila = queue.SimpleQueue()
             threading.Thread(target=self._pedal_voz_laco, args=(pv, self._pv_fila), name="pedal_voz", daemon=True).start()

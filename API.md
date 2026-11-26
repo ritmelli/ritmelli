@@ -85,7 +85,7 @@ reconecta sozinho; mostre que está reconectando.
  "por_cima": [{"id": "...", "title": "..."}], "abaixa": null,
  "devices": {"mic": "default", "monitor": "default"},
  "active_devices": {"mic": "Microfone (Virtual Desktop Audio)", "monitor": "Alto-falantes (Virtual Desktop Audio)"},
- "microfone": {"anel": true, "leitores": 1, "folga_min_ms": 40.0, "secas": 0, "volta_max_ms": 4.5,
+ "microfone": {"anel": true, "leitores": 1, "folga_min_ms": 40.0, "secas": 0, "secas_pedal": 0, "volta_max_ms": 4.5,
                "preparando": null, "efeito_no_filtro": false},
  "error": null ou Mensagem,
  "queue": [Entrada], "shuffle": false, "auto": false, "history": 3,
@@ -197,7 +197,8 @@ reconecta sozinho; mostre que está reconectando.
 - `microfone` = o filtro no microfone em uso: `anel` = a memória do filtro aberta, `leitores` =
   quantos filtros do microfone em uso estão lendo (0 = a música não chega nele), `folga_min_ms` =
   o menor tanto de música que o anel teve desde que o áudio abriu (`null` antes do primeiro leitor),
-  `secas` = quantas vezes ele estava vazio (o jogo ouviu um buraco), `volta_max_ms` = a maior demora
+  `secas` = quantas vezes ele estava vazio (o jogo ouviu um buraco), `secas_pedal` = quantas dessas vieram
+  com o pedal de troca de voz subindo (do clique até 5 s depois de a voz trocada chegar), `volta_max_ms` = a maior demora
   da thread que escreve nele, `preparando` =
   o microfone que o Windows está preparando para o Ritmelli agora (a tarefa do instalador; o som
   do PC some uns segundos), ou `null`; `efeito_no_filtro` = o efeito de voz ativo roda no filtro

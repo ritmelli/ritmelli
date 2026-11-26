@@ -38,6 +38,7 @@ import numpy as np
 
 os.environ["MICFX_MAPA"] = f"Local\\RitmelliTesteMicFx-{os.getpid()}"  # nunca o anel do filtro de verdade
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import dryouts
 import engine as eng
 import fx
 from microfone import injeta, preset, voz
@@ -130,6 +131,7 @@ class MotorFalso:
         self._fx_id = None
         self._fx_filtro = self._fx_pendente = False
         self._pista_viva = False
+        self.voice_pedal = dryouts.VoicePedalStart()
         self._alvo, self._voz_anel_em, self.voz, self.voz_fx = alvo, -1e9, [], []
 
     def set_error(self, message):

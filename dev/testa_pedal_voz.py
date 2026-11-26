@@ -27,6 +27,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 # o pistavoz de verdade (se estiver ao lado do codigo) fica de fora: cada teste poe o dele
 sys.modules["pistavoz"] = None
+import dryouts
 import engine
 import fx
 import server
@@ -116,10 +117,26 @@ class PedalVoz(unittest.TestCase):
                 self.assertEqual(server.App.pedal_voz(), {"voz": "mina", "visor": None, "progresso": None})
         self.assertEqual(log.getvalue().count("estado() failed"), 1, "um erro igual sai uma vez, nao a cada tick")
 
+    def test_records_when_the_pedal_turned_on(self):
+        com(self.mod)
+        e = engine.Engine.__new__(engine.Engine)
+        e._pv_fila, e._pv_fechada, e.voice_pedal = None, False, dryouts.VoicePedalStart()
+        self.addCleanup(e._pedal_voz_fecha)
+        self.assertIsNone(e.voice_pedal.on_at, "before the pedal turns on")
+        e._pedal_voz_liga(True)
+        first = e.voice_pedal.on_at
+        self.assertIsNotNone(first, "the pedal turned on")
+        e._pedal_voz_liga(True)
+        self.assertEqual(e.voice_pedal.on_at, first, "on again while on keeps when it first turned on")
+        e._pedal_voz_liga(False)
+        self.assertIsNone(e.voice_pedal.on_at, "the pedal turned off")
+        e._pedal_voz_liga(True)
+        self.assertGreaterEqual(e.voice_pedal.on_at, first, "on after off is a new start")
+
     def test_liga_na_ordem_e_fecha(self):
         com(self.mod)
         e = engine.Engine.__new__(engine.Engine)
-        e._pv_fila, e._pv_fechada = None, False
+        e._pv_fila, e._pv_fechada, e.voice_pedal = None, False, dryouts.VoicePedalStart()
         quebrou = []
 
         def liga(on):
