@@ -41,9 +41,19 @@ TUDO = ('STDLIB = ["dev/testa_x.py"]\nCOMPLETO = list(STDLIB)\nLONG_TESTS = {}\n
 AGENTS_OK ="# AGENTS.md\n\n- A rule that `testa_i18n` holds.\n"
 
 MOLDURAS = next(iter(garden.GENERATED_MARKERS))
+RUN_PS = "subprocess.run([POWERSHELL, '-Command', ps])\n"
 
 CASES = {
     "comment_lines": [
+        ("a quoted run that goes on to the next line",
+         {"a.yml": "steps:\n  - shell: pwsh\n    run: \"Write-Output 'a #b'\n      'c'\"\n"},
+         {"a.yml": "steps:\n  - shell: pwsh\n    run: \"Write-Output 'a #b'\n      # why\"\n"}),
+        ("a version comment after a tag is no pin", {"a.yml": "steps:\n  - uses: o/r@" + "a" * 40 + " # v3.2\n"},
+         {"a.yml": "steps:\n  - uses: o/r@v3 # v3.2\n"}),
+        ("a uses: inside a step name is no pin", {"a.yml": "steps:\n  - uses: o/r@" + "a" * 40 + " # v3.2\n"},
+
+         {"a.yml": "steps:\n  - name: 'uses: o/r@" + "a" * 40 + "' # v3.2\n"}),
+
         ("python", {"a.py": "x = '#not a comment'\n"}, {"a.py": "x = 1  # a comment\n"}),
         ("python shebang and encoding", {"a.py": "#!/usr/bin/env python\n# -*- coding: utf-8 -*-\nx = 1\n"},
          {"a.py": "#!/usr/bin/env python\n# -*- coding: utf-8 -*-\n# why\nx = 1\n"}),
@@ -104,6 +114,12 @@ CASES = {
          {"a.py": "def f():\n    '''Why.'''\n    return 1\n"}),
     ],
     "suppressions": [
+        ("-EA 0", {"a.ps1": "Get-Item x -EA Stop\n"}, {"a.ps1": "Get-Item x -EA 0\n"}),
+        ("-ErrorAction:Ignore", {"a.ps1": "Get-Item x -ErrorAction:Stop\n"}, {"a.ps1": "Get-Item x -ErrorAction:Ignore\n"}),
+        ("the error preference", {"a.ps1": "$ErrorActionPreference = 'Stop'\n"},
+         {"a.ps1": "$ErrorActionPreference = 'SilentlyContinue'\n"}),
+        ("a quoted continue-on-error", {"a.yml": "steps:\n  - run: echo\n    'continue-on-error': false\n"},
+         {"a.yml": "steps:\n  - run: echo\n    'continue-on-error': true\n"}),
         ("noqa", {"a.py": "x = 'noqa'\n"}, {"a.py": "x = 1  # noqa: E501\n"}),
         ("type: ignore", {"a.py": "x: int = 1\n"}, {"a.py": "x: int = 'a'  # type: ignore\n"}),
         ("pragma: no cover", {"a.py": "def f():\n    pass\n"}, {"a.py": "def f():  # pragma: no cover\n    pass\n"}),
@@ -122,10 +138,15 @@ CASES = {
                                      "        run: \"print(1)  # noqa\"  # why\n"}),
         ("SilentlyContinue", {"a.ps1": "$ProgressPreference = 'SilentlyContinue'\n"},
          {"a.ps1": "Get-Item x -ErrorAction SilentlyContinue\n"}),
-        ("SilentlyContinue in a Python string", {"a.py": "ps = 'Get-Item x'\n"},
-         {"a.py": "ps = 'Get-Item x -ErrorAction SilentlyContinue'\n"}),
+        ("SilentlyContinue in the PowerShell a Python script runs", {"a.py": "ps = 'Get-Item x'\n" + RUN_PS},
+         {"a.py": "ps = 'Get-Item x -ErrorAction SilentlyContinue'\n" + RUN_PS}),
     ],
     "sleeps_app": [
+        ("Start-Sleep in a Python string that is no PowerShell", {"a.py": "x = 'Start-Sleep 1'\n"},
+         {"a.py": 'import subprocess\nsubprocess.run(["powershell", "-Command", "Start-Sleep 1"])\n'}),
+        ("the sleep alias", {"a.ps1": "Write-Output sleep\n"}, {"a.ps1": "sleep 1\n"}),
+        ("the Thread.Sleep of PowerShell", {"a.ps1": "[System.Threading.Thread]::CurrentThread\n"},
+         {"a.ps1": "[System.Threading.Thread]::Sleep(10)\n"}),
         ("time.sleep", {"a.py": "import time\ntime.perf_counter()\n"}, {"a.py": "import time\ntime.sleep(1)\n"}),
         ("an alias", {"a.py": "import time as t\nt.monotonic()\n"}, {"a.py": "import time as t\nt.sleep(1)\n"}),
         ("from time import sleep", {"a.py": "from time import monotonic\n"},
@@ -172,6 +193,46 @@ CASES = {
         ("requestAnimationFrame", {"themes/t/a.js": "setTimeout(f, 1);\n"}, {"themes/t/a.js": "requestAnimationFrame(f);\n"}),
     ],
     "retries": [
+        ("a PowerShell retry next to another try that waits",
+         {"a.ps1": "while ($true) { try { f } catch { throw }; try { g; Start-Sleep 5 } catch { throw } }\n"},
+         {"a.ps1": "while ($true) { try { f } catch { Start-Sleep 1 }; try { g; Start-Sleep 5 } catch { } }\n"}),
+        ("a PowerShell retry whose if guard the try turns off",
+         {"a.ps1": "while ($true) { if (-not $done) { f; $done = $true }; Start-Sleep 1 }\n"},
+         {"a.ps1": "while ($true) { if (-not $done) { try { f; $done = $true } catch { } }; Start-Sleep 1 }\n"}),
+        ("a PowerShell retry whose try sits in a helper",
+         {"a.ps1": "function Get-State($p) { try { Invoke-RestMethod $p } catch { $null } }\n"
+                   "foreach ($p in $paths) { Start-Sleep 1; if ($s = Get-State $p) { break } }\n"},
+         {"a.ps1": "function Get-State($p) { try { Invoke-RestMethod $p } catch { $null } }\n"
+                   "foreach ($i in 1..40) { Start-Sleep 1; if ($s = Get-State 'x') { break } }\n"}),
+        ("a Python retry whose try sits in a helper",
+         {"a.py": "import time\ndef ready():\n    try:\n        return f()\n    except OSError:\n        return None\n"
+                  "for _ in range(30):\n    if not ready():\n        break\n    time.sleep(1)\n"},
+         {"a.py": "import time\ndef ready():\n    try:\n        return f()\n    except OSError:\n        return None\n"
+                  "for _ in range(30):\n    if ready():\n        break\n    time.sleep(1)\n"}),
+        ("a retry whose helper waits in its handler",
+         {"a.py": "import time\ndef attempt(item):\n    try:\n        return f(item)\n    except OSError:\n"
+                  "        time.sleep(1)\n        return None\nfor item in items:\n    if attempt(item):\n        break\n"},
+         {"a.py": "import time\ndef attempt():\n    try:\n        return f()\n    except OSError:\n"
+                  "        time.sleep(1)\n        return None\nwhile True:\n    if attempt():\n        break\n"}),
+        ("a poll whose helper returns inside its try",
+         {"a.py": "import time\nclass A:\n    def check(self):\n        try:\n            return f()\n"
+                  "        except OSError:\n            return None\n\n    def poll(self):\n"
+                  "        while True:\n            self.check()\n            time.sleep(5)\n"},
+         {"a.py": "import time\nclass A:\n    def check(self):\n        try:\n            return f()\n"
+                  "        except OSError:\n            return None\n\n    def poll(self):\n"
+                  "        while True:\n            if self.check():\n                return\n            time.sleep(5)\n"}),
+        ("a Python retry of a method on self",
+
+         {"a.py": "import time\nclass A:\n    def ok(self):\n        try:\n            return f()\n"
+                  "        except OSError:\n            return None\n\n    def wait(self, other):\n"
+                  "        while True:\n            if other.ok():\n                break\n            time.sleep(1)\n"},
+         {"a.py": "import time\nclass A:\n    def ok(self):\n        try:\n            return f()\n"
+                  "        except OSError:\n            return None\n\n    def wait(self, other):\n"
+                  "        while True:\n            if self.ok():\n                break\n            time.sleep(1)\n"}),
+        ("the PowerShell retry a Python script runs",
+         {"a.py": 'import subprocess\nsubprocess.run(["powershell", "-Command", "while ($true) { f; Start-Sleep 1 }"])\n'},
+         {"a.py": 'import subprocess\nps = "while ($true) { try { f; break } catch { Start-Sleep 1 } }"\n'
+                  'subprocess.run(["powershell", "-Command", ps])\n'}),
         ("a loop with try and a sleep", {"a.py": "import time\nwhile True:\n    try:\n        f()\n    except OSError:\n"
                                                  "        return\n    time.sleep(1)\n"},
          {"a.py": "import time\nwhile True:\n    try:\n        f()\n        break\n    except OSError:\n"
@@ -219,15 +280,15 @@ CASES = {
         ("a powershell poll that waits the same after a success and a failure",
          {"a.ps1": "while ($true) { try { Get-Status } catch { Write-Warning $_ }; Start-Sleep 5 }\n"},
          {"a.ps1": "while ($true) { try { Get-Status; break } catch { Write-Warning $_ }; Start-Sleep 5 }\n"}),
-        ("powershell in a Python string", {"a.py": "ps = 'do{Start-Sleep 1;try{f}catch{}}while($a)'\n"},
-         {"a.py": "ps = 'do{Start-Sleep 1;try{$s=f}catch{}}while($s -eq $null)'\n"}),
+        ("powershell in a Python string", {"a.py": "ps = 'do{Start-Sleep 1;try{f}catch{}}while($a)'\n" + RUN_PS},
+         {"a.py": "ps = 'do{Start-Sleep 1;try{$s=f}catch{}}while($s -eq $null)'\n" + RUN_PS}),
         ("a powershell for whose condition the try turns off",
          {"a.ps1": "for ($i = 0; $i -lt 9 -and -not $e; $i++) { try { f } catch { }; Start-Sleep 1 }\n"},
          {"a.ps1": "for ($i = 0; $i -lt 9 -and -not $e; $i++) { try { $e = f } catch { }; Start-Sleep 1 }\n"}),
         ("a powershell loop around a retry", {"a.ps1": "foreach ($x in $y) { f $x }\n"},
          {"a.ps1": "foreach ($x in $y) {\n  while ($true) { try { f $x; break } catch { Start-Sleep 1 } }\n}\n"}),
-        ("a powershell loop around a retry in a Python string", {"a.py": "ps = 'foreach($x in $y){f $x}'\n"},
-         {"a.py": "ps = 'foreach($x in $y){while($true){try{f $x;break}catch{Start-Sleep 1}}}'\n"}),
+        ("a powershell loop around a retry in a Python string", {"a.py": "ps = 'foreach($x in $y){f $x}'\n" + RUN_PS},
+         {"a.py": "ps = 'foreach($x in $y){while($true){try{f $x;break}catch{Start-Sleep 1}}}'\n" + RUN_PS}),
         ("a poll followed by a while that reads what its try set",
          {"a.ps1": "while ($true) { try { $status = Get-Status } catch { Write-Warning $_ }; Start-Sleep 5 }\n"
                    "while ($status) { f }\n"},
@@ -242,9 +303,9 @@ CASES = {
         ("a catch of two types", {"a.ps1": "while ($true) { Get-Status; Start-Sleep 1 }\n"},
          {"a.ps1": "while ($true) { try { f; break } catch [IO.FileNotFoundException], [IO.DirectoryNotFoundException] "
                    "{ Start-Sleep 1 } }\n"}),
-        ("two retries in one Python string", {"a.py": "ps = 'f'\n"},
+        ("two retries in one Python string", {"a.py": "ps = 'f'\n" + RUN_PS},
          {"a.py": "ps = ('while($true){try{f;break}catch{Start-Sleep 1}}\\n'\n"
-                  "      'while($true){try{g;break}catch{Start-Sleep 1}}')\n"}, 2),
+                  "      'while($true){try{g;break}catch{Start-Sleep 1}}')\n" + RUN_PS}, 2),
         ("a Python poll that waits the same in the try and in the handler",
          {"a.py": "import time\nwhile True:\n    try:\n        f()\n        time.sleep(1)\n    except OSError:\n"
                   "        time.sleep(1)\n"},
@@ -269,8 +330,8 @@ CASES = {
                   "        pass\n    time.sleep(1)\n"},
          {"a.py": "import time\nwhile running:\n    try:\n        f()\n        running = False\n    except OSError:\n"
                   "        pass\n    time.sleep(1)\n"}),
-        ("a do-while followed by another loop", {"a.py": "ps = 'do{f}while($a);while($b){Start-Sleep 1}'\n"},
-         {"a.py": "ps = 'do{try{f}catch{Start-Sleep 1}}while($a);while($b){Start-Sleep 1}'\n"}),
+        ("a do-while followed by another loop", {"a.py": "ps = 'do{f}while($a);while($b){Start-Sleep 1}'\n" + RUN_PS},
+         {"a.py": "ps = 'do{try{f}catch{Start-Sleep 1}}while($a);while($b){Start-Sleep 1}'\n" + RUN_PS}),
         ("a script's onerror that loads it again",
          {"a.js": "const loadAgain = () => {\n  l.onerror = () => { l.remove(); };\n};\nsetTimeout(loadAgain, 3000);\n"},
          {"a.js": "const loadAgain = () => {\n  l.onerror = () => { l.remove(); setTimeout(loadAgain, 3000); };\n};\n"}),
@@ -313,6 +374,20 @@ CASES = {
          {"a.js": "function go() { fetch(u).catch(() => setTimeout(go, 3000)); }\n"}),
     ],
     "broad_excepts": [
+        ("a PowerShell catch with no type", {"a.ps1": "try { f } catch [IO.IOException] { }\n"},
+         {"a.ps1": "try { f } catch { }\n"}),
+        ("a PowerShell catch of System.Exception", {"a.ps1": "try { f } catch [IO.IOException] { }\n"},
+         {"a.ps1": "try { f } catch [System.Exception] { }\n"}),
+        ("a PowerShell trap with no type", {"a.ps1": "trap [IO.IOException] { continue }\n"},
+         {"a.ps1": "trap { continue }\n"}),
+        ("the PowerShell a Python script runs",
+         {"a.py": 'import subprocess\nsubprocess.run(["powershell", "-Command", "try { f } catch [IO.IOException] { }"])\n'},
+         {"a.py": 'import subprocess\nsubprocess.run(["powershell", "-Command", "try { f } catch { }"])\n'}),
+        ("a PowerShell catch in a workflow step",
+         {".github/workflows/w.yml": "jobs:\n  j:\n    runs-on: windows-2025\n    steps:\n"
+                                     "      - run: try { f } catch [IO.IOException] { }\n"},
+         {".github/workflows/w.yml": "jobs:\n  j:\n    runs-on: windows-2025\n    steps:\n"
+                                     "      - run: try { f } catch { }\n"}),
         ("except Exception", {"a.py": "try:\n    f()\nexcept OSError:\n    pass\n"},
          {"a.py": "try:\n    f()\nexcept Exception:\n    pass\n"}),
         ("a bare except", {"a.py": "try:\n    f()\nexcept (OSError, ValueError):\n    pass\n"},
@@ -525,13 +600,9 @@ CASES = {
 
 KNOWN_MISSES_ISSUE = "https://github.com/ritmelli/ritmelli/issues/254"
 KNOWN_MISSES = [
-    ("broad_excepts", "a PowerShell catch with no type", {"a.ps1": "try { f } catch { }\n"}),
     ("broad_excepts", "a JavaScript catch that handles nothing but is not empty",
      {"a.js": "try { f(); } catch (e) { void e; }\n"}),
-    ("retries", "a PowerShell retry next to another try that waits (the tries of a loop are read together)",
-     {"a.ps1": "while ($true) { try { f } catch { Start-Sleep 1 }; try { g; Start-Sleep 5 } catch { } }\n"}),
-    ("retries", "a PowerShell retry whose if guard the try turns off",
-     {"a.ps1": "while ($true) { if (-not $done) { try { f; $done = $true } catch { } }; Start-Sleep 1 }\n"}),
+
     ("retries", "a JavaScript failure told by an if (index.html, the transport not loaded)",
      {"a.js": "function carregarTransporte() {\n  s.onload = () => {\n"
               "    if (typeof TRANSPORTE === 'undefined') { s.remove(); reconT = setTimeout(conectar, 3000); return; }\n"
@@ -561,15 +632,18 @@ def test_counters():
 
 
 def test_string_lines():
-    two = "ps = ('do{Start-Sleep 1}while($a);'\n      'if($b){Start-Sleep 1}')\n"
+    two = "ps = ('do{Start-Sleep 1}while($a);'\n      'if($b){Start-Sleep 1}')\n" + RUN_PS
     items = garden.COUNTERS["sleeps_app"](garden.Tree({"a.py": two}))
     check(items == [("a.py", 1), ("a.py", 2)], f"each fragment of a concatenated string keeps its own line ({items})")
-    between = "ps = ('do{f}while($a);'  # Start-Sleep here is a comment\n      'if($b){g}')\n"
+    between = "ps = ('do{f}while($a);'  # Start-Sleep here is a comment\n      'if($b){g}')\n" + RUN_PS
     check(garden.COUNTERS["sleeps_app"](garden.Tree({"a.py": between})) == [],
           "a comment between two fragments of a string is not part of it")
-    wide = "x = ('ação', 'Start-Sleep 1')\n"
+    wide = "x = 'ação'; ps = 'Start-Sleep 1'\n" + RUN_PS
     check(garden.COUNTERS["sleeps_app"](garden.Tree({"a.py": wide})) == [("a.py", 1)],
           "a string after a wide character is read whole")
+    built = "n = 2\nps = (f'$fim=(Get-Date).AddSeconds({n:.0f});'\n      f'{n}-Service x; Start-Sleep {n}')\n" + RUN_PS
+    items = garden.COUNTERS["sleeps_app"](garden.Tree({"a.py": built}))
+    check(items == [("a.py", 3)], f"an f-string's fields read as PowerShell values, at their lines ({items})")
 
 
 def test_workflow_python_lines():
@@ -887,6 +961,33 @@ def test_queue_run():
               f"the same tree as a PR against main passes ({out.splitlines()[-1:]})")
 
 
+def test_measured_base():
+    catch = {"a.ps1": "try { f } catch { }\n"}
+    with tempfile.TemporaryDirectory() as d:
+        repo = Path(d)
+        garden.git("init", "-q", root=repo)
+        garden.git("config", "core.autocrlf", "false", root=repo)
+        blind = json.loads(ceilings_of(catch))
+        blind["broad_excepts"] = 0
+        main = commit(repo, {**catch, "dev/garden.json": json.dumps(blind) + "\n"},
+                      "main, from a counter that did not see the catch")
+        (repo / "dev" / "garden.json").write_text(ceilings_of(catch), encoding="utf-8")
+        code, out = run_in(repo, {"GITHUB_EVENT_NAME": "pull_request", "BASE": main, "GITHUB_REF": "refs/pull/9/merge"})
+        check(code == 0, "a counter that learns to see a weed already on the base raises its ceiling to the base's "
+                         f"count, measured with this code ({out.splitlines()[-1:]})")
+        two = {"a.ps1": "try { f } catch { }\ntry { g } catch { }\n"}
+        (repo / "a.ps1").write_text(two["a.ps1"], encoding="utf-8")
+        (repo / "dev" / "garden.json").write_text(ceilings_of(two), encoding="utf-8")
+        code, out = run_in(repo, {"GITHUB_EVENT_NAME": "pull_request", "BASE": main, "GITHUB_REF": "refs/pull/9/merge"})
+        check(code == 1 and "broad_excepts: the ceiling went up from 1 to 2" in out,
+              "a new catch with its ceiling still fails against the base measured with this code")
+        (repo / "a.ps1").write_text("try { f\n", encoding="utf-8")
+        code, out = run_in(repo, {"GITHUB_EVENT_NAME": "pull_request", "BASE": main, "GITHUB_REF": "refs/pull/9/merge"})
+        check(code == 1 and "unreadable: a.ps1:2: the PowerShell reader stops here" in out,
+
+              f"a file the reader can't read fails with its place ({[x for x in out.splitlines() if 'unreadable' in x]})")
+
+
 def commit(repo, files, message):
     for path, text in files.items():
         (repo / path).parent.mkdir(parents=True, exist_ok=True)
@@ -906,14 +1007,14 @@ def test_base():
         after = commit(repo, {"a.py": "x = 1  # why\ny = 2  # and why\n", "dev/garden.json": '{"comment_lines": 2}\n'},
                        "the scoreboard")
         try:
-            garden.base_ceilings("not-a-commit", root=repo)
+            garden.verify_base("not-a-commit", root=repo)
             raised = False
         except garden.BaseError:
             raised = True
-        check(raised, "a base that is not a commit fails instead of reading as a base with no scoreboard")
-        check(garden.base_ceilings(before, root=repo) is None, "a base from before the scoreboard has no ceilings")
-        check(garden.base_ceilings(after, root=repo) == {"comment_lines": 2}, "a base with the scoreboard has its ceilings")
-        check(garden.base_ceilings("", root=repo) is None, "no base, no ceilings")
+        check(raised, "a base that is not a commit fails instead of reading as a base with nothing to measure")
+        garden.verify_base(before, root=repo)
+        garden.verify_base(after, root=repo)
+        garden.verify_base("", root=repo)
         blob = subprocess.run(["git", "cat-file", "-p", f"{before}:a.py"], cwd=repo, capture_output=True).stdout
         check(blob == b"x = 1  # why\r\n", f"the fixture's blob keeps its CRLF ({blob!r})")
         (repo / "b.iss").write_bytes("﻿; why\n[Setup]\n".encode("utf-8"))
@@ -1006,7 +1107,9 @@ test_description()
 test_base()
 test_queue_base()
 test_queue_run()
+test_measured_base()
 test_description_step()
+
 WORKFLOW_TEXT = (ROOT / ".github" / "workflows" / "testa.yml").read_text(encoding="utf-8")
 problems = workflow_problems(WORKFLOW_TEXT)
 check(problems == [], f"the PR description step runs in the required check on every PR and queue entry ({problems})")

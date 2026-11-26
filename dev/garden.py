@@ -14,6 +14,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "dev"))
 import workflow_yaml
+from syntax import ir, units
+from syntax.text import Source
 
 USAGE = """The garden scoreboard: counts the weeds of the repo and holds each count to its ceiling in dev/garden.json.
 
@@ -22,8 +24,11 @@ USAGE = """The garden scoreboard: counts the weeds of the repo and holds each co
     python dev/garden.py --pr-description  the description of the PR of this run, read from the API
 
 A count over its ceiling fails (weeds went in); under it, it fails too until the PR lowers the ceiling to the count.
-A ceiling over the base's fails as well, so a PR can't raise it along with the weeds. Every counter that changed
-against the base goes to the PR summary as a "-- summary:" line."""
+The base is measured with this code, and a ceiling over the base's count fails as well: a PR can't raise it along with
+the weeds, and a counter that learns to see more raises its ceiling only to what the base already has. A file that a
+reader of dev/syntax can't read fails with its place. Every counter that changed against the base goes to the PR
+summary as a "-- summary:" line."""
+
 
 COMMENT_EXTENSIONS = (".py", ".js", ".css", ".ps1", ".yml", ".yaml", ".cpp", ".h", ".iss", ".bat", ".html", ".rc", ".spec",
                       ".sh", ".toml", ".psd1", ".isl", ".properties")
@@ -49,9 +54,8 @@ PIN = re.compile(r"@[0-9a-f]{40}\s*$")
 PIN_VERSION = re.compile(r"^\s*v\d+(?:\.\d+)*\s*$")
 SUPPRESSIONS_IN_COMMENTS = re.compile(r"\bnoqa\b|\btype:\s*ignore\b|\beslint-disable|\bpragma:\s*no\s*cover\b")
 PRAGMA_DISABLE = re.compile(r"#\s*pragma\s+warning\s*\(\s*disable")
-CONTINUE_ON_ERROR = re.compile(r"^\s*(?:-\s+)?continue-on-error\s*:(?!\s*(?:false|'false'|\"false\")\s*$)")
 SILENTLY_CONTINUE = re.compile(r"-ErrorAction\s+SilentlyContinue\b", re.I)
-START_SLEEP = re.compile(r"\bStart-Sleep\b", re.I)
+QUIET_ERRORS = {"silentlycontinue", "ignore", "0", "4"}
 THEME_TIMER = re.compile(r"\b(?:setTimeout|setInterval|requestIdleCallback)\s*\(")
 ANIMATION_FRAME = re.compile(r"\brequestAnimationFrame\s*\(")
 TODO = re.compile(r"\b(?:TODO|FIXME|HACK|XXX)\b")
@@ -61,16 +65,6 @@ LEFT_OUT = re.compile(r"^--\s.*ficou de fora", re.S)
 KNOWN_FAILURE = re.compile(r"^\s*known failure", re.I)
 LEFT_OUT_QUOTED = re.compile(r"[\"']--\s[^\"']*ficou de fora")
 SKIP_NAMES = {"skip", "skipIf", "skipUnless", "expectedFailure", "skipTest", "SkipTest", "xfail", "skipif"}
-BROAD = {"Exception", "BaseException"}
-SLEEP_MODULES = {"time", "asyncio"}
-PS_LOOP = re.compile(r"\b(?:for|foreach|while|do)\b", re.I)
-PS_TRY = re.compile(r"\btry\s*\{", re.I)
-PS_CATCH = re.compile(r"\bcatch\s*(?:\[[^\]]*\]\s*,?\s*)*\{", re.I)
-PS_LEAVES = re.compile(r"\b(?:break|return|exit|throw)\b", re.I)
-PS_EXITS = re.compile(r"\b(?:break|return|exit)\b", re.I)
-PS_STRING = re.compile(r"'(?:[^']|'')*'|\"(?:[^\"`]|`.)*\"", re.S)
-PS_VARIABLE = re.compile(r"\$(\w+)")
-PS_ASSIGNED = re.compile(r"\$(\w+)\s*=(?!=)")
 PROOF_LABEL = re.compile(r"^(?:how it was (?:proven|proved|tested)|proof\b|prova\b|como foi provado|testing\b"
                          r"|test plan\b|test results\b|verification\b)", re.I)
 SECTION_LABEL = re.compile(r"^\s*(?:#{1,6}\s+(?P<heading>[^:]+?)(?::\s*(?P<rest>.*))?\s*$"
@@ -102,7 +96,7 @@ class Lexed:
     code: dict = field(default_factory=dict)
     comments: list = field(default_factory=list)
     strings: list = field(default_factory=list)
-    runs: list = field(default_factory=list)
+    pins: set = field(default_factory=set)
 
     def add_code(self, line, text):
         self.code[line] = self.code.get(line, "") + text
@@ -275,30 +269,6 @@ def regex_can_start(code_line, last):
     return bool(word) and word.group(1) in JS_KEYWORDS_BEFORE_REGEX and code_line.rstrip().endswith(word.group(1))
 
 
-def lex_powershell(text):
-    s = Scanner(text)
-    while s.i < len(text):
-        c = text[s.i]
-        if s.peek("<#"):
-            s.i += 2
-            s.comment_until("#>")
-        elif c == "#" and (s.i == 0 or text[s.i - 1] in " \t\n;|{}()"):
-            s.i += 1
-            s.comment_until("\n")
-        elif s.peek("@'\n") or s.peek("@'\r\n") or s.peek('@"\n') or s.peek('@"\r\n'):
-            close = "\n" + text[s.i + 1] + "@"
-            stop = text.find(close, s.i + 2)
-            stop = len(text) if stop < 0 else stop + len(close)
-            s.take(stop - s.i)
-        elif c == "'":
-            s.string("'", escape=None, doubled=True)
-        elif c == '"':
-            s.string('"', escape="`")
-        else:
-            s.take(1)
-    return s.out
-
-
 def lex_bat(text):
     out = Lexed()
     for n, line in enumerate(text.splitlines(), 1):
@@ -355,94 +325,52 @@ def lex_html(text):
     return out
 
 
-BLOCK_SCALAR = re.compile(r"^(\s*)(-\s+)?([\w.-]+):\s*[|>][-+]?\s*(?:#.*)?$")
-INLINE_RUN = re.compile(r"^\s*(?:-\s+)?run:\s*([^\s|>].*?)\s*$")
+STRUCTURED = (".ps1", ".psd1", ".yml", ".yaml")
+PYTHON = (".py", ".spec")
+TEST_JOB = re.compile(r"^(?:test|testa|teste)s?(?:[-_][\w-]+)?$")
 
 
-def indent_of(line):
-    return len(line) - len(line.lstrip(" "))
+def read_pieces(path, text):
+    s = suffix(path)
+    if s in (".yml", ".yaml"):
+        return units.yaml_pieces(path, text, TEST_JOB)
+    if s in (".ps1", ".psd1"):
+        return [units.powershell_piece(path, text, Source(text, path).line)]
+    if s in PYTHON:
+        top = units.python_piece(path, text, tokens=False)
+        if top.tree is None or path in GARDEN_FILES:
+            return [top]
+        return [top, *units.embedded_powershell(path, top.tree, text)]
+    return []
 
 
-def key_indent(line):
-    stripped = line.lstrip(" ")
-    return indent_of(line) + (len(stripped) - len(stripped[1:].lstrip(" ")) if stripped.startswith("-") else 0)
+def local_lines(text):
+    return [0] + [i + 1 for i, c in enumerate(text) if c == "\n"]
 
 
-def unquote(value):
-    value = value.strip()
-    if len(value) > 1 and value[0] == value[-1] == "'":
-        return value[1:-1].replace("''", "'")
-    if len(value) > 1 and value[0] == value[-1] == '"':
-        return value[1:-1].replace('\\"', '"').replace("\\\\", "\\")
-    return value
-
-
-def yaml_shell(lines, at):
-    indent = key_indent(lines[at])
-    start = at
-    while start > 0 and not (lines[start].lstrip(" ").startswith("-") and key_indent(lines[start]) == indent):
-        start -= 1
-    for k in range(start, len(lines)):
-        line = lines[k]
-        if k > start and line.strip() and (indent_of(line) < indent or lines[k].lstrip(" ").startswith("-")
-                                           and indent_of(line) <= indent - 2):
-            break
-        m = re.match(r"^\s*(?:-\s+)?shell:\s*(.+?)\s*$", lex_hash(line).code.get(1, line))
-        if m and key_indent(line) == indent:
-            return m.group(1).strip("'\"")
-    runs_on = next((m.group(1) for line in reversed(lines[:at]) if (m := re.match(r"^\s+runs-on:\s*(.+)$", line))),
-                   "")
-    return "pwsh" if "windows" in runs_on else "bash"
-
-
-def lexer_for_shell(shell):
-    if shell.startswith("python"):
-        return lex_python
-    if "pwsh" in shell or "powershell" in shell:
-        return lex_powershell
-    return lex_bat if shell.startswith("cmd") else lex_hash
-
-
-def lex_yaml(text):
+def lexed_from_pieces(pieces):
     out = Lexed()
-    lines = text.splitlines()
-    n = 0
-    while n < len(lines):
-        line = lines[n]
-        m = BLOCK_SCALAR.match(line)
-        lexed = lex_hash(line)
-        out.code[n + 1] = lexed.code.get(1, line)
-        out.comments += [Comment(n + 1, n + 1, c.text) for c in lexed.comments]
-        n += 1
-        if not m:
-            inline = INLINE_RUN.match(out.code[n])
-            if inline:
-                shell, script = yaml_shell(lines, n - 1), unquote(inline.group(1))
-                out.runs.append((n - 1, shell, script))
-                run = lexer_for_shell(shell)(script)
-                out.code[n] = out.code[n][:inline.start(1)] + " ".join(run.code.values())
-                out.comments += [Comment(n, n, c.text) for c in run.comments]
-                out.strings += [(n, text) for _, text in run.strings]
-            continue
-        end = n
-        while end < len(lines) and (not lines[end].strip() or indent_of(lines[end]) > key_indent(line)):
-            end += 1
-        body = lines[n:end]
-        if m.group(3) == "run":
-            indent = min((indent_of(b) for b in body if b.strip()), default=0)
-            script = "\n".join(b[indent:] for b in body)
-            shell = yaml_shell(lines, n - 1)
-            out.runs.append((n, shell, script))
-            shift(lexer_for_shell(shell)(script), n, out)
-        else:
-            for k, b in enumerate(body, n + 1):
-                out.code[k] = b
-        n = end
+    for piece in pieces:
+        for line, code in sorted(piece.code_lines.items()):
+            out.add_code(line, code)
+        out.comments += [Comment(first, last, text) for first, last, text, _ in piece.comments]
+        out.strings += piece.strings
+        out.pins |= piece.pins
+        if piece.language in ("bash", "cmd", "unknown"):
+            lexed = (lex_bat if piece.language == "cmd" else lex_hash)(piece.text)
+            starts = local_lines(piece.text)
+
+            def at(n, piece=piece, starts=starts):
+                return piece.line_of(starts[min(max(n - 1, 0), len(starts) - 1)])
+            for n, code in lexed.code.items():
+                out.add_code(at(n), code)
+            out.comments += [Comment(at(c.start), at(c.end), c.text) for c in lexed.comments]
+            out.strings += [(at(n), text) for n, text in lexed.strings]
     return out
 
 
 LEXERS = {".py": lex_python, ".spec": lex_python, ".js": lambda t: lex_c(t, js=True), ".css": lambda t: lex_c(t, css=True),
-          ".cpp": lex_c, ".h": lex_c, ".rc": lex_c, ".ps1": lex_powershell, ".psd1": lex_powershell, ".yml": lex_yaml, ".yaml": lex_yaml,
+          ".cpp": lex_c, ".h": lex_c, ".rc": lex_c, ".ps1": None, ".psd1": None, ".yml": None, ".yaml": None,
           ".iss": lex_iss, ".isl": lex_semicolon, ".bat": lex_bat, ".html": lex_html, ".sh": lex_hash,
           ".toml": lex_hash, ".properties": lex_properties}
 
@@ -459,27 +387,43 @@ def kept(path, lexed, comment):
         return True
     if comment.start <= 2 and suffix(path) in (".py", ".spec") and ENCODING.search(text):
         return True
-    return suffix(path) in (".yml", ".yaml") and bool(PIN.search(lexed.code.get(comment.start, "").rstrip())) and bool(
-        PIN_VERSION.match(text))
+    return suffix(path) in (".yml", ".yaml") and comment.start in lexed.pins and bool(PIN_VERSION.match(text))
 
 
 class Tree:
     def __init__(self, files):
         self.files = files
-        self._lexed, self._ast, self._hooks = {}, {}, None
+        self._lexed, self._ast, self._hooks, self._pieces = {}, {}, None, {}
+
+    def pieces(self, path):
+        if path not in self._pieces:
+            self._pieces[path] = read_pieces(path, self.files[path])
+        return self._pieces[path]
+
+    def units(self, path):
+        return [piece for piece in self.pieces(path) if piece.unit is not None]
+
+    def problems(self):
+        return [piece.problem for path in sorted(self.files) if suffix(path) in (*STRUCTURED, *PYTHON)
+                for piece in self.pieces(path) if piece.problem and piece.language != "python"]
 
     def lexed(self, path):
         if path not in self._lexed:
-            self._lexed[path] = LEXERS[suffix(path)](self.files[path])
+            s = suffix(path)
+            self._lexed[path] = lexed_from_pieces(self.pieces(path)) if s in STRUCTURED else LEXERS[s](self.files[path])
         return self._lexed[path]
 
     def tree(self, path):
         if path not in self._ast:
-            try:
-                self._ast[path] = ast.parse(self.files[path])
-            except SyntaxError:
-                self._ast[path] = None
+            if suffix(path) in PYTHON:
+                self._ast[path] = self.pieces(path)[0].tree
+            else:
+                try:
+                    self._ast[path] = ast.parse(self.files[path])
+                except SyntaxError:
+                    self._ast[path] = None
         return self._ast[path]
+
 
     def paths(self, *suffixes):
         return sorted(p for p in self.files if suffix(p) in suffixes)
@@ -541,8 +485,8 @@ def docstring_lines(t):
                 lines |= set(range(d.lineno, d.end_lineno + 1))
             items += [(p, n) for n in sorted(lines)]
     for p in workflow_paths(t):
-        for offset, tree, _ in workflow_python(t, p):
-            items += [(p, offset + n) for d in docstrings(tree) for n in range(d.lineno, d.end_lineno + 1)]
+        for line_for, tree, _ in workflow_python(t, p):
+            items += [(p, line_for(n)) for d in docstrings(tree) for n in range(d.lineno, d.end_lineno + 1)]
     return items
 
 
@@ -594,36 +538,59 @@ def code_lines(t, path):
     return sorted(t.lexed(path).code.items())
 
 
+def error_action(name):
+    name = name.lower()
+    return name == "ea" or (len(name) >= len("errora") and "erroraction".startswith(name))
+
+
+def error_preference(command):
+    elements = command.elements
+    for k, e in enumerate(elements):
+        if isinstance(e, units.ps.CommandParameter) and error_action(e.name):
+
+            value = e.argument if e.argument is not None else (elements[k + 1] if k + 1 < len(elements) else None)
+            if quiet_value(value):
+                yield e
+
+
+def quiet_value(node):
+    text = node.text if isinstance(node, units.ps.Bareword) else (
+        node.value if isinstance(node, units.ps.String) else node.text if isinstance(node, units.ps.Number) else None)
+    if isinstance(node, units.ps.Pipeline) and len(node.elements) == 1 and isinstance(
+            node.elements[0], units.ps.ExpressionElement):
+        return quiet_value(node.elements[0].expression)
+    return text is not None and text.strip().lower() in QUIET_ERRORS
+
+
+def quiet_errors(piece):
+    found = []
+    for node in units.ps.walk(piece.tree):
+        if isinstance(node, units.ps.Command):
+            found += [piece.line_of(p.span.start) for p in error_preference(node)]
+        elif isinstance(node, units.ps.Assign) and isinstance(node.target, units.ps.Variable) and \
+                node.target.name.lower() == "erroractionpreference" and quiet_value(node.value):
+            found.append(piece.line_of(node.span.start))
+    return found
+
+
 def suppressions(t):
     items = []
     for p in t.paths(*COMMENT_EXTENSIONS):
         lexed = t.lexed(p)
         items += [(p, c.start) for c in lexed.comments if SUPPRESSIONS_IN_COMMENTS.search(c.text)]
+        if suffix(p) in STRUCTURED or suffix(p) in PYTHON:
+            for piece in t.pieces(p):
+                items += [(p, n) for n in piece.continue_on_error]
+                if piece.language == "powershell" and piece.tree is not None:
+                    items += [(p, n) for n in quiet_errors(piece)]
+            if suffix(p) in STRUCTURED:
+                continue
         for n, code in code_lines(t, p):
-            hits = len(PRAGMA_DISABLE.findall(code)) + len(SILENTLY_CONTINUE.findall(code))
-            if suffix(p) in (".yml", ".yaml") and CONTINUE_ON_ERROR.match(code):
-                hits += 1
+            hits = len(PRAGMA_DISABLE.findall(code))
+            if suffix(p) not in PYTHON:
+                hits += len(SILENTLY_CONTINUE.findall(code))
             items += [(p, n)] * hits
     return items
-
-
-def sleep_aliases(tree):
-    modules, functions = set(SLEEP_MODULES), set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            modules |= {a.asname for a in node.names if a.name in SLEEP_MODULES and a.asname}
-        elif isinstance(node, ast.ImportFrom) and node.module in SLEEP_MODULES:
-            functions |= {a.asname or a.name for a in node.names if a.name == "sleep"}
-    return modules, functions
-
-
-def is_sleep(node, aliases):
-    modules, functions = aliases
-    if not isinstance(node, ast.Call):
-        return False
-    f = node.func
-    return (isinstance(f, ast.Attribute) and f.attr == "sleep" and isinstance(f.value, ast.Name)
-            and f.value.id in modules) or (isinstance(f, ast.Name) and f.id in functions)
 
 
 def is_dev(path):
@@ -634,46 +601,28 @@ def is_test(path):
     return testa_tudo().is_test(path)
 
 
-def sleeps(t):
+def unit_items(t, suffixes, rule, workflows_only=False):
     items = []
-    for p in t.paths(".py", ".spec"):
-        tree = t.tree(p)
-        if tree is not None:
-            aliases = sleep_aliases(tree)
-            items += [(p, n.lineno) for n in ast.walk(tree) if is_sleep(n, aliases)]
-    for p in t.paths(".yml", ".yaml"):
-        if p.startswith(".github/"):
-            for offset, tree, _ in workflow_python(t, p):
-                aliases = sleep_aliases(tree)
-                items += [(p, offset + n.lineno) for n in ast.walk(tree) if is_sleep(n, aliases)]
-    for p in t.paths(*COMMENT_EXTENSIONS):
-        for n, code in code_lines(t, p):
-            items += [(p, n)] * len(START_SLEEP.findall(code))
+    for p in t.paths(*suffixes):
+        if workflows_only and suffix(p) in (".yml", ".yaml") and not p.startswith(".github/"):
+            continue
+        for piece in t.units(p):
+            items += [(p, n) for n in rule(piece.unit)]
     return items
 
 
-TEST_JOB = re.compile(r"^(?:test|testa|teste)s?(?:[-_][\w-]+)?$")
-
-
-def test_job_lines(text):
-    lines, inside, test = set(), False, False
-    for n, line in enumerate(text.splitlines(), 1):
-        if re.match(r"^\S", line):
-            inside, test = line.rstrip() == "jobs:", False
-            continue
-        m = re.match(r"^  ([\w-]+):\s*$", line) if inside else None
-        if m:
-            test = bool(TEST_JOB.match(m.group(1)))
-        if test:
-            lines.add(n)
-    return lines
+def sleeps(t):
+    return unit_items(t, (*PYTHON, *STRUCTURED), ir.sleeps, workflows_only=True)
 
 
 def in_test(t, item):
     path, line = item
     if is_test(path):
         return True
-    return path.startswith(".github/workflows/") and line in test_job_lines(t.files.get(path, ""))
+    if not path.startswith(".github/workflows/") or path not in t.files:
+        return False
+    pieces = t.pieces(path)
+    return bool(pieces) and line in pieces[0].test_lines
 
 
 def sleeps_app(t):
@@ -705,88 +654,6 @@ def theme_animation_frames(t):
     return theme_code(t, ANIMATION_FRAME)
 
 
-LOOPS = (ast.For, ast.AsyncFor, ast.While)
-
-
-def local_nodes(node):
-    for child in ast.iter_child_nodes(node):
-        if not isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef, *LOOPS)):
-            yield child
-            yield from local_nodes(child)
-
-
-def exits(node):
-    call = node.value if isinstance(node, ast.Expr) else None
-    if not isinstance(call, ast.Call):
-        return False
-    f = call.func
-    return (isinstance(f, ast.Attribute) and f.attr in ("exit", "_exit") and isinstance(f.value, ast.Name)
-            and f.value.id in ("sys", "os")) or (isinstance(f, ast.Name) and f.id in ("exit", "quit"))
-
-
-def leaves(body):
-    last = body[-1] if body else None
-    return isinstance(last, (ast.Return, ast.Raise, ast.Break)) or exits(last)
-
-
-def test_names(test):
-    return {n.id for n in ast.walk(test) if isinstance(n, ast.Name)}
-
-
-def assignments(body):
-    for s in body:
-        for n in [s, *local_nodes(s)]:
-            if isinstance(n, ast.Assign):
-                pairs = [(target, n.value) for target in n.targets]
-            elif isinstance(n, (ast.AnnAssign, ast.NamedExpr)):
-                pairs = [(n.target, n.value)]
-            elif isinstance(n, ast.AugAssign):
-                pairs = [(n.target, None)]
-            else:
-                continue
-            for target, value in pairs:
-                yield from ((t.id, value) for t in ast.walk(target) if isinstance(t, ast.Name))
-
-
-def keeps_going(test, name, value):
-    if not isinstance(value, ast.Constant):
-        return False
-    if isinstance(test, ast.Name) and test.id == name:
-        return bool(value.value)
-    if (isinstance(test, ast.UnaryOp) and isinstance(test.op, ast.Not) and isinstance(test.operand, ast.Name)
-            and test.operand.id == name):
-        return not value.value
-    return False
-
-
-def turns_off(tests, body):
-    return any(name in test_names(test) and not keeps_going(test, name, value)
-               for test in tests for name, value in assignments(body))
-
-
-def python_retries(tree):
-    aliases = sleep_aliases(tree)
-    found = []
-    for loop in ast.walk(tree):
-        if isinstance(loop, LOOPS):
-            inner = list(local_nodes(loop))
-            if not any(is_sleep(n, aliases) for n in inner):
-                continue
-            handled = {id(x) for t in inner if isinstance(t, ast.Try) for h in t.handlers for x in ast.walk(h)}
-            ends = any(isinstance(n, (ast.Return, ast.Break)) and id(n) not in handled for n in inner)
-            guards = {id(s): n.test for n in inner if isinstance(n, ast.If) for s in n.body}
-            for attempt in (n for n in inner if isinstance(n, ast.Try)):
-                again = [h for h in attempt.handlers if not leaves(h.body)]
-                waits_on_failure = any(is_sleep(n, aliases) for h in again for n in local_nodes(h)) and not any(
-                    is_sleep(n, aliases) for s in attempt.body + attempt.orelse for n in [s, *local_nodes(s)])
-                tests = [t for t in (guards.get(id(attempt)), loop.test if isinstance(loop, ast.While) else None) if t]
-                stops_on_success = turns_off(tests, attempt.body)
-                if again and (waits_on_failure or ends or stops_on_success):
-                    found.append(loop.lineno)
-                    break
-    return found
-
-
 def closing(code, start, opening, close):
     depth = 0
     for i in range(start, len(code)):
@@ -797,72 +664,6 @@ def closing(code, start, opening, close):
             if depth == 0:
                 return i
     return len(code) - 1
-
-
-def powershell_loops(code):
-    loops = []
-    for m in PS_LOOP.finditer(code):
-        i = m.end()
-        while i < len(code) and code[i].isspace():
-            i += 1
-        if i < len(code) and code[i] == "(":
-            i = closing(code, i, "(", ")") + 1
-            while i < len(code) and code[i].isspace():
-                i += 1
-        if i < len(code) and code[i] == "{":
-            loops.append((m.start(), i, closing(code, i, "{", "}")))
-    return loops
-
-
-def mask_ps_strings(code):
-    return PS_STRING.sub(lambda m: m.group(0)[0] + re.sub(r"[^\n]", " ", m.group(0)[1:-1]) + m.group(0)[-1], code)
-
-
-def powershell_retries(code):
-    code = mask_ps_strings(code)
-    loops = powershell_loops(code)
-    found = []
-    for start, body_start, body_end in loops:
-        own, cut = [], body_start
-        for inner_start, _, inner_end in loops:
-            if body_start < inner_start and inner_end <= body_end and inner_start >= cut:
-                own.append(code[cut:inner_start])
-                cut = inner_end + 1
-        own.append(code[cut:body_end + 1])
-        body = "".join(own)
-        if not (re.search(r"\btry\s*\{", body, re.I) and START_SLEEP.search(body)):
-            continue
-        again = [block for block in ps_blocks(body, PS_CATCH) if not PS_LEAVES.search(top_level(block))]
-        if not again:
-            continue
-        tries = list(ps_blocks(body, PS_TRY))
-        waits_on_failure = any(START_SLEEP.search(block) for block in again) and not any(
-            START_SLEEP.search(block) for block in tries)
-        ends = any(PS_EXITS.search(block) for block in tries)
-        tried = {v.lower() for block in tries for v in PS_ASSIGNED.findall(block)}
-        condition = code[start:body_start]
-        after = re.match(r"\s*(?:while|until)\s*\(", code[body_end + 1:], re.I)
-        if after and re.match(r"do\b", code[start:], re.I):
-            open_at = body_end + after.end()
-            condition += code[open_at:closing(code, open_at, "(", ")") + 1]
-        stops_on_success = tried & {v.lower() for v in PS_VARIABLE.findall(condition)}
-        if waits_on_failure or ends or stops_on_success:
-            found.append(code.count("\n", 0, start) + 1)
-    return found
-
-
-def top_level(block):
-    out, depth = [], 0
-    for c in block[1:-1]:
-        depth += (c == "{") - (c == "}")
-        if depth == 0 and c != "}":
-            out.append(c)
-    return "".join(out)
-
-
-def ps_blocks(code, opener):
-    for m in opener.finditer(code):
-        yield code[m.end() - 1:closing(code, m.end() - 1, "{", "}") + 1]
 
 
 JS_HANDLER = re.compile(r"\bonerror\s*=\s*(?:function\b[^(]*\([^)]*\)\s*|(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>\s*)"
@@ -977,58 +778,20 @@ def joined_code(lexed):
 
 
 def retries(t):
-    items = []
-    for p in t.paths(".py", ".spec"):
-        tree = t.tree(p)
-        if tree is not None:
-            items += [(p, n) for n in python_retries(tree)]
-            items += [(p, n + k - 1) for n, s in python_strings(t, p) if START_SLEEP.search(s)
-                      for k in powershell_retries(s)]
-    for p in t.paths(".yml", ".yaml"):
-        if p.startswith(".github/"):
-            items += [(p, offset + n) for offset, tree, _ in workflow_python(t, p) for n in python_retries(tree)]
-    for p in t.paths(".ps1", ".psd1", ".yml", ".yaml"):
-        items += [(p, n) for n in powershell_retries(joined_code(t.lexed(p)))]
+    items = unit_items(t, (*PYTHON, *STRUCTURED), ir.retries, workflows_only=True)
     for p in t.paths(".js", ".html"):
         items += [(p, n) for n in js_retries(joined_code(t.lexed(p)))]
     return items
 
 
-def is_broad(node):
-    if node is None:
-        return True
-    if isinstance(node, ast.Name):
-        return node.id in BROAD
-    if isinstance(node, ast.Attribute):
-        return node.attr in BROAD
-    if isinstance(node, ast.Tuple):
-        return any(is_broad(e) for e in node.elts)
-    return False
-
-
-def broad_handlers(tree):
-    return [n.lineno for n in ast.walk(tree) if isinstance(n, ast.ExceptHandler) and is_broad(n.type)]
-
-
 def workflow_python(t, path):
-    for offset, shell, script in t.lexed(path).runs:
-        if shell.startswith("python"):
-            try:
-                yield offset, ast.parse(script), script
-            except SyntaxError:
-                continue
+    for piece in t.pieces(path):
+        if piece.language == "python" and piece.tree is not None and piece.run_line is not None:
+            yield piece.line_for, piece.tree, piece.text
 
 
 def broad_excepts(t):
-    items = []
-    for p in t.paths(".py", ".spec"):
-        tree = t.tree(p)
-        if tree is not None:
-            items += [(p, n) for n in broad_handlers(tree)]
-    for p in t.paths(".yml", ".yaml"):
-        if p.startswith(".github/"):
-            for offset, tree, _ in workflow_python(t, p):
-                items += [(p, offset + n) for n in broad_handlers(tree)]
+    items = unit_items(t, (*PYTHON, *STRUCTURED), ir.broad_handlers, workflows_only=True)
     for p in t.paths(".js", ".html"):
         items += [(p, n) for n in js_swallowed(joined_code(t.lexed(p)))]
     for p in t.paths(".iss"):
@@ -1072,8 +835,8 @@ def skipped_tests(t):
     items = []
     for p in workflow_paths(t):
         raw = t.files[p].splitlines()
-        items += [(p, offset + n) for offset, tree, script in workflow_python(t, p)
-                  for n in skip_markers(tree, script.splitlines()) if not cites_issue(raw[offset + n - 1])]
+        items += [(p, line_for(n)) for line_for, tree, script in workflow_python(t, p)
+                  for n in skip_markers(tree, script.splitlines()) if not cites_issue(raw[line_for(n) - 1])]
     for p in t.paths(".py", ".spec"):
         tree = t.tree(p)
         if tree is None:
@@ -1157,8 +920,8 @@ def non_ascii_identifiers(t):
             continue
         items += [(p, line) for line in non_ascii_names(t.files[p])]
     for p in workflow_paths(t):
-        for offset, _, script in workflow_python(t, p):
-            items += [(p, offset + line) for line in non_ascii_names(script)]
+        for line_for, _, script in workflow_python(t, p):
+            items += [(p, line_for(line)) for line in non_ascii_names(script)]
     return items
 
 
@@ -1370,17 +1133,9 @@ class BaseError(Exception):
     pass
 
 
-def base_ceilings(base, root=ROOT):
-    if not base:
-        return None
-    if git("rev-parse", "--verify", "--quiet", f"{base}^{{commit}}", root=root)[0] != 0:
-        raise BaseError(f"the base {base} is not a commit here: its ceilings can't be read")
-    if git("cat-file", "-e", f"{base}:dev/garden.json", root=root)[0] != 0:
-        return None
-    code, out = git("show", f"{base}:dev/garden.json", root=root)
-    if code != 0:
-        raise BaseError(f"the dev/garden.json of the base {base} can't be read")
-    return json.loads(out)
+def verify_base(base, root=ROOT):
+    if base and git("rev-parse", "--verify", "--quiet", f"{base}^{{commit}}", root=root)[0] != 0:
+        raise BaseError(f"the base {base} is not a commit here: it can't be measured")
 
 
 def added_lines(base, root=ROOT):
@@ -1437,24 +1192,28 @@ def check(counts, ceilings, base, added=None):
     return failures, summary
 
 
-def scoreboard(files):
+def measure(files):
     t = Tree(files)
-    return {name: f(t) for name, f in COUNTERS.items()}
+    return {name: f(t) for name, f in COUNTERS.items()}, t.problems()
+
+
+def scoreboard(files):
+    return measure(files)[0]
 
 
 def run(root=ROOT):
-    counts = scoreboard(working_tree(root))
+    counts, unreadable = measure(working_tree(root))
     ceilings = json.loads((root / "dev" / "garden.json").read_text(encoding="utf-8"))
     try:
         base = base_commit()
-        before = base_ceilings(base, root)
+        verify_base(base, root)
     except BaseError as ex:
         print(f"FAIL  {ex}")
         return 1
-    measured = before is None and bool(base)
-    if measured:
-        before = {name: count_of(value) for name, value in scoreboard(base_tree(base, root)).items()}
+    before = {name: count_of(value) for name, value in scoreboard(base_tree(base, root)).items()} if base else None
     failures, summary = check(counts, ceilings, before, added_lines(base, root))
+    failures = [f"unreadable: {p}" for p in unreadable] + failures
+
     for name, value in counts.items():
         print(f"{'ok  ' if count_of(value) == ceilings.get(name) else 'FAIL'}  {name}: {count_of(value)} "
               f"(ceiling {ceilings.get(name)})")
