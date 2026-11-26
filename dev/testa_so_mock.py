@@ -22,6 +22,7 @@ Exits 1 if something fails."""
 import http.server
 import json
 import os
+import signal
 import socket
 import subprocess
 import sys
@@ -368,6 +369,42 @@ def the_tree():
         msg = refused(so_mock.start_job, [sys.executable, "-c", "pass"])
     check(msg is not None and made and made[0].poll() is not None,
           f"a child that cannot be resumed is not left suspended: start_job ends it and says why ({msg})")
+    made.clear()
+
+    def interrupted(*a, **k):
+        made.append(real(*a, **k))
+        signal.raise_signal(signal.SIGINT)
+        return made[-1]
+
+    with mock.patch.object(so_mock.subprocess, "Popen", side_effect=interrupted):
+        try:
+            so_mock.start_job([sys.executable, "-c", "pass"])
+            raised = None
+        except KeyboardInterrupt as ex:
+            raised = ex
+    check(isinstance(raised, KeyboardInterrupt) and made and made[0].poll() is not None,
+          f"a Ctrl+C right after the Popen: the child is ended, not left suspended, and the Ctrl+C goes on ({raised!r})")
+    restored = [signal.getsignal(signal.SIGINT) is signal.default_int_handler]
+    with mock.patch.object(so_mock, "_Job", side_effect=so_mock.Recusa("no job")):
+        refused(so_mock.start_job, [sys.executable, "-c", "pass"])
+    restored.append(signal.getsignal(signal.SIGINT) is signal.default_int_handler)
+    check(all(restored), f"start_job gives the Ctrl+C back as it was, after a stop and after a job that failed ({restored})")
+    parent, job = so_mock.start_job([sys.executable, "-c", STARTS + "p.wait()", HOLDS, os.devnull],
+                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+    parent.stdout.readline()
+    pids = job.pids(1)
+    so_mock.Filho(parent, 0, job).mata()
+    parent.stdin.close()
+    parent.stdout.close()
+    check(len(pids) == 2, f"the job lists all its processes even past the first buffer ({len(pids)} of 2)")
+    parent, job = so_mock.start_job([sys.executable, "-c", "import sys; sys.stdin.read()"], stdin=subprocess.PIPE)
+    with mock.patch.object(job.k, "OpenProcess", return_value=0):
+        unsure = refused(so_mock.Filho(parent, 0, job).mata)
+    again = refused(so_mock.Filho(parent, 0, job).mata)
+    parent.stdin.close()
+    check(unsure is not None and again == unsure,
+          f"a process of the job that cannot be opened: the stop is not taken as done, and a second stop says the "
+          f"same ({unsure}; {again})")
 
 
 app_port()
