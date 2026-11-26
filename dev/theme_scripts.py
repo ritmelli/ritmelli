@@ -5,6 +5,7 @@ import json
 import re
 import sys
 import tempfile
+import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -252,6 +253,22 @@ def held_until(activation):
     return run
 
 
+async def startup_with_the_search(tab):
+    await tab.cmd("Debugger.enable")
+    with urllib.request.urlopen(tab.base + missing_script.THEME, timeout=10) as r:
+        page = r.read().decode("utf-8")
+    files = [a["src"] for a, *_ in missing_script.testa_i18n.script_elements(page) if a.get("src")]
+    after = files[files.index("ui-events.js") + 1]
+    tab.holding.add(after)
+    await missing_script.open_page(tab)
+    state = await until(tab, "({on: document.getElementById('form-busca')?.inert === false,"
+                             " carregar: typeof carregar})", "s.on", PAGE_READY_S)
+    await tab.release(after, fail=False)
+    return [(state.get("on") and state.get("carregar") == "function",
+             f"once ui-events.js turns the search on, carregar() is there for a pairing that ends ({after} held: "
+             f"{state})")]
+
+
 def after_a_failure(missing, expected, off, page_checks):
     async def run(tab):
         await tab.cmd("Debugger.enable")
@@ -290,7 +307,7 @@ def main(argv=None):
             srv = compara.sobe_servidor(tmp, so_mock.free_port(), log, raiz=args.raiz.resolve(),
                                         config={"boas_vindas": True})
             try:
-                for run in (checks, *(held_until(a) for a in RAN_BEFORE),
+                for run in (checks, *(held_until(a) for a in RAN_BEFORE), startup_with_the_search,
                             *(after_a_failure(*f) for f in EARLIER_FAILURES)):
                     results += asyncio.run(missing_script.with_tab(srv, run))
             finally:
