@@ -85,7 +85,6 @@ key: 'it''s'
     for why, text in (("a repeated key", "a: 1\na: 2\n"), ("an alias with no anchor", "a: *x\n"),
                       ("a tab", "a:\n\tb: 1\n"), ("two documents", "a: 1\n---\nb: 2\n"),
                       ("a plain scalar with ': '", "a: b: c\n"), ("an unclosed quote", "a: 'b\n")):
-
         try:
             loads(text)
             raised = False

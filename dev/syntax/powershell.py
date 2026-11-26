@@ -28,6 +28,7 @@ NAME_START = re.compile(r"[\w?]", re.UNICODE)
 VARIABLE_NAME = re.compile(r"(?:(?:global|local|private|script|using|workflow|env|function|variable|alias|[A-Za-z]\w*):"
                            r"(?=[\w?]))?[\w?]+", re.UNICODE)
 WORD = re.compile(r"[\w-]+", re.UNICODE)
+LABEL = re.compile(r"\w+", re.UNICODE)
 
 
 class PowerShellError(SyntaxProblem):
@@ -383,6 +384,11 @@ class _Parser:
     def end(self):
         return self.last_end
 
+    def rewind(self, at, last_end):
+        self.i, self.last_end = at, last_end
+        self.tokens = {k: v for k, v in self.tokens.items() if k < at}
+        self.comments = {k: v for k, v in self.comments.items() if k < at}
+
     def take(self, text, kind="operator"):
         if not self.t.startswith(text, self.i):
             self.error(f"expected {text!r}")
@@ -457,14 +463,14 @@ class _Parser:
             usings.append(self.using())
             self.separators()
         params = None
-        save = self.i
+        save = (self.i, self.last_end)
         while self.ch() == "[":
             attributes.append(self.attribute())
             self.ws(newlines=True)
         if self.keyword("param") and self.after_word_is("("):
             params = self.param_block(attributes)
         elif attributes:
-            self.i = save
+            self.rewind(*save)
             attributes = []
         blocks = {}
         self.separators()
@@ -511,8 +517,9 @@ class _Parser:
 
     def using(self):
         start = self.i
-        end = self.t.find("\n", start)
-        end = self.n if end < 0 else end
+        end = start
+        while end < self.n and self.t[end] not in "\n;#":
+            end += 1
         text = self.t[start:end].rstrip()
         self.token(start, start + len(text), "using")
         self.i = start + len(text)
@@ -549,12 +556,12 @@ class _Parser:
     def statement(self):
         start = self.i
         label = None
-        if self.ch() == ":" and NAME_START.match(self.ch(1) or " "):
-            m = WORD.match(self.t, self.i + 1)
+        m = LABEL.match(self.t, self.i + 1) if self.ch() == ":" else None
+        if m and (self.t[m.end()] if m.end() < self.n else END) in BLANK + "\n" + END:
             label = m.group(0)
             self.token(self.i, m.end(), "label")
             self.i = m.end()
-            self.ws()
+            self.ws(newlines=True)
         w = self.word_at()
         end_of_word = self.i + len(w)
         next_char = self.t[end_of_word] if end_of_word < self.n else ""
@@ -869,8 +876,7 @@ class _Parser:
             name = self.take_word("word")
             self.ws()
         while self.ch() in DASHES:
-            self.i += 1
-            self.take_word("parameter")
+            self.flag()
             self.ws()
             self.command_argument()
             self.ws()
@@ -1170,7 +1176,6 @@ class _Parser:
             return ExpressionElement(Span(start, self.end()), expression, redirections)
         return self.command()
 
-
     def dot_source_ahead(self):
         return self.ch(1) in BLANK + "$({" + SINGLE_QUOTES + DOUBLE_QUOTES
 
@@ -1240,7 +1245,6 @@ class _Parser:
     def at_command_end(self):
         c = self.ch()
         if c == END or c in "\n;)}":
-
             return True
         if c == "|":
             return True
@@ -1358,7 +1362,6 @@ class _Parser:
         save = self.i
         self.ws()
         if self.ch() == "?" and self.ch(1) in BLANK + "\n":
-
             self.take("?")
             self.ws(newlines=True)
             then = self.expression()
@@ -1498,7 +1501,6 @@ class _Parser:
             return self.postfix(type_)
         return self.postfix(self.primary())
 
-
     def primary(self, argument_mode=False):
         start = self.i
         c = self.ch()
@@ -1556,7 +1558,7 @@ class _Parser:
                 self.error("a ${ variable that does not close")
             self.token(start, end + 1, "variable")
             self.i = end + 1
-            return Variable(Span(start, self.end()), self.t[start + 2:end])
+            return Variable(Span(start, self.end()), without_using(self.t[start + 2:end]))
         if self.ch(1) in "$?^":
             self.token(start, start + 2, "variable")
             self.i = start + 2
@@ -1566,11 +1568,7 @@ class _Parser:
             self.error("a '$' without a variable name")
         self.token(start, m.end(), "variable")
         self.i = m.end()
-        name = m.group(0)
-        if name.lower().startswith("using:"):
-            name = name[len("using:"):]
-        return Variable(Span(start, self.end()), name)
-
+        return Variable(Span(start, self.end()), without_using(m.group(0)))
 
     def subexpression(self, kind):
         start = self.i
@@ -1633,7 +1631,6 @@ class _Parser:
                 self.ws(newlines=True)
                 self.take("]")
                 node = Index(Span(start, self.end()), node, index)
-
             elif c == "?" and self.ch(1) == "[" and not argument_mode:
                 self.take("?[")
                 self.ws(newlines=True)
@@ -1674,7 +1671,6 @@ class _Parser:
             arguments = self.method_arguments()
             return InvokeMember(Span(start, self.end()), target, name, arguments, static, null_conditional)
         return Member(Span(start, self.end()), target, name, static, null_conditional)
-
 
     def method_arguments(self):
         self.take("(")
@@ -1816,6 +1812,10 @@ class _Parser:
         self.i = close + 2
         self.token(start, self.i, "string")
         return String(Span(start, self.end()), "here-double", value, parts)
+
+
+def without_using(name):
+    return name[len("using:"):] if name.lower().startswith("using:") else name
 
 
 def parse(text, name="<powershell>"):

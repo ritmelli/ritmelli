@@ -1,7 +1,5 @@
-import ast
 import json
 import random
-import re
 import subprocess
 import sys
 import tempfile
@@ -11,8 +9,8 @@ import yaml as pyyaml
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "dev"))
+import garden
 from syntax import powershell as ps
-from syntax import units
 from syntax import yaml
 
 failures = []
@@ -135,6 +133,8 @@ HARD_CASES = [
     "Get-Process | Where-Object { $_.CPU -gt 100 } |\n    Sort-Object CPU -Descending |\n    Select-Object -First 5\n1..10 | % { $_ }\n",
     "Write-Output (Get-Date).Year\nWrite-Output $a.b[0].c()\nWrite-Output \"x\".Length\nWrite-Output 1,2,3\nWrite-Output a,b c\n",
     "data Messages {\n    ConvertFrom-StringData @'\nkey = value\n'@\n}\n",
+    "using namespace System.IO; $a = 1 # c\n:outer\nwhile ($true) { break outer }\n:? 1\n",
+    "$r = ${using:remote}\n[int]\n[string]$x = 1\ndata -SupportedCommand Foo { 'x' }\n",
 ]
 
 ASSIGN_OPS = {"=": "Equals", "+=": "PlusEquals", "-=": "MinusEquals", "*=": "MultiplyEquals", "/=": "DivideEquals",
@@ -176,21 +176,10 @@ def theirs(item):
 
 
 def powershell_corpus():
-    for p in sorted([*ROOT.rglob("*.ps1"), *ROOT.rglob("*.psd1")]):
-        if ".git" not in p.parts:
-            yield p.relative_to(ROOT).as_posix(), p.read_text(encoding="utf-8-sig").replace("\r\n", "\n")
-    for p in sorted((ROOT / ".github").rglob("*.yml")):
-        rel = p.relative_to(ROOT).as_posix()
-        for piece in units.yaml_pieces(rel, p.read_text(encoding="utf-8"), re.compile("^$")):
+    for path, text in sorted(garden.working_tree(ROOT).items()):
+        for k, piece in enumerate(garden.read_pieces(path, text)):
             if piece.language == "powershell":
-                yield f"{rel}:{piece.run_line}", piece.text
-    for p in sorted(ROOT.rglob("*.py")):
-        if ".git" in p.parts:
-            continue
-        rel = p.relative_to(ROOT).as_posix()
-        text = p.read_text(encoding="utf-8-sig")
-        for k, piece in enumerate(units.embedded_powershell(rel, ast.parse(text), text)):
-            yield f"{rel}#{k}", piece.text
+                yield f"{path}#{k}", piece.text
     for k, text in enumerate(HARD_CASES):
         yield f"case {k}", text
 

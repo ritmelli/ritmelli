@@ -196,6 +196,7 @@ class _Parser:
             if self.i >= self.n:
                 break
             start = self.i
+            self.anchors = {}
             directives = False
             while self.ch() == "%" and self.col() == 0:
                 directives = True
@@ -863,7 +864,7 @@ def parse(text, name="<yaml>"):
 
 
 def loads(text, name="<yaml>"):
-    stream = parse(text, name)
+    stream = parse(text.replace("\r\n", "\n"), name)
     if len(stream.documents) > 1:
         raise YamlError(stream.source, stream.documents[1].span.start, "more than one document")
     if not stream.documents:

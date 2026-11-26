@@ -15,6 +15,11 @@ PIN = re.compile(r"@[0-9a-f]{40}$")
 SILENT_TOKENS = {tokenize.NL, tokenize.NEWLINE, tokenize.INDENT, tokenize.DEDENT, tokenize.ENDMARKER}
 FSTRING_START = getattr(tokenize, "FSTRING_START", None)
 FSTRING_END = getattr(tokenize, "FSTRING_END", None)
+LITERAL_START = re.compile(r"([A-Za-z]*)('''|\"\"\"|'|\")")
+ESCAPE_START = "\n\\'\"abfnrtv01234567xuUN"
+HEX_DIGITS = {"x": 2, "u": 4, "U": 8}
+SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
+EXPRESSION = re.compile(r"\$\{\{.*?\}\}", re.S)
 
 
 @dataclass(eq=False)
@@ -46,7 +51,6 @@ def offsets_line_of(source, offsets, fallback):
     return line_of
 
 
-
 def powershell_piece(path, text, line_of, shell=None):
     piece = Piece(path, "powershell", text, line_of, shell=shell)
     try:
@@ -60,8 +64,12 @@ def powershell_piece(path, text, line_of, shell=None):
         piece.comments.append((first, last, c.text, c.block))
     for start, end, kind in script.tokens:
         if kind not in ("comment", "continuation"):
-            for line in {line_of(start), line_of(max(start, end - 1))}:
-                piece.code_lines[line] = piece.code_lines.get(line, "") + text[start:end] + " "
+            at = start
+            for chunk in text[start:end].split("\n"):
+                if chunk:
+                    line = line_of(at)
+                    piece.code_lines[line] = piece.code_lines.get(line, "") + chunk + " "
+                at += len(chunk) + 1
     for node in ps.walk(script):
         if isinstance(node, ps.String):
             piece.strings.append((line_of(node.span.start), node.value))
@@ -85,8 +93,10 @@ def python_piece(path, text, line_of=None, language="python", tokens=True):
             line = line_of(t.start[0])
             piece.comments.append((line, line, t.string[1:], False))
         elif t.type not in SILENT_TOKENS:
-            for line in {line_of(t.start[0]), line_of(t.end[0])}:
-                piece.code_lines[line] = piece.code_lines.get(line, "") + t.string + " "
+            for k, chunk in enumerate(t.string.split("\n")):
+                if chunk:
+                    line = line_of(t.start[0] + k)
+                    piece.code_lines[line] = piece.code_lines.get(line, "") + chunk + " "
     piece.unit = ir.python_unit(tree, line_of)
     return piece
 
@@ -123,27 +133,80 @@ def string_parts(tokens, text, start, end):
     return out
 
 
-def decoded_parts(raw):
-    try:
-        node = ast.parse(raw.strip(), mode="eval").body
-    except SyntaxError:
+@dataclass(frozen=True)
+class Field:
+    spec: bool
+
+
+def escape_end(raw, i):
+    c = raw[i + 1]
+    if c in "01234567":
+        j = i + 2
+        while j < i + 4 and raw[j] in "01234567":
+            j += 1
+        return j
+    if c in HEX_DIGITS:
+        return i + 2 + HEX_DIGITS[c]
+    if c == "N":
+        return raw.index("}", i) + 1
+    return i + 2
+
+
+def field_end(raw, i):
+    depth, spec = 0, False
+    while True:
+        c = raw[i]
+        if c in "'\"" and not spec:
+            quote = raw[i:i + 3] if raw[i:i + 3] in ("'''", '"""') else c
+            i += len(quote)
+            while raw[i:i + len(quote)] != quote:
+                i += 2 if raw[i] == "\\" else 1
+            i += len(quote)
+            continue
+        if c in "([{":
+            depth += 1
+        elif c in ")]}":
+            if depth == 0:
+                return i, spec
+            depth -= 1
+        elif c == ":" and depth == 0:
+            spec = True
+        i += 1
+
+
+def literal_chars(raw, line):
+    m = LITERAL_START.match(raw)
+    prefix = m.group(1).lower()
+    if "b" in prefix:
         return None
-    if isinstance(node, ast.Constant) and isinstance(node.value, str):
-        return [node.value]
-    if isinstance(node, ast.JoinedStr):
-        parts = []
-        for v in node.values:
-            if isinstance(v, ast.Constant):
-                parts.append(v.value)
+    rows, row = [], line
+    for c in raw:
+        rows.append(row)
+        row += c == "\n"
+    out, i, end = [], m.end(), len(raw) - len(m.group(2))
+    while i < end:
+        c = raw[i]
+        if c == "\\" and "r" not in prefix and raw[i + 1] in ESCAPE_START:
+            j = escape_end(raw, i)
+            out += [(d, rows[i]) for d in ast.literal_eval(f'"{raw[i:j]}"')]
+            i = j
+        elif c in "{}" and "f" in prefix:
+            if raw[i + 1:i + 2] == c:
+                out.append((c, rows[i]))
+                i += 2
             else:
-                parts.append(v)
-        return parts
-    return None
+                j, spec = field_end(raw, i + 1)
+                out.append((Field(spec), rows[i]))
+                i = j + 1
+        else:
+            out.append((c, rows[i]))
+            i += 1
+    return out
 
 
-def placeholder(before, value):
+def placeholder(before, spec):
     tail = before.rstrip(" \t")
-    if getattr(value, "format_spec", None) is not None or (tail and tail[-1] in "(,=+-*/%[<>"):
+    if spec or (tail and tail[-1] in "(,=+-*/%[<>"):
         return "1"
     return "x"
 
@@ -160,17 +223,13 @@ def powershell_script(tokens, source_text, expression):
 
     text, lines = [], []
     for line, raw in string_parts(tokens, source_text, start, end):
-        parts = decoded_parts(raw)
-        if parts is None:
+        chars = literal_chars(raw, line)
+        if chars is None:
             return None
-        for part in parts:
-            chunk = part if isinstance(part, str) else placeholder("".join(text), part)
-            row = line
-            for c in chunk:
-                text.append(c)
-                lines.append(row)
-                if c == "\n":
-                    row += 1
+        for item, row in chars:
+            chunk = placeholder("".join(text), item.spec) if isinstance(item, Field) else item
+            text += chunk
+            lines += [row] * len(chunk)
     if not text:
         return None
     return "".join(text), lines
@@ -187,24 +246,75 @@ def names_powershell(node):
     return False
 
 
-def assignments(tree):
-    out = {}
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
-            out.setdefault(node.targets[0].id, []).append(node)
-    return out
+def position(node):
+    return node.lineno, node.col_offset
 
 
-def resolve(expression, assigned, before_line, depth=0):
-    if isinstance(expression, ast.Name) and depth < 5:
-        earlier = [a for a in assigned.get(expression.id, []) if a.lineno < before_line]
-        if earlier:
-            last = max(earlier, key=lambda a: a.lineno)
-            return resolve(last.value, assigned, last.lineno, depth + 1)
+def end_position(node):
+    return node.end_lineno, node.end_col_offset
+
+
+class Assignments:
+    def __init__(self, tree):
+        self.scope_of, self.bindings = {}, {}
+        self.visit(tree, tree)
+
+    def bind(self, scope, name, at, value):
+        self.bindings.setdefault((id(scope), name), []).append((at, value))
+
+    def visit(self, node, scope):
+        for child in ast.iter_child_nodes(node):
+            self.scope_of[id(child)] = scope
+            if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Store):
+                targets = node.targets if isinstance(node, ast.Assign) else [getattr(node, "target", None)]
+                plain = isinstance(node, (ast.Assign, ast.AnnAssign, ast.NamedExpr)) and targets == [child]
+                at = end_position(node) if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)) else \
+                    position(child)
+                self.bind(scope, child.id, at, node.value if plain else None)
+            elif isinstance(child, ast.arg):
+                self.bind(scope, child.arg, (0, 0), None)
+            self.visit(child, child if isinstance(child, SCOPES) else scope)
+
+    def value(self, expression, depth=0):
+        if isinstance(expression, (ast.Constant, ast.JoinedStr)) or joined(expression):
+            return expression
+        if not isinstance(expression, ast.Name) or depth >= 5:
+            return None
+        scope, outer = self.scope_of.get(id(expression)), False
+        while scope is not None:
+            bound = None if outer and isinstance(scope, ast.ClassDef) else self.bindings.get((id(scope), expression.id))
+            if bound:
+                earlier = [b for b in bound if b[0] <= position(expression)]
+                chosen = max(earlier, key=lambda b: b[0]) if earlier else bound[0] if outer and len(bound) == 1 else None
+                return self.value(chosen[1], depth + 1) if chosen and chosen[1] is not None else None
+            scope, outer = self.scope_of.get(id(scope)), True
         return None
-    if isinstance(expression, (ast.Constant, ast.JoinedStr)):
-        return expression
-    return None
+
+
+def joined(expression):
+    f = expression.func if isinstance(expression, ast.Call) else None
+    return (isinstance(f, ast.Attribute) and f.attr == "join" and isinstance(f.value, ast.Constant)
+            and isinstance(f.value.value, str) and len(expression.args) == 1
+            and isinstance(expression.args[0], (ast.List, ast.Tuple)))
+
+
+def joined_script(tokens, source_text, expression, names):
+    separator, text, lines = expression.func.value.value, "", []
+    for k, element in enumerate(expression.args[0].elts):
+        value = names.value(element)
+        if isinstance(value, ast.Constant) and value.value == "":
+            built = ("", [])
+        elif isinstance(value, (ast.Constant, ast.JoinedStr)):
+            built = powershell_script(tokens, source_text, value)
+        else:
+            chunk = placeholder(text, False)
+            built = (chunk, [element.lineno] * len(chunk))
+        if built is None:
+            return None
+        if k:
+            text, lines = text + separator, lines + [element.lineno] * len(separator)
+        text, lines = text + built[0], lines + built[1]
+    return (text, lines) if text else None
 
 
 def command_lists(tree):
@@ -217,26 +327,36 @@ def command_lists(tree):
                     yield node, elements[k + 1]
 
 
-def embedded_powershell(path, tree, text):
+def embedded_powershell(path, tree, text, file_line=None):
     found = list(command_lists(tree))
     if not found:
         return []
+    file_line = file_line or (lambda n: n)
     tokens = list(tokenize.generate_tokens(io.StringIO(text).readline))
-    assigned = assignments(tree)
+    names = Assignments(tree)
     pieces, seen = [], set()
-    for node, script_node in found:
-        target = resolve(script_node, assigned, node.lineno)
-        built = powershell_script(tokens, text, target) if target is not None and id(target) not in seen else None
+    for _, script_node in found:
+        target = names.value(script_node)
+        if target is not None and id(target) in seen:
+            continue
+        if target is None:
+            built = None
+        elif joined(target):
+            built = joined_script(tokens, text, target, names)
+        else:
+            built = powershell_script(tokens, text, target)
         if built is None:
+            line = file_line(script_node.lineno)
+            pieces.append(Piece(path, "powershell", "", lambda _, line=line: line, problem=f"{path}:{line}: the "
+                                f"PowerShell reader can't follow the script that Python passes after -Command"))
             continue
         seen.add(id(target))
         script, lines = built
 
         def line_of(offset, lines=lines):
-            return lines[min(max(offset, 0), len(lines) - 1)]
+            return file_line(lines[min(max(offset, 0), len(lines) - 1)])
         pieces.append(powershell_piece(path, script, line_of, shell="powershell"))
     return pieces
-
 
 
 def shell_of(step, job_default):
@@ -272,26 +392,44 @@ def job_default_shell(job, workflow_default):
     return workflow_default or None
 
 
+def sequence_items(node):
+    node = yaml.resolved(node)
+    return node.items if isinstance(node, yaml.Sequence) else []
+
+
+def mapping_value(node, key):
+    node = yaml.resolved(node)
+    return node.node(key) if isinstance(node, yaml.Mapping) else None
+
+
 def steps_with_shells(root):
+    run = mapping_value(mapping_value(root, "defaults"), "run")
+    workflow_default = yaml.scalar_text(mapping_value(run, "shell"))
+    jobs = yaml.resolved(mapping_value(root, "jobs"))
+    groups = [(job, job_default_shell(yaml.resolved(job), workflow_default))
+              for _, job in (jobs.pairs if isinstance(jobs, yaml.Mapping) else [])]
+    groups.append((mapping_value(root, "runs"), workflow_default))
     found = []
-    workflow_default = None
-    if isinstance(root, yaml.Mapping):
-        defaults = root.node("defaults")
-        run = defaults.node("run") if isinstance(defaults, yaml.Mapping) else None
-        workflow_default = yaml.scalar_text(run.node("shell")) if isinstance(run, yaml.Mapping) else None
-    jobs = root.node("jobs") if isinstance(root, yaml.Mapping) else None
-    claimed = set()
-    if isinstance(jobs, yaml.Mapping):
-        for _, job in jobs.pairs:
-            default = job_default_shell(job, workflow_default)
-            for node in yaml.walk(job):
-                if isinstance(node, yaml.Mapping) and isinstance(node.node("run"), yaml.Scalar):
-                    found.append((node, default))
-                    claimed.add(id(node))
-    for node in yaml.walk(root):
-        if isinstance(node, yaml.Mapping) and isinstance(node.node("run"), yaml.Scalar) and id(node) not in claimed:
-            found.append((node, workflow_default))
+    for owner, default in groups:
+        for item in sequence_items(mapping_value(owner, "steps")):
+            step = yaml.resolved(item)
+            if isinstance(yaml.resolved(mapping_value(step, "run")), yaml.Scalar):
+                found.append((item, step, default))
     return found
+
+
+def without_expressions(value, offsets):
+    text, kept, at = [], [], 0
+    for m in EXPRESSION.finditer(value):
+        text.append(value[at:m.start()])
+        kept += offsets[at:m.start()]
+        chunk = placeholder("".join(text), False)
+        text.append(chunk)
+        kept += [offsets[m.start()]] * len(chunk)
+        at = m.end()
+    text.append(value[at:])
+    kept += offsets[at:]
+    return "".join(text), kept
 
 
 def lines_of_test_jobs(source, root, test_job):
@@ -333,30 +471,39 @@ def yaml_pieces(path, text, test_job):
                     if k == "continue-on-error" and not (v is not None and v.strip().lower() == "false"):
                         piece.continue_on_error.append(source.line(key.span.start))
         piece.test_lines |= lines_of_test_jobs(source, root, test_job)
-        for step, default in steps_with_shells(root):
-            run = step.node("run")
-            if run.style in ("literal", "folded"):
+        for item, step, default in steps_with_shells(root):
+            written = step.node("run")
+            run = yaml.resolved(written)
+            used = next((n for n in (item, written) if isinstance(n, yaml.Alias)), None)
+            if used is None:
                 bodies |= set(source.lines_of(run.span.start, run.span.end)) - {source.line(run.span.start)}
             shell = shell_of(step, default)
             language = language_of(shell)
-            line_of = offsets_line_of(source, run.offsets, source.line(run.span.start))
-            if language == "powershell":
-                inner = powershell_piece(path, run.value, line_of, shell=shell)
-            elif language == "python":
-                inner = python_embedded(path, run.value, line_of)
+            value, offsets = run.value, run.offsets
+            if language in ("powershell", "python"):
+                value, offsets = without_expressions(value, offsets)
+            if used is not None:
+                def line_of(_, line=source.line(used.span.start)):
+                    return line
             else:
-                inner = Piece(path, language, run.value, line_of, shell=shell)
-            inner.shell = shell
-            inner.run_line = source.line(run.span.start)
-            inner.test_lines = piece.test_lines
-            pieces.append(inner)
+                line_of = offsets_line_of(source, offsets, source.line(run.span.start))
+            if language == "powershell":
+                inner = [powershell_piece(path, value, line_of, shell=shell)]
+            elif language == "python":
+                inner = python_embedded(path, value, line_of)
+            else:
+                inner = [Piece(path, language, value, line_of, shell=shell)]
+            inner[0].shell = shell
+            for p in inner:
+                p.run_line = source.line((used or run).span.start)
+                p.test_lines = piece.test_lines
+            pieces += inner
     for n, raw in enumerate(text.split("\n"), 1):
         if n not in bodies:
             code = raw[:cut[n]] if n in cut else raw
             if code.strip():
                 piece.code_lines[n] = code
     return pieces
-
 
 
 def python_embedded(path, text, line_of):
@@ -366,4 +513,7 @@ def python_embedded(path, text, line_of):
         return line_of(starts[min(max(n - 1, 0), len(starts) - 1)])
     piece = python_piece(path, text, by_line)
     piece.line_of = line_of
-    return piece
+    if piece.tree is None:
+        return [piece]
+    return [piece, *embedded_powershell(path, piece.tree, text, by_line)]
+

@@ -1,9 +1,13 @@
-import re
+import ast
+import io
 import sys
+import tokenize
+import warnings
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "dev"))
+import garden
 from syntax import powershell as ps
 from syntax import units
 from syntax import yaml
@@ -53,6 +57,7 @@ YAML_ERRORS = [
     ("a repeated key", "a: 1\na: 2\n"), ("an alias with no anchor", "a: *x\n"), ("a tab in the indentation", "a:\n\tb: 1\n"),
     ("a mapping value after a value", "a: b: c\n"), ("an unclosed quote", "a: 'b\n"),
     ("a sequence entry after a key", "k: - a\n"), ("a block scalar less indented than its key", "a: |\n  x\n b\n"),
+    ("an alias to an anchor of an earlier document", "---\na: &x 1\n---\nb: *x\n"),
 ]
 
 
@@ -74,6 +79,11 @@ def test_yaml():
     check([yaml.data(d.root) for d in two.documents] == ["top\n", ["b"]], "yaml reads a stream of two documents")
     stream = yaml.parse("a: 1 # one\n# two\nb: '#no'\n")
     check([c.text for c in stream.comments] == [" one", " two"], "yaml keeps each comment, and none inside a scalar")
+    try:
+        crlf = yaml.loads("a: 1\r\nb: |\r\n  x\r\n")
+    except SyntaxProblem as ex:
+        crlf = str(ex)
+    check(crlf == {"a": "1", "b": "x\n"}, f"yaml reads a file with Windows line ends ({crlf})")
 
 
 def test_yaml_offsets():
@@ -124,10 +134,19 @@ PS_CASES = [
      == [(".", ".\\lib.ps1"), (None, ".\\script.ps1")]),
     ("a cast chain and a static member", "$r = [int][IO.FileAttributes]::ReparsePoint\n",
      lambda s, n: any(isinstance(x, ps.Cast) for x in n)),
-    ("the scope of a variable", "$a = $using:remote + $env:PATH + ${env:ProgramFiles(x86)}\n",
+    ("the scope of a variable", "$a = $using:remote + $env:PATH + ${env:ProgramFiles(x86)} + ${using:other}\n",
      lambda s, n: sorted(v.name for v in n if isinstance(v, ps.Variable))
-     == ["a", "env:PATH", "env:ProgramFiles(x86)", "remote"]),
-
+     == ["a", "env:PATH", "env:ProgramFiles(x86)", "other", "remote"]),
+    ("a using line ends at a semicolon and at a comment", "using namespace System.IO; $a = 1 # c\n",
+     lambda s, n: [c.text for c in s.comments] == [" c"] and [v.name for v in n if isinstance(v, ps.Variable)] == ["a"]),
+    ("a label on the line before its loop", ":outer\nwhile ($true) { break outer }\n",
+     lambda s, n: [x.label for x in n if isinstance(x, ps.While)] == ["outer"]),
+    ("a colon word that is no label is a command", ":? 1\n",
+     lambda s, n: [c.name for c in n if isinstance(c, ps.Command)] == [":?"]),
+    ("an attribute that starts no param block gives its text back", "[int]\n[string]$x = 1\n",
+     lambda s, n: [x.span.end for x in s.block.statements] == [5, 20]),
+    ("the flag of a data section is one token", "data -SupportedCommand Foo { 'x' }\n",
+     lambda s, n: (5, 22, "parameter") in s.tokens),
 ]
 
 PS_ERRORS = [("an unclosed block", "if ($a) {\n"), ("an unclosed string", "'abc\n"),
@@ -152,14 +171,50 @@ def test_powershell():
 
 
 def powershell_texts():
-    for p in sorted([*ROOT.rglob("*.ps1"), *ROOT.rglob("*.psd1")]):
-        if ".git" not in p.parts:
-            yield p.relative_to(ROOT).as_posix(), p.read_text(encoding="utf-8-sig").replace("\r\n", "\n")
-    for p in sorted((ROOT / ".github").rglob("*.yml")):
-        rel = p.relative_to(ROOT).as_posix()
-        for piece in units.yaml_pieces(rel, p.read_text(encoding="utf-8"), re.compile("^$")):
+    for path, text in sorted(garden.working_tree(ROOT).items()):
+        for k, piece in enumerate(garden.read_pieces(path, text)):
             if piece.language == "powershell":
-                yield f"{rel}:{piece.run_line}", piece.text
+                yield f"{path}#{k}", piece.text
+
+
+LITERAL_CASES = ["'a\\nb'", "'\\x41\\101\\N{BULLET}\\q'", "'\\u00e9\\U0001F600'", "'a\\\nb'", "r'a\\nb'", "'''a\nb'''",
+                 "f'{{x}} {y!r:>{w}} {z}'", "rf'\\d{x}'", "f'{d[\"k\"]}'", "f\"{d['k']}\"", "f'{x:%H:%M}'",
+                 "f'{(lambda: 1)()}'", "f'''{\nx}'''"]
+
+
+def literal_view(raw):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", SyntaxWarning)
+        node = ast.parse(raw, mode="eval").body
+    out = []
+    for v in node.values if isinstance(node, ast.JoinedStr) else [node]:
+        out += list(v.value) if isinstance(v, ast.Constant) else [v.format_spec is not None]
+    return out
+
+
+def python_literals():
+    for k, raw in enumerate(LITERAL_CASES):
+        yield f"case {k}", raw
+    for path, text in sorted(garden.working_tree(ROOT).items()):
+        if garden.suffix(path) in garden.PYTHON:
+            tokens = list(tokenize.generate_tokens(io.StringIO(text).readline))
+            for line, raw in units.string_parts(tokens, text, (1, 0), (len(text) + 1, 0)):
+                yield f"{path}:{line}", raw
+
+
+def test_python_literals():
+    count, wrong = 0, []
+    for name, raw in python_literals():
+        chars = units.literal_chars(raw, 1)
+        if chars is None:
+            continue
+        count += 1
+        if [item.spec if isinstance(item, units.Field) else item for item, _ in chars] != literal_view(raw):
+            wrong.append(name)
+    check(count > 1000 and not wrong, f"the string reader decodes every Python string of the repo as Python does "
+                                      f"({count} strings, {wrong[:3]})")
+    rows = [row for _, row in units.literal_chars("f'''x\\n{\nn}\ny'''", 1)]
+    check(rows == [1, 1, 1, 2, 3], f"each character keeps the line it is written on ({rows})")
 
 
 def test_lossless():
@@ -184,5 +239,6 @@ test_yaml()
 test_yaml_offsets()
 test_powershell()
 test_lossless()
+test_python_literals()
 print(f"{len(failures)} failure(s)" if failures else "ok    all syntax cases")
 sys.exit(1 if failures else 0)

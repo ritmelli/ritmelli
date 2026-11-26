@@ -162,14 +162,18 @@ como o resto do `STDLIB`), e não por padrão de texto linha a linha:
     chamada dá certo;
   - um `catch` do PowerShell sem tipo é largo.
 - **As peças (`units.py`):**
-  - cada passo `run:` de um workflow, no shell do passo, do job ou do runner;
-  - o PowerShell que o Python monta numa lista com `-Command`, com cada pedaço na linha onde está.
+  - cada passo `run:` de `jobs.<id>.steps` ou de `runs.steps`, no shell do passo, do job ou do runner, com o
+    `${{ … }}` lido como um valor;
+  - o PowerShell que o Python monta numa lista com `-Command`, numa string, numa f-string ou num `"\n".join([...])`,
+    num arquivo ou num passo Python, com cada caractere na linha onde está escrito.
 
-Um arquivo que um desses leitores não consegue ler reprova com o lugar. O `dev/test_syntax.py` tem os casos de cada
-leitor, a posição de cada caractere dos escalares do `.github` e os tokens sem buraco de todo PowerShell do repo. O
-`dev/test_syntax_oracles.py` (no `COMPLETO`) confere que o PyYAML e o parser do Windows PowerShell leem tudo igual: os
-YAML do `.github`, mil documentos gerados em todos os estilos, todo PowerShell do repo e os casos difíceis.
-
+Um arquivo que um desses leitores não consegue ler reprova com o lugar, e também o script depois do `-Command` que o
+leitor não consegue seguir. Nos arquivos e nos passos que ainda não têm leitor (batch, Inno, shell), o `Start-Sleep` e
+o `-ErrorAction SilentlyContinue` continuam contados pelo texto. O `dev/test_syntax.py` tem os casos de cada leitor, a
+posição de cada caractere dos escalares do `.github`, os tokens sem buraco de todo PowerShell do repo e cada string
+do Python do repo lida como o Python a lê. O `dev/test_syntax_oracles.py` (no `COMPLETO`) confere que o PyYAML e o
+parser do Windows PowerShell leem tudo igual: os YAML do `.github`, mil documentos gerados em todos os estilos, todo
+PowerShell do repo e os casos difíceis.
 
 `dev/shot.py` (print + erros de console pelo Chrome headless), `dev/fitcheck.py` (gate
 de "cabe em qualquer tela", de 1024x600 a 2560x1300, no celular em pé e no celular grande

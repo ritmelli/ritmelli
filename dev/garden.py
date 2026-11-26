@@ -50,11 +50,13 @@ KEPT_COMMENT = re.compile(r"^\s*manual:|^\s*i18n-ok\s*$|^ inline-script: [\w-]+\
 GENERATED_MARKERS = {"molduras:inicio (gravado pelo dev/molduras.py: o desenho mora la, nao editar aqui)"}
 LICENSE = re.compile(r"SPDX-License-Identifier:|\bCopyright\b|\bLicensed under\b", re.I)
 ENCODING = re.compile(r"coding[:=]\s*[-\w.]+")
-PIN = re.compile(r"@[0-9a-f]{40}\s*$")
 PIN_VERSION = re.compile(r"^\s*v\d+(?:\.\d+)*\s*$")
 SUPPRESSIONS_IN_COMMENTS = re.compile(r"\bnoqa\b|\btype:\s*ignore\b|\beslint-disable|\bpragma:\s*no\s*cover\b")
 PRAGMA_DISABLE = re.compile(r"#\s*pragma\s+warning\s*\(\s*disable")
 SILENTLY_CONTINUE = re.compile(r"-ErrorAction\s+SilentlyContinue\b", re.I)
+START_SLEEP = re.compile(r"\bStart-Sleep\b", re.I)
+SCOPE = re.compile(r"^(?:global|script|local|private):", re.I)
+SHELL_PIECES = ("bash", "cmd", "unknown")
 QUIET_ERRORS = {"silentlycontinue", "ignore", "0", "4"}
 THEME_TIMER = re.compile(r"\b(?:setTimeout|setInterval|requestIdleCallback)\s*\(")
 ANIMATION_FRAME = re.compile(r"\brequestAnimationFrame\s*\(")
@@ -405,7 +407,7 @@ class Tree:
 
     def problems(self):
         return [piece.problem for path in sorted(self.files) if suffix(path) in (*STRUCTURED, *PYTHON)
-                for piece in self.pieces(path) if piece.problem and piece.language != "python"]
+                for piece in self.pieces(path) if piece.problem]
 
     def lexed(self, path):
         if path not in self._lexed:
@@ -423,7 +425,6 @@ class Tree:
                 except SyntaxError:
                     self._ast[path] = None
         return self._ast[path]
-
 
     def paths(self, *suffixes):
         return sorted(p for p in self.files if suffix(p) in suffixes)
@@ -547,7 +548,6 @@ def error_preference(command):
     elements = command.elements
     for k, e in enumerate(elements):
         if isinstance(e, units.ps.CommandParameter) and error_action(e.name):
-
             value = e.argument if e.argument is not None else (elements[k + 1] if k + 1 < len(elements) else None)
             if quiet_value(value):
                 yield e
@@ -568,7 +568,7 @@ def quiet_errors(piece):
         if isinstance(node, units.ps.Command):
             found += [piece.line_of(p.span.start) for p in error_preference(node)]
         elif isinstance(node, units.ps.Assign) and isinstance(node.target, units.ps.Variable) and \
-                node.target.name.lower() == "erroractionpreference" and quiet_value(node.value):
+                SCOPE.sub("", node.target.name).lower() == "erroractionpreference" and quiet_value(node.value):
             found.append(piece.line_of(node.span.start))
     return found
 
@@ -583,9 +583,7 @@ def suppressions(t):
                 items += [(p, n) for n in piece.continue_on_error]
                 if piece.language == "powershell" and piece.tree is not None:
                     items += [(p, n) for n in quiet_errors(piece)]
-            if suffix(p) in STRUCTURED:
-                continue
-        for n, code in code_lines(t, p):
+        for n, code in foreign_code(t, p) if suffix(p) in STRUCTURED else code_lines(t, p):
             hits = len(PRAGMA_DISABLE.findall(code))
             if suffix(p) not in PYTHON:
                 hits += len(SILENTLY_CONTINUE.findall(code))
@@ -604,15 +602,30 @@ def is_test(path):
 def unit_items(t, suffixes, rule, workflows_only=False):
     items = []
     for p in t.paths(*suffixes):
-        if workflows_only and suffix(p) in (".yml", ".yaml") and not p.startswith(".github/"):
+        if workflows_only and outside_workflows(p):
             continue
         for piece in t.units(p):
             items += [(p, n) for n in rule(piece.unit)]
     return items
 
 
+def outside_workflows(path):
+    return suffix(path) in (".yml", ".yaml") and not path.startswith(".github/")
+
+
+def foreign_code(t, path):
+    if suffix(path) in PYTHON or outside_workflows(path):
+        return []
+    if suffix(path) in STRUCTURED:
+        return sorted(lexed_from_pieces([p for p in t.pieces(path) if p.language in SHELL_PIECES]).code.items())
+    return code_lines(t, path)
+
+
 def sleeps(t):
-    return unit_items(t, (*PYTHON, *STRUCTURED), ir.sleeps, workflows_only=True)
+    items = unit_items(t, (*PYTHON, *STRUCTURED), ir.sleeps, workflows_only=True)
+    for p in t.paths(*COMMENT_EXTENSIONS):
+        items += [(p, n) for n, code in foreign_code(t, p) for _ in START_SLEEP.findall(code)]
+    return items
 
 
 def in_test(t, item):
@@ -1015,7 +1028,10 @@ def workflow_jobs(t):
     text = t.files.get(".github/workflows/testa.yml")
     if text is None:
         return set()
-    doc = workflow_yaml.loads(text, name="testa.yml")
+    try:
+        doc = workflow_yaml.loads(text, name="testa.yml")
+    except workflow_yaml.YamlError:
+        return set()
     jobs = doc.get("jobs") if isinstance(doc, dict) else None
     if not isinstance(jobs, dict):
         return set()

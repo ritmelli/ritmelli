@@ -46,14 +46,12 @@ RUN_PS = "subprocess.run([POWERSHELL, '-Command', ps])\n"
 CASES = {
     "comment_lines": [
         ("a quoted run that goes on to the next line",
-         {"a.yml": "steps:\n  - shell: pwsh\n    run: \"Write-Output 'a #b'\n      'c'\"\n"},
-         {"a.yml": "steps:\n  - shell: pwsh\n    run: \"Write-Output 'a #b'\n      # why\"\n"}),
+         {"a.yml": "runs:\n  steps:\n    - shell: pwsh\n      run: \"Write-Output 'a #b'\n        'c'\"\n"},
+         {"a.yml": "runs:\n  steps:\n    - shell: pwsh\n      run: \"Write-Output 'a #b'\n        # why\"\n"}),
         ("a version comment after a tag is no pin", {"a.yml": "steps:\n  - uses: o/r@" + "a" * 40 + " # v3.2\n"},
          {"a.yml": "steps:\n  - uses: o/r@v3 # v3.2\n"}),
         ("a uses: inside a step name is no pin", {"a.yml": "steps:\n  - uses: o/r@" + "a" * 40 + " # v3.2\n"},
-
          {"a.yml": "steps:\n  - name: 'uses: o/r@" + "a" * 40 + "' # v3.2\n"}),
-
         ("python", {"a.py": "x = '#not a comment'\n"}, {"a.py": "x = 1  # a comment\n"}),
         ("python shebang and encoding", {"a.py": "#!/usr/bin/env python\n# -*- coding: utf-8 -*-\nx = 1\n"},
          {"a.py": "#!/usr/bin/env python\n# -*- coding: utf-8 -*-\n# why\nx = 1\n"}),
@@ -86,8 +84,8 @@ CASES = {
                                             "          echo \"## title\"\n"},
          {"a.yml": "jobs:\n  j:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: |\n          # why\n"
                    "          echo hi\n"}),
-        ("yml run block in python", {"a.yml": "steps:\n  - shell: python3 {0}\n    run: |\n      x = '# no'\n"},
-         {"a.yml": "steps:\n  - shell: python3 {0}\n    run: |\n      x = 1  # why\n"}),
+        ("yml run block in python", {"a.yml": "runs:\n  steps:\n    - shell: python3 {0}\n      run: |\n        x = '# no'\n"},
+         {"a.yml": "runs:\n  steps:\n    - shell: python3 {0}\n      run: |\n        x = 1  # why\n"}),
         ("cpp", {"a.cpp": "#pragma once\n#include <x>\nconst char* s = \"// no\";\n"},
          {"a.cpp": "int a = 1; // why\n"}),
         ("h", {"a.h": "#pragma once\n"}, {"a.h": "#pragma once\n/* why */\n"}),
@@ -118,6 +116,13 @@ CASES = {
         ("-ErrorAction:Ignore", {"a.ps1": "Get-Item x -ErrorAction:Stop\n"}, {"a.ps1": "Get-Item x -ErrorAction:Ignore\n"}),
         ("the error preference", {"a.ps1": "$ErrorActionPreference = 'Stop'\n"},
          {"a.ps1": "$ErrorActionPreference = 'SilentlyContinue'\n"}),
+        ("the error preference of a scope", {"a.ps1": "$global:ErrorActionPreference = 'Stop'\n"},
+         {"a.ps1": "$global:ErrorActionPreference = 'SilentlyContinue'\n"}),
+        ("a quiet error in a cmd step",
+         {".github/workflows/w.yml": "jobs:\n  j:\n    steps:\n      - shell: cmd\n"
+                                     "        run: powershell -Command \"Get-Item x\"\n"},
+         {".github/workflows/w.yml": "jobs:\n  j:\n    steps:\n      - shell: cmd\n"
+                                     "        run: powershell -Command \"Get-Item x -ErrorAction SilentlyContinue\"\n"}),
         ("a quoted continue-on-error", {"a.yml": "steps:\n  - run: echo\n    'continue-on-error': false\n"},
          {"a.yml": "steps:\n  - run: echo\n    'continue-on-error': true\n"}),
         ("noqa", {"a.py": "x = 'noqa'\n"}, {"a.py": "x = 1  # noqa: E501\n"}),
@@ -153,6 +158,23 @@ CASES = {
          {"a.py": "from time import sleep\nsleep(1)\n"}),
         ("asyncio.sleep", {"a.py": "import asyncio\n"}, {"a.py": "import asyncio\nawait asyncio.sleep(1)\n"}),
         ("Start-Sleep", {"a.ps1": "# Start-Sleep in a comment\n"}, {"a.ps1": "Start-Sleep 1\n"}),
+        ("Start-Sleep in a batch file", {"a.bat": "rem Start-Sleep 1\n"}, {"a.bat": "powershell -Command \"Start-Sleep 1\"\n"}),
+        ("the Sleep of a type that is no Thread", {"a.ps1": "[MyThread]::Sleep(1)\n"},
+         {"a.ps1": "[Threading.Thread]::Sleep(1)\n"}),
+        ("a sleep in a PowerShell if counts once", {"a.ps1": "if (Test-Path x) { }\n"},
+         {"a.ps1": "if (Start-Sleep 1) { }\n"}),
+        ("a sleep in a PowerShell while counts once", {"a.ps1": "while (Test-Path x) { }\n"},
+         {"a.ps1": "while (Start-Sleep 1) { }\n"}),
+        ("a sleep in a Python while counts once", {"a.py": "import time\nwhile not ready():\n    pass\n"},
+         {"a.py": "import time\nwhile not time.sleep(1):\n    pass\n"}),
+        ("a sleep in a default", {"a.py": "import time\ndef f(delay=1):\n    pass\n"},
+         {"a.py": "import time\ndef f(delay=time.sleep(1)):\n    pass\n"}),
+        ("a script set earlier on the same line",
+         {"a.py": "import subprocess\nps = 'Get-Date'; subprocess.run(['powershell', '-Command', ps])\n"},
+         {"a.py": "import subprocess\nps = 'Start-Sleep 1'; subprocess.run(['powershell', '-Command', ps])\n"}),
+        ("a parameter hides the module's script",
+         {"a.py": "import subprocess\nps = 'Start-Sleep 1'\ndef run(ps):\n    subprocess.run(['powershell', '-Command', ps])\n"},
+         {"a.py": "import subprocess\nps = 'Start-Sleep 1'\ndef run():\n    subprocess.run(['powershell', '-Command', ps])\n"}),
         ("in microfone/", {"dev/a.py": "import time\ntime.sleep(1)\n"},
          {"dev/a.py": "import time\ntime.sleep(1)\n", "microfone/a.py": "import time\ntime.sleep(1)\n"}),
     ],
@@ -175,6 +197,31 @@ CASES = {
          {".github/workflows/w.yml": "jobs:\n  testes:\n    runs-on: windows-2025\n    steps:\n      - run: Start-Sleep 1\n"},
          {".github/workflows/w.yml": "jobs:\n  testes:\n    runs-on: windows-2025\n    steps:\n      - run: Start-Sleep 1\n"
                                      "  monta:\n    runs-on: windows-2025\n    steps:\n      - run: Start-Sleep 1\n"}),
+        ("a PowerShell command in a bash step",
+         {".github/workflows/w.yml": "jobs:\n  j:\n    steps:\n      - run: pwsh -Command 'Get-Date'\n"},
+         {".github/workflows/w.yml": "jobs:\n  j:\n    steps:\n      - run: pwsh -Command 'Start-Sleep 1'\n"}),
+        ("a run key outside a step",
+         {".github/workflows/w.yml": "jobs:\n  j:\n    runs-on: windows-2025\n    env:\n      run: Start-Sleep 1\n"
+                                     "    steps:\n      - run: Get-Date\n"},
+         {".github/workflows/w.yml": "jobs:\n  j:\n    runs-on: windows-2025\n    env:\n      run: Get-Date\n"
+                                     "    steps:\n      - run: Start-Sleep 1\n"}),
+        ("a step that runs an anchored script",
+         {".github/workflows/w.yml": "jobs:\n  j:\n    runs-on: windows-2025\n    env:\n      D: &d Start-Sleep 1\n"
+                                     "    steps:\n      - run: Get-Date\n"},
+         {".github/workflows/w.yml": "jobs:\n  j:\n    runs-on: windows-2025\n    env:\n      D: &d Start-Sleep 1\n"
+                                     "    steps:\n      - run: *d\n"}),
+        ("a GitHub expression in a PowerShell step",
+         {".github/workflows/w.yml": "jobs:\n  j:\n    runs-on: windows-2025\n    steps:\n"
+                                     "      - run: Write-Output ${{ inputs.seconds }}\n"},
+         {".github/workflows/w.yml": "jobs:\n  j:\n    runs-on: windows-2025\n    steps:\n"
+                                     "      - run: Start-Sleep -Seconds ${{ inputs.seconds }}\n"}),
+        ("the PowerShell a Python step runs",
+         {".github/workflows/w.yml": "jobs:\n  j:\n    steps:\n      - shell: python\n        run: |\n"
+                                     "          import subprocess\n"
+                                     "          subprocess.run(['powershell', '-Command', 'Get-Date'])\n"},
+         {".github/workflows/w.yml": "jobs:\n  j:\n    steps:\n      - shell: python\n        run: |\n"
+                                     "          import subprocess\n"
+                                     "          subprocess.run(['powershell', '-Command', 'Start-Sleep 1'])\n"}),
         ("a workflow", {"instalador/testa-x.ps1": "Start-Sleep 1\n"},
          {".github/workflows/w.yml": "jobs:\n  j:\n    runs-on: windows-2025\n    steps:\n      - run: Start-Sleep 1\n"}),
     ],
@@ -193,6 +240,37 @@ CASES = {
         ("requestAnimationFrame", {"themes/t/a.js": "setTimeout(f, 1);\n"}, {"themes/t/a.js": "requestAnimationFrame(f);\n"}),
     ],
     "retries": [
+        ("a loop that stops on the flag its helper sets",
+         {"a.py": "import time\ndef attempt():\n    try:\n        return f()\n    except OSError:\n        return None\n"
+                  "while not done:\n    other = attempt()\n    time.sleep(1)\n"},
+         {"a.py": "import time\ndef attempt():\n    try:\n        return f()\n    except OSError:\n        return None\n"
+                  "while not done:\n    done = attempt()\n    time.sleep(1)\n"}),
+        ("a do-until on the flag its helper sets",
+         {"a.ps1": "function attempt { try { f } catch { $null } }\ndo { $other = attempt; Start-Sleep 1 } until ($done)\n"},
+         {"a.ps1": "function attempt { try { f } catch { $null } }\ndo { $done = attempt; Start-Sleep 1 } until ($done)\n"}),
+        ("a helper called twice, tested once",
+         {"a.py": "import time\ndef attempt():\n    try:\n        return f()\n    except OSError:\n        return None\n"
+                  "while True:\n    if ready():\n        break\n    attempt()\n    time.sleep(1)\n"},
+         {"a.py": "import time\ndef attempt():\n    try:\n        return f()\n    except OSError:\n        return None\n"
+                  "while True:\n    if attempt():\n        break\n    attempt()\n    time.sleep(1)\n"}),
+        ("a test of the helper joined to another",
+         {"a.py": "import time\ndef attempt():\n    try:\n        return f()\n    except OSError:\n        return None\n"
+                  "while True:\n    if not attempt() and enabled:\n        break\n    time.sleep(1)\n"},
+         {"a.py": "import time\ndef attempt():\n    try:\n        return f()\n    except OSError:\n        return None\n"
+                  "while True:\n    if attempt() and enabled:\n        break\n    time.sleep(1)\n"}),
+        ("a do-until on the result of its helper",
+         {"a.ps1": "function Get-S { try { f } catch { $null } }\ndo { Start-Sleep 1; $s = Get-S } until (-not $s)\n"},
+         {"a.ps1": "function Get-S { try { f } catch { $null } }\ndo { Start-Sleep 1; $s = Get-S } until ($s)\n"}),
+        ("a while on the result of its helper",
+         {"a.py": "import time\ndef r():\n    try:\n        return f()\n    except OSError:\n        return None\n"
+                  "while r():\n    time.sleep(1)\n"},
+         {"a.py": "import time\ndef r():\n    try:\n        return f()\n    except OSError:\n        return None\n"
+                  "while not r():\n    time.sleep(1)\n"}),
+        ("a PowerShell test of the helper joined to another",
+         {"a.ps1": "function attempt { try { f } catch { $null } }\n"
+                   "while ($true) { if (-not (attempt) -and $on) { break }; Start-Sleep 1 }\n"},
+         {"a.ps1": "function attempt { try { f } catch { $null } }\n"
+                   "while ($true) { if ((attempt) -and $on) { break }; Start-Sleep 1 }\n"}),
         ("a PowerShell retry next to another try that waits",
          {"a.ps1": "while ($true) { try { f } catch { throw }; try { g; Start-Sleep 5 } catch { throw } }\n"},
          {"a.ps1": "while ($true) { try { f } catch { Start-Sleep 1 }; try { g; Start-Sleep 5 } catch { } }\n"}),
@@ -222,7 +300,6 @@ CASES = {
                   "        except OSError:\n            return None\n\n    def poll(self):\n"
                   "        while True:\n            if self.check():\n                return\n            time.sleep(5)\n"}),
         ("a Python retry of a method on self",
-
          {"a.py": "import time\nclass A:\n    def ok(self):\n        try:\n            return f()\n"
                   "        except OSError:\n            return None\n\n    def wait(self, other):\n"
                   "        while True:\n            if other.ok():\n                break\n            time.sleep(1)\n"},
@@ -388,7 +465,20 @@ CASES = {
                                      "      - run: try { f } catch [IO.IOException] { }\n"},
          {".github/workflows/w.yml": "jobs:\n  j:\n    runs-on: windows-2025\n    steps:\n"
                                      "      - run: try { f } catch { }\n"}),
+        ("a PowerShell catch of a BaseException, which PowerShell lacks",
+         {"a.ps1": "try { f } catch [BaseException] { }\n"}, {"a.ps1": "try { f } catch [Exception] { }\n"}),
+        ("the PowerShell a Python script joins",
+         {"a.py": "import subprocess\ncode = '\\n'.join(['try { f } catch [IO.IOException] { }', *extra])\n"
+                  "subprocess.run(['powershell', '-Command', code])\n"},
+         {"a.py": "import subprocess\ncode = '\\n'.join(['try { f } catch { }', *extra])\n"
+                  "subprocess.run(['powershell', '-Command', code])\n"}),
+        ("a PowerShell catch in an if condition counts once",
+         {"a.ps1": "if (& { try { f } catch [IO.IOException] { } }) { }\n"},
+         {"a.ps1": "if (& { try { f } catch { } }) { }\n"}),
         ("except Exception", {"a.py": "try:\n    f()\nexcept OSError:\n    pass\n"},
+         {"a.py": "try:\n    f()\nexcept Exception:\n    pass\n"}),
+        ("a lowercase exception is another name in Python",
+         {"a.py": "try:\n    f()\nexcept exception:\n    pass\n"},
          {"a.py": "try:\n    f()\nexcept Exception:\n    pass\n"}),
         ("a bare except", {"a.py": "try:\n    f()\nexcept (OSError, ValueError):\n    pass\n"},
          {"a.py": "try:\n    f()\nexcept:\n    pass\n"}),
@@ -432,13 +522,18 @@ CASES = {
                                          "print(f'known failure, {ISSUE}: a refused dequeue fails the run')\n"},
          {"dev/t.py": "print('known failure: theme_rebuild counts a reindented line')\n"}),
         ("ficou de fora in a workflow",
-         {"a.yml": "steps:\n  - run: echo 'sem placa de video, o pedal de troca de voz ficou de fora'\n"},
-         {"a.yml": "steps:\n  - run: echo '--   o pedal de troca de voz ficou de fora'\n"}),
+         {"a.yml": "runs:\n  steps:\n    - run: echo 'sem placa de video, o pedal de troca de voz ficou de fora'\n"},
+         {"a.yml": "runs:\n  steps:\n    - run: echo '--   o pedal de troca de voz ficou de fora'\n"}),
         ("ficou de fora with its issue in the line's comment",
-         {"a.yml": "steps:\n  - run: echo '--   o pedal ficou de fora'  # #219\n"},
-         {"a.yml": "steps:\n  - run: echo '--   o pedal ficou de fora'  # no issue\n"}),
+         {"a.yml": "runs:\n  steps:\n    - run: echo '--   o pedal ficou de fora'  # #219\n"},
+         {"a.yml": "runs:\n  steps:\n    - run: echo '--   o pedal ficou de fora'  # no issue\n"}),
         ("ficou de fora in a PowerShell script", {"a.ps1": "# o pedal ficou de fora num comentario\n"},
          {"a.ps1": "'--   o pedal ficou de fora'\n"}),
+        ("ficou de fora in a comment of a quoted step",
+         {".github/workflows/w.yml": "jobs:\n  j:\n    runs-on: windows-2025\n    steps:\n"
+                                     "      - run: \"Write-Output ok\n          # '--   o pedal ficou de fora'\"\n"},
+         {".github/workflows/w.yml": "jobs:\n  j:\n    runs-on: windows-2025\n    steps:\n"
+                                     "      - run: \"Write-Output ok\n          Write-Output '--   o pedal ficou de fora'\"\n"}),
         ("skipIf in a workflow's Python step",
          {".github/workflows/w.yml": PY_STEP.replace("JOB", "testa").replace(
              "time.sleep(1)\n", "@unittest.skipIf(X, 'no X (#12)')\n          class T: pass\n")},
@@ -644,6 +739,32 @@ def test_string_lines():
     built = "n = 2\nps = (f'$fim=(Get-Date).AddSeconds({n:.0f});'\n      f'{n}-Service x; Start-Sleep {n}')\n" + RUN_PS
     items = garden.COUNTERS["sleeps_app"](garden.Tree({"a.py": built}))
     check(items == [("a.py", 3)], f"an f-string's fields read as PowerShell values, at their lines ({items})")
+    for label, text, line in (
+            ("an escaped newline stays on its line", "ps = 'Get-Date\\nStart-Sleep 1'\n", 1),
+            ("the text after a field keeps its line", "n = 1\nps = f'''x {n}\n{n}; Start-Sleep 1'''\n", 3),
+            ("a field over two lines moves the next line", "n = 1\nps = f'''x {\nn}\nStart-Sleep 1'''\n", 4)):
+        items = garden.COUNTERS["sleeps_app"](garden.Tree({"a.py": text + RUN_PS}))
+        check(items == [("a.py", line)], f"{label} ({items})")
+    items = garden.COUNTERS["skipped_tests"](garden.Tree({"a.ps1": "$x = @'\n'--   o pedal ficou de fora'\n'@\n"}))
+    check(items == [("a.ps1", 2)], f"each line of a PowerShell here-string is code at its own line ({items})")
+
+
+def test_unreadable():
+    for label, files, place in (
+            ("Python file", {"a.py": "def f(:\n"}, "a.py:1: the Python reader stops here"),
+            ("Python step", {".github/workflows/w.yml": "jobs:\n  j:\n    steps:\n      - shell: python\n"
+                                                        "        run: |\n          def f(:\n"},
+             ".github/workflows/w.yml:6: the Python reader stops here"),
+            ("script passed to PowerShell",
+             {"a.py": "import subprocess\ndef run(script):\n    subprocess.run(['powershell', '-Command', script])\n"},
+             "a.py:3: the PowerShell reader can't follow the script"),
+            ("testa.yml", {".github/workflows/testa.yml": "jobs:\n  a: [\n"},
+             ".github/workflows/testa.yml:2: the YAML reader stops here")):
+        try:
+            problems = garden.measure(files)[1]
+        except ValueError as ex:
+            problems = [repr(ex)]
+        check(any(p.startswith(place) for p in problems), f"an unreadable {label} is reported at its place ({problems})")
 
 
 def test_workflow_python_lines():
@@ -984,7 +1105,6 @@ def test_measured_base():
         (repo / "a.ps1").write_text("try { f\n", encoding="utf-8")
         code, out = run_in(repo, {"GITHUB_EVENT_NAME": "pull_request", "BASE": main, "GITHUB_REF": "refs/pull/9/merge"})
         check(code == 1 and "unreadable: a.ps1:2: the PowerShell reader stops here" in out,
-
               f"a file the reader can't read fails with its place ({[x for x in out.splitlines() if 'unreadable' in x]})")
 
 
@@ -1108,6 +1228,7 @@ test_base()
 test_queue_base()
 test_queue_run()
 test_measured_base()
+test_unreadable()
 test_description_step()
 
 WORKFLOW_TEXT = (ROOT / ".github" / "workflows" / "testa.yml").read_text(encoding="utf-8")

@@ -3,7 +3,8 @@ from dataclasses import dataclass, field
 
 from . import powershell as ps
 
-BROAD_TYPES = {"exception", "baseexception", "system.exception"}
+PYTHON_BROAD = {"Exception", "BaseException"}
+POWERSHELL_BROAD = {"exception", "system.exception"}
 SLEEP_MODULES = {"time", "asyncio"}
 PS_SLEEPS = {"start-sleep", "sleep"}
 
@@ -36,7 +37,6 @@ class Not(Node):
 
 @dataclass(eq=False)
 class Condition(Node):
-    names: frozenset = frozenset()
     parts: list = field(default_factory=list)
 
 
@@ -56,7 +56,7 @@ class If(Node):
 
 @dataclass(eq=False)
 class Handler(Node):
-    types: tuple = None
+    broad: bool = False
     body: Block = None
 
 
@@ -154,8 +154,7 @@ def sleeps(unit):
 
 
 def broad_handlers(unit):
-    return [h.line for h in walk(unit.body) if isinstance(h, Handler) and (
-        h.types is None or any(t.lower().lstrip("[").rstrip("]") in BROAD_TYPES for t in h.types))]
+    return [h.line for h in walk(unit.body) if isinstance(h, Handler) and h.broad]
 
 
 def last_item(block):
@@ -173,7 +172,6 @@ def leaves(block, inside_helper=False):
 
 def keeps_going(condition, name, value):
     if isinstance(condition, Name) and condition.name == name:
-
         return bool(value)
     if isinstance(condition, Not) and isinstance(condition.operand, Name) and condition.operand.name == name:
         return not value
@@ -232,28 +230,28 @@ def retries(unit):
     for loop in walk(unit.body):
         if not isinstance(loop, Loop):
             continue
-        marked = inlined(loop.body, unit.functions)
+        marked = inlined(loop, unit.functions)
         inner = [n for n, _ in marked]
         own = [n for n, site in marked if site is None]
-        sites = {id(n): site for n, site in marked if site is not None}
-        from_helper = set(sites)
+        from_helper = {id(n) for n, site in marked if site is not None}
         if not any(isinstance(n, Call) and n.sleep for n in inner):
             continue
-
         handled = {id(x) for t in inner if isinstance(t, Try) for h in t.handlers for x in walk(h)}
         ends = any(isinstance(n, Leave) and n.kind in ("return", "break", "exit") and id(n) not in handled
                    and not (n.kind == "return" and id(n) in from_helper) for n in inner)
         guards = {id(s): n.condition for n in inner if isinstance(n, If) for s in n.then.items}
-        for attempt in (n for n in inner if isinstance(n, Try)):
-            if id(attempt) in sites and not (loop.attempts and ends_on(sites[id(attempt)], loop, own)):
+        for attempt, site in marked:
+            if not isinstance(attempt, Try):
                 continue
-            again = [h for h in attempt.handlers if not leaves(h.body, id(attempt) in from_helper)]
-
+            helper_succeeds = site is not None and loop.attempts and ends_on(site, loop, own)
+            if site is not None and not helper_succeeds:
+                continue
+            again = [h for h in attempt.handlers if not leaves(h.body, site is not None)]
             tried = [attempt.body, *([attempt.orelse] if attempt.orelse else [])]
             waits_on_failure = any(isinstance(n, Call) and n.sleep for h in again for n in local(h)) and not any(
                 isinstance(n, Call) and n.sleep for b in tried for n in [b, *local(b)])
             conditions = [c for c in (guards.get(id(attempt)), loop.condition) if c is not None]
-            stops_on_success = turns_off(conditions, attempt.body)
+            stops_on_success = helper_succeeds or turns_off(conditions, attempt.body)
             if again and (waits_on_failure or ends or stops_on_success):
                 found.append(loop.line)
                 break
@@ -298,8 +296,10 @@ class PythonLowering:
             return Name(self.line(test), test.id)
         if isinstance(test, ast.UnaryOp) and isinstance(test.op, ast.Not):
             return Not(self.line(test), self.condition(test.operand))
-        names = frozenset(n.id for n in ast.walk(test) if isinstance(n, ast.Name))
-        return Condition(self.line(test), names, [Name(self.line(test), n) for n in names] + self.expression_calls(test))
+        if isinstance(test, ast.BoolOp):
+            return Condition(self.line(test), [self.condition(v) for v in test.values])
+        names = sorted({n.id for n in ast.walk(test) if isinstance(n, ast.Name)})
+        return Condition(self.line(test), [Name(self.line(test), n) for n in names] + self.expression_calls(test))
 
     def expression_calls(self, expression):
         holder = ast.Expr(value=expression)
@@ -335,6 +335,14 @@ class PythonLowering:
             return f"{self.classes[-1]}.{f.attr}"
         return ""
 
+    def defined_now(self, s):
+        expressions = list(s.decorator_list)
+        if isinstance(s, ast.ClassDef):
+            expressions += [*s.bases, *(k.value for k in s.keywords)]
+        else:
+            expressions += [*s.args.defaults, *(d for d in s.args.kw_defaults if d is not None)]
+        return Other(self.line(s), [c for e in expressions for c in self.expression_calls(e)])
+
     def statement(self, s):
         line = self.line(s)
         if isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -342,18 +350,17 @@ class PythonLowering:
             function = Function(line, s.name, self.block(s.body, s.lineno))
             if not direct:
                 self.functions.setdefault(s.name, function)
-            return function
-
+            return Block(line, [self.defined_now(s), function])
         if isinstance(s, ast.ClassDef):
             self.classes.append(s.name)
-            items = []
+            items = [self.defined_now(s)]
             try:
                 for x in s.body:
                     self.in_class_body = isinstance(x, (ast.FunctionDef, ast.AsyncFunctionDef))
                     node = self.statement(x)
                     self.in_class_body = False
-                    if isinstance(node, Function):
-                        self.functions.setdefault(f"{s.name}.{x.name}", node)
+                    if isinstance(x, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        self.functions.setdefault(f"{s.name}.{x.name}", node.items[-1])
                     items.append(node)
             finally:
                 self.classes.pop()
@@ -363,14 +370,12 @@ class PythonLowering:
                                                  *self.block(s.orelse, s.lineno).items]), self.counts_attempts(s))
         if isinstance(s, ast.While):
             body = self.block(s.body, s.lineno)
-            return Loop(line, self.condition(s.test), Block(line, [*self.calls(s.test), *body.items,
-                                                                   *self.block(s.orelse, s.lineno).items]))
+            return Loop(line, self.condition(s.test), Block(line, [*body.items, *self.block(s.orelse, s.lineno).items]))
         if isinstance(s, ast.If):
             return If(line, self.condition(s.test), self.block(s.body, s.lineno),
                       self.block(s.orelse, s.lineno) if s.orelse else None)
         if isinstance(s, (ast.Try, getattr(ast, "TryStar", ast.Try))):
-            handlers = [Handler(self.line(h), self.handler_types(h.type), self.block(h.body, h.lineno))
-                        for h in s.handlers]
+            handlers = [Handler(self.line(h), self.broad(h.type), self.block(h.body, h.lineno)) for h in s.handlers]
             return Try(line, self.block(s.body, s.lineno), handlers,
                        self.block(s.orelse, s.lineno) if s.orelse else None,
                        self.block(s.finalbody, s.lineno) if s.finalbody else None)
@@ -423,16 +428,14 @@ class PythonLowering:
         return (isinstance(f, ast.Attribute) and f.attr in ("exit", "_exit") and isinstance(f.value, ast.Name)
                 and f.value.id in ("sys", "os")) or (isinstance(f, ast.Name) and f.id in ("exit", "quit"))
 
-    def handler_types(self, node):
+    def broad(self, node):
         if node is None:
-            return None
+            return True
         if isinstance(node, ast.Tuple):
-            return tuple(t for e in node.elts for t in (self.handler_types(e) or ("",)))
+            return any(self.broad(e) for e in node.elts)
         if isinstance(node, ast.Name):
-            return (node.id,)
-        if isinstance(node, ast.Attribute):
-            return (node.attr,)
-        return ("",)
+            return node.id in PYTHON_BROAD
+        return isinstance(node, ast.Attribute) and node.attr in PYTHON_BROAD
 
 
 class PowerShellLowering:
@@ -474,8 +477,10 @@ class PowerShellLowering:
             return Name(self.line(inner), inner.name.lower())
         if isinstance(inner, ps.Unary) and inner.op in ("!", "not"):
             return Not(self.line(inner), self.condition(inner.operand))
-        variables = frozenset(v.name.lower() for v in ps.walk(inner) if isinstance(v, ps.Variable))
-        return Condition(self.line(node), variables, [Name(self.line(node), v) for v in variables] + self.parts(node))
+        if isinstance(inner, ps.Binary) and inner.op in ("and", "or"):
+            return Condition(self.line(inner), [self.condition(inner.left), self.condition(inner.right)])
+        variables = sorted({v.name.lower() for v in ps.walk(inner) if isinstance(v, ps.Variable)})
+        return Condition(self.line(node), [Name(self.line(node), v) for v in variables] + self.parts(node))
 
     def parts(self, node):
         out = []
@@ -509,19 +514,16 @@ class PowerShellLowering:
         if isinstance(n, ps.Method):
             return Function(line, n.name.lower(), self.script_block(n.body))
         if isinstance(n, ps.While):
-            return Loop(line, self.condition(n.condition), Block(line, [*self.parts(n.condition),
-                                                                        *self.block(n.body).items]))
+            return Loop(line, self.condition(n.condition), self.block(n.body))
         if isinstance(n, ps.DoLoop):
             condition = self.condition(n.condition)
             if n.until and condition is not None:
                 condition = Not(line, condition)
-            return Loop(line, condition, Block(line, [*self.block(n.body).items, *self.parts(n.condition)]))
+            return Loop(line, condition, self.block(n.body))
         if isinstance(n, ps.For):
             parts = [p for p in (n.initializer, n.iterator) if p is not None]
-            body = self.block(n.body)
-            return Loop(line, self.condition(n.condition),
-                        Block(line, [*(self.node(p) for p in parts), *([self.node(n.condition)] if n.condition else []),
-                                     *body.items]))
+            return Loop(line, self.condition(n.condition), Block(line, [*(self.node(p) for p in parts),
+                                                                        *self.block(n.body).items]))
         if isinstance(n, ps.Foreach):
             return Loop(line, None, Block(line, [self.node(n.iterable), *self.block(n.body).items]),
                         self.counts_attempts(n))
@@ -531,17 +533,16 @@ class PowerShellLowering:
                 otherwise = node if node is not None else self.block(n.else_block)
                 node = If(self.line(condition), self.condition(condition), self.block(block),
                           Block(otherwise.line, [otherwise]) if isinstance(otherwise, If) else otherwise)
-            return Block(line, [*(self.node(c) for c, _ in n.clauses), node])
+            return node
         if isinstance(n, ps.Switch):
             return Block(line, [self.node(n.condition)] + [If(self.line(b), None, self.block(b), None)
                                                            for _, b in n.clauses]
                          + ([If(self.line(n.default), None, self.block(n.default), None)] if n.default else []))
         if isinstance(n, ps.Try):
-            handlers = [Handler(self.line(c), tuple(c.types) if c.types else None, self.block(c.body))
-                        for c in n.catches]
+            handlers = [Handler(self.line(c), self.broad(c.types), self.block(c.body)) for c in n.catches]
             return Try(line, self.block(n.body), handlers, None, self.block(n.finally_block))
         if isinstance(n, ps.Trap):
-            return Try(line, Block(line, []), [Handler(line, (n.type,) if n.type else None, self.block(n.body))])
+            return Try(line, Block(line, []), [Handler(line, self.broad([n.type] if n.type else []), self.block(n.body))])
         if isinstance(n, ps.Flow):
             inner = [self.node(n.value)] if n.value is not None and not isinstance(n.value, ps.Bareword) else []
             return Block(line, [*inner, Leave(line, n.kind)])
@@ -561,7 +562,6 @@ class PowerShellLowering:
         if isinstance(n, ps.Command):
             name = (n.name or "").lower()
             return Call(line, name, name in PS_SLEEPS, self.parts(n), name)
-
         if isinstance(n, (ps.String,)):
             return Other(line, [Text(line, n.value), *self.parts(n)])
         if isinstance(n, ps.ScriptBlock):
@@ -573,9 +573,12 @@ class PowerShellLowering:
             name = name_node.text.lower() if isinstance(name_node, ps.Bareword) else ""
             target = n.target
             static_type = target.name.lower() if isinstance(target, ps.TypeName) else ""
-            sleep = name == "sleep" and static_type.endswith(("thread", "system.threading.thread"))
+            sleep = name == "sleep" and static_type in ("thread", "threading.thread", "system.threading.thread")
             return Call(line, name, sleep, self.parts(n))
         return Other(line, self.parts(n))
+
+    def broad(self, types):
+        return not types or any(t.lower().strip("[]") in POWERSHELL_BROAD for t in types)
 
     def counts_attempts(self, loop):
         inner = loop.iterable
@@ -588,7 +591,6 @@ class PowerShellLowering:
         return not any(isinstance(v, ps.Variable) and v.name.lower() == name for v in ps.walk(loop.body))
 
     def constant(self, value):
-
         inner = value
         while isinstance(inner, ps.Pipeline) and len(inner.elements) == 1 and isinstance(
                 inner.elements[0], ps.ExpressionElement):
