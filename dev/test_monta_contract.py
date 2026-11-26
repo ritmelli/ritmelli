@@ -78,6 +78,9 @@ def main():
     doc = load(MONTA)
     check(contract_problems(doc) == [], f"monta.yml has every name the publishing pipeline reads "
                                         f"({contract_problems(doc)})")
+    if failures:
+        print("1 failed (the mutants need the real names)")
+        return 1
     exe, setup = f"ritmelli-exe-{VERSION}", f"Ritmelli-{VERSION}"
     mutants = {
         "the trigger": lambda d: d.update(on={"push": None}),
