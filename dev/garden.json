@@ -1,6 +1,6 @@
 {
-  "comment_lines": 6633,
-  "docstring_lines": 4078,
+  "comment_lines": 6616,
+  "docstring_lines": 4027,
   "suppressions": 34,
   "sleeps_app": 43,
   "sleeps_dev": 67,
@@ -22,7 +22,7 @@
   "engine_writes": 16,
   "theme_inline_lines": 65,
   "engine_py_lines": 3733,
-  "server_py_lines": 2712,
+  "server_py_lines": 2710,
   "index_html_lines": 643,
   "agents_md_lines": 80,
   "agents_rules_without_check": 10

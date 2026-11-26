@@ -593,9 +593,7 @@ class App:
         # "outra do mesmo artista" (o bot) pula o que ja tocou hoje
         self.tocadas = []
         self.fila_lock = threading.Lock()
-        # o avanco da fila reservado na linha do prato (comandos.Reserva), ou None; muda sob a fila_lock e o _qlock
         self.reserva = None
-        # os Proximos sobrepostos dividem um avanco so (comandos.pular): o em curso, ou None; muda sob a proximo_lock
         self.proximo = None
         self.proximo_lock = threading.Lock()  # antes do _qlock, e nunca com a fila_lock
         self.automatico = automatico.Automatico(self, lambda yid: self.mix_do(yid), data_dir,
@@ -906,8 +904,6 @@ class App:
             item = self.download(j, target)
             self.job_update(j, status="done", progress=1.0, item_id=item["id"],
                             label=item["title"], finished=time.time())
-            # o disco no prato e deste download (tocando pelo stream ou ainda esperando): passa
-            # para o arquivo sem cortar; se ele ja trocou de disco, nada toca
             tr = self.engine.track
             if tr is not None and tr.get("job") == j["id"]:
                 self.engine.trocar_fonte(tr, dict(item, path=str(LIB / item["file"])))
@@ -921,8 +917,6 @@ class App:
                 tr = e.track
                 return (tr is not None and tr.get("job") == j["id"]
                         and (not tr.get("path") or e.esperando_arquivo()))
-            # the only decision is under the engine's lock: a swap that holds it and is about to put this job's record
-            # on the platter is seen once it publishes (a look before the lock would see the record of before)
             e.stop(pode=no_source)  # sem stream e sem arquivo: o prato nao fica carregando para sempre
 
     # tocar ----------------------------------------------------------------
@@ -930,8 +924,7 @@ class App:
         """O last_pos do disco na prateleira, de uma captura do motor, e nunca relendo o motor depois dela: a do
         instante da troca (cap, a Captura que o load, o espera e o stop devolvem) ou a da pausa confirmada (pausa, a
         Pausa do engine.pause, que so grava se ainda vale: a mesma linha, sem retomar nem trocar de disco no meio). Sem
-        nenhuma das duas, a de agora. A trava da biblioteca vem antes do _qlock (que so confere e muda a memoria), e o
-        arquivo e gravado com o _qlock ja solto."""
+        nenhuma das duas, a de agora."""
         e = self.engine
         if pausa is not None:
             tr, pos, vale = pausa.track, pausa.pos, pausa.ok
@@ -1033,10 +1026,6 @@ class App:
         return self.engine.with_lock(self.fila_lock, f)
 
     def tocar_remoto(self, j, target, meta, historico=True, entrada=None, reserva=None, anterior=False):
-        """Toca na hora pelo stream do YouTube enquanto o download do job segue por tras;
-        quando o arquivo chega, o motor passa para ele sem cortar. Ate o
-        endereco do stream sair, o disco fica no prato carregando; se o stream falhar, toca
-        quando o download terminar, como antes. Sem job (parecida do Automatico), so stream."""
         yid = meta.get("youtube_id")
         tr = {"id": yid or f"job-{j['id']}", "title": meta.get("title") or (j["label"] if j else target),
               "channel": meta.get("channel"), "thumb": meta.get("thumb") or thumb(yid),
@@ -1095,9 +1084,6 @@ class App:
         return x[0] if x and x[0] is not None and time.monotonic() - x[1] <= ADIANTA_S else None
 
     def _abre_stream(self, tr, target, tem_titulo):
-        """O YouTube as vezes recusa o endereco do audio e na tentativa seguinte libera (um disco de 1h45 so tocou depois de baixar, calado). Tenta tres vezes, a ultima
-        aceitando qualquer formato de audio; cada falha vai para o log com o motivo, e sem stream
-        a tela diz que o disco toca quando terminar de baixar."""
         info = hdr = None
         motivo = ""
         adiantado = self.endereco_adiantado(tr.get("youtube_id"))
@@ -1152,13 +1138,11 @@ class App:
         if self.engine.trocar_fonte(tr, novo):
             self.canal_depois(novo, no_prato=True)
             j = self.jobs.get(tr["job"]) if tr["job"] else None
-            it = self.lib.get(j["item_id"]) if j is not None and j["status"] == "done" else None
-            if it is not None:
+            if j is not None and j["status"] == "done" and (it := self.lib.get(j["item_id"])) is not None:
                 self.engine.trocar_fonte(novo, dict(it, path=str(LIB / it["file"])))
 
     def _stream_refused(self, tr, reason, waiting=False):
-        e = self.engine
-        j = self.jobs.get(tr["job"])
+        e, j = self.engine, self.jobs.get(tr["job"])
 
         def shelf_record():
             return self.lib.get(j["item_id"]) if j is not None and j["status"] == "done" else None
@@ -1170,11 +1154,10 @@ class App:
         def no_file_will_come():
             return e.track is tr and j is not None and (not waiting or e.esperando_arquivo()) and (
                 j["status"] == "error" or (j["status"] == "done" and shelf_record() is None))
-        if e.stop(pode=no_file_will_come) is not None:
-            return
-        e.warn_on(tr, i18n.msg("server.player.streamRefused", "YouTube didn't allow the audio to play right away "
-                                                              "({reason}). It will play as soon as the download "
-                                                              "finishes.", reason=reason), waiting=waiting)
+        if e.stop(pode=no_file_will_come) is None:
+            e.warn_on(tr, i18n.msg("server.player.streamRefused", "YouTube didn't allow the audio to play right away "
+                                                                  "({reason}). It will play as soon as the "
+                                                                  "download finishes.", reason=reason), waiting=waiting)
 
     def religar_stream(self, tr, pos, desistir):
         """O leitor do motor (na thread dele): o stream da parecida do Automatico caiu em pos, sem audio ou antes do
@@ -1255,10 +1238,6 @@ class App:
         return None
 
     def close_switches(self, read=None):
-        """Com fila_lock: a virada que o motor ja confirmou e o vigia ainda nao conciliou fecha agora
-        (comandos.concilia), antes de mexer no historico, e, no mesmo trecho do _qlock em que nao ha mais virada, a
-        passagem preparada sai; ate soltar a fila_lock, o motor nao vira de novo (a preparacao nova publica sob a
-        fila_lock, _prepara). read(): what to read in that same stretch of the _qlock (the Anterior); returns it."""
         e = self.engine
 
         def no_switch(v):
@@ -1269,8 +1248,6 @@ class App:
         return cmd.concilia(self, no_switch)
 
     def release_reservation(self, r, entrada, error=None):
-        """Com fila_lock: a reserva de avanco r resolvida (a entrada que tocou, ou None), liberando quem espera, e os
-        Proximos ligados a ela. Uma vez so: a resolvida fica como esta."""
         if r.feita.is_set():
             return
         with self.engine.state_section():  # the same stretch in which a Next joins it (Proximo.liga): none is left out
@@ -1282,9 +1259,6 @@ class App:
                 g.resolve(entrada, error)
 
     def _confere_preparo_sob(self):
-        """Com fila_lock e o _qlock, no mesmo trecho em que a fila mudou: a passagem preparada para quem nao e mais a
-        primeira (sem a entrada da virada ainda nao conciliada) sai antes de soltar o _qlock, e o motor nao vira para
-        ela."""
         e = self.engine
         fora = e.virou[2] if e.virou is not None else None
         cab = next((x["qid"] for x in self.fila if x["qid"] != fora), None)
@@ -1298,12 +1272,10 @@ class App:
             return r
 
     def apply_audio_version(self, vid, v):
-        e = self.engine
-
         def swap_entries():
+            e, r = self.engine, self.reserva
             switch = e.virou[2] if e.virou is not None else None
             kept = self.fila[0] if self.fila and self.automatico.head_held() else None
-            r = self.reserva
             playing = r.x if r is not None and not r.feita.is_set() else None
             for x in self.fila:
                 if (x.get("auto") and x is not kept and x is not playing and x["qid"] != switch
@@ -1556,11 +1528,6 @@ class App:
         return d
 
     def _prepara(self, tr, x, seen, chave, cap):
-        """A fonte da entrada x e o ganho dela saem fora das travas (o endereco do stream leva 1 a 3 s). A publicacao e
-        sob a fila_lock, e confere de novo: x ainda e a primeira da fila; e, sob o _qlock, nenhuma virada pendente nem
-        avanco reservado em curso nesta linha, e o prato ainda e o deck e a linha que a volta viu (cap), com tr, sem o
-        Repetir, sem ter acabado e sem nada preparado. Quem fecha a virada e troca o disco do prato sob a fila_lock (o
-        Parar, a troca) nao ve uma preparacao nova entrar no meio."""
         try:
             novo = self.fonte_de(seen)
             if novo is None:
@@ -1591,11 +1558,6 @@ class App:
             self._volta_passagem()
 
     def _volta_passagem(self):
-        """Uma volta do _vigia_passagem. A eng.TRANS_PREP_S do fim, prepara a primeira da fila no segundo deck do
-        motor, que mede o fim deste disco e o comeco dela e vira sozinho no ponto certo; aqui so a fila e o historico
-        acompanham a virada (o avanco da fila, sem tocar). Repetir ligado, disco sem duracao ou fila vazia: fica como
-        antes (o _vigia_fila toca no fim). A fila que muda antes da virada troca a preparada; a que nao deu para
-        preparar (sem stream, ou o comeco dela nao decodificou) toca no fim, sem nova tentativa."""
         e = self.engine
         v = e.virou
         if v is not None:

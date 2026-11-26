@@ -2279,8 +2279,6 @@ class Engine:
         path = track["path"]
         stream = str(path).startswith("http")  # o YouTube direto, antes de o download chegar
         pre = self._pre_pega(path) if stream and start == 0 else None
-        # o volume automatico do stream sem medida inteira: mede o que decodifica (o arquivo, o _mede_se mede fora),
-        # estima nos STREAM_ESTIMA_S e, se tocou do comeco ao fim, guarda a medida inteira
         med = sonoridade.Medidor() if stream and not self._lufs(track)[1] else None
         estima = list(STREAM_ESTIMA_S)
         while gen == deck.gen:
@@ -2346,9 +2344,6 @@ class Engine:
             if n == 0 and deck is not self._deck:  # a proxima que nao decodifica so nao entra
                 self._fim_do_leitor(deck, gen)
                 return
-            # a parecida do Automatico (stream sem download) que o YouTube parou de mandar: sem audio nenhum, ou mais
-            # que STREAM_CAIU_S antes do fim; o servidor tira um endereco novo e toca de onde parou (08/11: a H.S.K.T.
-            # acabou na hora que entrou e a fila pulou calada para a seguinte, com a mina dizendo o nome dela)
             fim, dur = t + n / SR, track.get("duration") or 0
             caiu = fim < dur - STREAM_CAIU_S if dur else n == 0
             religar = self.religar_stream
@@ -2442,15 +2437,14 @@ class Engine:
 
     def _restart(self, start, track=None, alvo=None, paused=None, nova_linha=True, prato=False, pode=None,
                  loop=None):
-        """Com _lock: o disco do prato recomeca em start, publicado sob o _qlock como uma mudanca so: a faixa (track,
-        quando troca; prato: e um disco entrando, e o primeiro som dele vai para o log), a linha nova (nova_linha; a
-        troca da espera para o stream, sem audio ainda, fica na mesma), a posicao, o fim, o ganho do disco que entra
-        sem rampa (alvo), a pausa (paused), o Repetir (loop; sem ele, um disco entrando no lugar de outro o desliga) e a
-        passagem desfeita, com o pedido de pausa da linha que acabou substituido. O leitor recebe a faixa, o deck e o
-        gen dessa mudanca e comeca fora das travas. pode(): conferido sob o _qlock antes de mudar qualquer coisa;
-        falso, nada muda. start pode ser uma funcao, chamada ali mesmo (o seek limita pela duracao da faixa daquele
-        instante). Volta (a Captura do que estava no prato logo antes, a posicao que o servidor grava, ou None; e quem
-        comeca o leitor, ou None): quem chama o comeca depois de soltar o _lock."""
+        """O disco do prato recomeca em start, publicado sob o _qlock como uma mudanca so: a faixa (track, quando troca;
+        prato: e um disco entrando, e o primeiro som dele vai para o log), a linha nova (nova_linha; a troca da espera
+        para o stream, sem audio ainda, fica na mesma), a posicao, o fim, o ganho do disco que entra sem rampa (alvo), a
+        pausa (paused), o Repetir (loop; sem ele, um disco entrando no lugar de outro o desliga) e a passagem desfeita,
+        com o pedido de pausa da linha que acabou substituido. O leitor recebe a faixa, o deck e o gen dessa mudanca e
+        comeca fora das travas. start pode ser uma funcao, chamada ali mesmo (o seek limita pela duracao da faixa
+        daquele instante). Volta (a Captura do que estava no prato logo antes, a posicao que o servidor grava, ou None;
+        e quem comeca o leitor, ou None): quem chama o comeca depois de soltar o _lock."""
         with self._qlock:
             if pode is not None and not pode():
                 return None, None
@@ -2481,10 +2475,9 @@ class Engine:
             self._limitador_zera = True
             self.pos = start
             self.ended = False
-            if nova_linha:
-                self._error = None
             self._stream_warning = None
             if nova_linha:
+                self._error = None
                 self._solta_pausa()
         if not tr.get("path"):  # sem caminho, o disco ainda espera o stream abrir: sem leitor
             return antes, None
@@ -3299,13 +3292,6 @@ class Engine:
         return s
 
     def trocar_fonte(self, atual, novo):
-        """Troca o audio do disco no prato sem cortar: da espera para o stream, ou do stream
-        para o arquivo que acabou de baixar. O leitor novo comeca onde o
-        audio ja decodificado termina (depois do bloco em curso, se a fila ja esta vazia), e o que esta na fila do
-        microfone segue tocando: a linha fica a mesma, e o bloco ja retirado publica. So vale se
-        o prato ainda tem `atual` (o mesmo objeto): se ele trocou de disco no meio, nada muda. A faixa e o ganho novos
-        entram sob o _qlock, no limite entre blocos (o ganho em rampa, a partir do proximo). Do stream para o arquivo,
-        com leitor novo, a passagem preparada sai (a sobreposicao que ja soa segue); o religar do stream a mantem."""
         alvo, mede = self._ganho_de(novo)
         if not atual.get("path"):  # da espera para o stream: ainda sem audio, nem leitor
             with self._lock:
@@ -3354,7 +3340,6 @@ class Engine:
             return True
 
     def esperando_arquivo(self):
-        """O stream do disco no prato falhou e ele espera o download para tocar (ver o _reader)."""
         return self._deck.file_wait == self._deck.gen
 
     def abaixa(self, db, ms):
@@ -3478,8 +3463,6 @@ class Engine:
         self._comeca(leitor)
 
     def stop(self, pode=None):
-        """O disco sai do prato, numa linha nova. Volta a Captura do que estava no prato antes, ou None se o pode()
-        (conferido sob o _qlock) recusou."""
         with self._lock:
             with self._qlock:
                 if pode is not None and not pode():
