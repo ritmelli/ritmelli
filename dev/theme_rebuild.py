@@ -17,14 +17,16 @@ RAIZ = Path(__file__).resolve().parent.parent
 USAGE = """Proof that a change to a theme only moves code: the page put back together on two commits, compared.
 
 The page is the index.html of the theme with every <!-- inline-script: --> made a <script> with the text of its file,
-as the server sends it (so a </script> in that text ends the script there, as in the browser), and every <script src>
-and <link rel="stylesheet"> replaced by the text of its file. Every script and stylesheet, from a file or inline, sits between a line that opens it
+as the server sends it, and every <script src>
+and <link rel="stylesheet"> replaced by the text of its file. A script or style ends where the browser ends it: at the
+first </script or </style followed by a space, / or > (so a </script> in a comment of a script ends it there). Every script and stylesheet, from a file or inline, sits between a line that opens it
 ([script NAME], [inline-script NAME], [script], [link NAME] or [style], with the tag's other attributes when it has
 any) and a [/script] or [/style] line. <base> and <head> are git commits (the head defaults to the working tree).
 
 Exit 0 when the head only moves code: the two pages are the same, or
 - the markup is the same, line by line and in order, with every script and stylesheet in the same place in it;
-- the head has the same scripts in the same order, each with the same attributes and the same strict mode;
+- the head has the same scripts in the same order, each loaded the same way (inline or from the same file), with the
+  same attributes and the same strict mode;
 - each script declares the same functions at its top level (they may move inside it: a script's function declarations
   exist before any of its statements runs, and only there);
 - every other top-level statement of the base is in the head, in the same order and in the same script;
@@ -39,6 +41,8 @@ compile, or that tree-sitter does not parse, is a change. Anything else is a cha
 
 INLINE_SCRIPT = re.compile(r"<!-- inline-script: ([\w-]+\.js) -->")
 INLINED = "data-theme-rebuild-inline-script"
+RAW_TEXT = re.compile(r"<!--.*?-->|<(script|style)\b[^>]*>", re.I | re.S)
+CSS_SPACE = " \t\n\r\f"
 MARK = re.compile(r"/\*\s*(?:[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-(?:INICIO|FIM)|[a-z]+:(?:inicio|fim))\b[^*]*\*/")
 SENTINEL = re.compile(r"^\x00(open (\d+)|close)\x00$")
 JS_TYPES = (None, "", "text/javascript")
@@ -70,6 +74,7 @@ class Block:
     others: tuple
     code: bool
     folder: str = ""
+    source: tuple = ()
     raw: list = field(default_factory=list)
 
     @property
@@ -133,12 +138,29 @@ def block_of(kind, name, others):
         return Block("style", header("link" if kind == "link" else "style", name, others), tuple(others.items()),
                      others.get("type") in CSS_TYPES, posixpath.dirname(name) if kind == "link" else "")
     return Block("script", header("script" if kind == "script-open" else kind, name, others), tuple(others.items()),
-                 others.get("type") in JS_TYPES)
+                 others.get("type") in JS_TYPES, source=("file" if kind == "script" else "inline", name))
+
+
+def ended_as_the_browser_ends(page):
+    out, at = [], 0
+    while opened := RAW_TEXT.search(page, at):
+        if not opened.group(1):
+            out.append(page[at:opened.end()])
+            at = opened.end()
+            continue
+        end = re.compile(rf"</{opened.group(1)}[\t\n\f\r />]", re.I).search(page, opened.end())
+        if not end:
+            break
+        close = page.find(">", end.end() - 1)
+        out.append(page[at:end.start()] + f"</{opened.group(1).lower()}>")
+        at = close + 1 if close >= 0 else len(page)
+    return "".join(out) + page[at:]
 
 
 def assemble(read):
-    page = INLINE_SCRIPT.sub(lambda m: f'<script {INLINED}="{m.group(1)}">\n{read(m.group(1))}</script>',
-                             read("index.html").replace("\r\n", "\n"))
+    page = ended_as_the_browser_ends(INLINE_SCRIPT.sub(
+        lambda m: f'<script {INLINED}="{m.group(1)}">\n{read(m.group(1))}</script>',
+        read("index.html").replace("\r\n", "\n")))
     parser = _FileTags()
     parser.feed(page)
     parser.close()
@@ -243,7 +265,8 @@ def token(kind, start, end, src, spaced):
         return kind, text
     gap = src[spaced[0]:start].decode("utf-8")
     spaced[0] = end
-    return kind, text, "space" if any(x.isspace() for x in CSS_COMMENT.sub("", gap)) else "comment" if gap else ""
+    bare = CSS_COMMENT.sub("", gap)
+    return kind, text, "space" if any(x in CSS_SPACE for x in bare) else bare or ("comment" if gap else "")
 
 
 def own(start, end, src, spaced):
@@ -367,8 +390,8 @@ def compare(a, b, compiles):
     for k, (x, y) in enumerate(zip(scripts_a, scripts_b)):
         bx, by = a.blocks[x], b.blocks[y]
         sx, sy = parsed_a[x].strict if x in parsed_a else None, parsed_b[y].strict if y in parsed_b else None
-        if (bx.others, sx) != (by.others, sy):
-            report.changes.append(("attributes or strict mode", f"script {k + 1}: {bx.header} (strict: {sx}) -> "
+        if (bx.source, bx.others, sx) != (by.source, by.others, sy):
+            report.changes.append(("script tag or strict mode", f"script {k + 1}: {bx.header} (strict: {sx}) -> "
                                    f"{by.header} (strict: {sy})", []))
         if not bx.code and [r.strip() for r in bx.raw if r.strip()] != [r.strip() for r in by.raw if r.strip()]:
             report.changes.append(("script content", f"script {k + 1}: {bx.header}", []))

@@ -79,11 +79,13 @@ confere também que os ouvintes da busca e da gaveta são dos arquivos delas e s
 e que o `queue.js` vê o toque que fecha a busca na mesa.
 
 Para provar que um PR só mudou código de lugar, o `dev/theme_rebuild.py <base>` monta a página de novo nos dois
-commits, com cada `<!-- inline-script: -->` virando um `<script>` com o texto do arquivo, como o servidor manda (então
-um `</script>` nesse texto fecha o script ali, como no navegador), e cada `<script src>` e `<link>` trocado pelo texto
-do arquivo, e sai 0 quando o head só muda código de lugar:
+commits, com cada `<!-- inline-script: -->` virando um `<script>` com o texto do arquivo, como o servidor manda, e cada
+`<script src>` e `<link>` trocado pelo texto do arquivo. Um script ou um estilo acaba onde o navegador o acaba: no
+primeiro `</script` ou `</style` seguido de espaço, `/` ou `>` (então um `</script>` num comentário fecha o script ali).
+Ela sai 0 quando o head só muda código de lugar:
 - a marcação é a mesma, na mesma ordem, com cada script e cada folha de estilo no mesmo lugar dela;
-- os scripts são os mesmos, na mesma ordem, cada um com os mesmos atributos e o mesmo modo estrito;
+- os scripts são os mesmos, na mesma ordem, cada um carregado do mesmo jeito (inline ou do mesmo arquivo), com os
+  mesmos atributos e o mesmo modo estrito;
 - cada script declara as mesmas funções no alto (elas podem mudar de lugar dentro dele, porque existem antes de qualquer
   instrução dele rodar, e só nele);
 - toda outra instrução do alto está no head, na mesma ordem e no mesmo script;

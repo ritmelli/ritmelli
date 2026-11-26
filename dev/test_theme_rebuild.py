@@ -77,15 +77,14 @@ SAMPLES = (
     ("a <style> line reindented inside a template literal", inline("const s = `a\n<style>\nb`;\nf();"),
      inline("const s = `a\n  <style>\nb`;\nf();"), ["gone", "new"]),
     ("a script that gains an attribute", {"index.html": "<script src='x.js'></script>", "x.js": "x();\n"},
-     {"index.html": "<script src='x.js' defer></script>", "x.js": "x();\n"}, ["attributes or strict mode"]),
+     {"index.html": "<script src='x.js' defer></script>", "x.js": "x();\n"}, ["script tag or strict mode"]),
     ("a script with a comment before 'use strict' that loses it",
      {"index.html": "<script src='x.js'></script>", "x.js": "/* c */\n'use strict';\nx();\n"},
-     {"index.html": "<script src='x.js'></script>", "x.js": "/* c */\nx();\n"}, ["attributes or strict mode", "gone"]),
+     {"index.html": "<script src='x.js'></script>", "x.js": "/* c */\nx();\n"}, ["script tag or strict mode", "gone"]),
     ("a script that does not parse", {"index.html": "<script src='x.js'></script>", "x.js": "x();\n"},
      {"index.html": "<script src='x.js'></script>", "x.js": "x(;\n"}, ["does not parse", "gone", "new"]),
-    ("a script moved to another file in place", {"index.html": "<script src='x.js'></script>",
-                                                 "x.js": "'use strict';\nx();\n"},
-     {"index.html": "<script src='y.js'></script>", "y.js": "'use strict';\nx();\n"}, []),
+    ("a script renamed", {"index.html": "<script src='x.js'></script>", "x.js": "'use strict';\nx();\n"},
+     {"index.html": "<script src='y.js'></script>", "y.js": "'use strict';\nx();\n"}, ["script tag or strict mode"]),
     ("a script moved before a div", {"index.html": "<div id='a'></div>\n<script src='x.js'></script>", "x.js": "x();"},
      {"index.html": "<script src='x.js'></script>\n<div id='a'></div>", "x.js": "x();"}, ["moved out of order"]),
     ("a style rule moved out of order", styled("a { }\nb { }\n"), styled("b { }\na { }\n"), ["moved out of order"]),
@@ -116,6 +115,8 @@ SAMPLES = (
      {"index.html": "<!-- inline-script: s.js -->\n", "s.js": "'use strict';\nf();\n"},
      {"index.html": "<!-- inline-script: s.js -->\n", "s.js": "'use strict'; // </script>\nf();\n"},
      ["new", "new", "gone"]),
+    ("a vertical tab in place of the space before + in a calc()", styled("a { padding: calc(14px + 1px); }\n"),
+     styled("a { padding: calc(14px\v+ 1px); }\n"), ["gone", "new"]),
     ("a comment in place of the space before + in a calc()", styled("a { padding: calc(14px + 1px); }\n"),
      styled("a { padding: calc(14px/* c */+ 1px); }\n"), ["gone", "new"]),
     ("a stylesheet with a font moved to another folder", {"index.html": "<link rel='stylesheet' href='base.css'>\n",
@@ -131,7 +132,8 @@ SAMPLES = (
 
 def theme_mutant(changes):
     read = theme_rebuild.reader(None, "ritmelli")
-    return lambda name: changes[name](read(name), read) if name in changes else read(name)
+    return lambda name: changes[name](read(name) if name != "transporte-new.js" else "", read) if name in changes \
+        else read(name)
 
 
 def swapped(html, _):
@@ -166,9 +168,16 @@ def main():
         ("a line break after the first throw of api.js",
          {"api.js": lambda text, _: text.replace("throw x;", "throw\nx;", 1) if "throw x;" in text else ""},
          "does not parse"),
-        ("a </script> in a comment on the first line of start.js",
-         {"start.js": lambda text, _: text.replace("'use strict';", "'use strict'; // </script>", 1)
-          if "'use strict';" in text else ""}, "gone"))]
+        *((f"a {end} in a comment on the first line of start.js",
+           {"start.js": lambda text, _, end=end: text.replace("'use strict';", f"'use strict'; // {end}", 1)
+            if "'use strict';" in text else ""}, "gone") for end in ("</script>", "</script/>", "</script x>")),
+        ("start.js loaded from its file instead of inline",
+         {"index.html": lambda html, _: html.replace("<!-- inline-script: start.js -->", '<script src="start.js"></script>')
+          if "<!-- inline-script: start.js -->" in html else ""}, "script tag or strict mode"),
+        ("transporte.js renamed",
+         {"index.html": lambda html, _: html.replace('src="transporte.js"', 'src="transporte-new.js"')
+          if 'src="transporte.js"' in html else "",
+          "transporte-new.js": lambda _, read: read("transporte.js")}, "script tag or strict mode"))]
     compiles = theme_rebuild.syntax([theme, *(page for _, a, b, _ in samples for page in (a, b)),
                                      *(page for _, page, _ in mutants)])
     results = []
