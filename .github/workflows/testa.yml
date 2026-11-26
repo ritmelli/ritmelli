@@ -81,7 +81,7 @@ jobs:
         if: ${{ !cancelled() }}
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python dev/garden.py --pr-description
+        run: python dev/testa_tudo.py --passo pr-description
       - name: Resumo
         id: resumo
         if: always()

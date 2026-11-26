@@ -44,13 +44,20 @@ ANIMATION_FRAME = re.compile(r"\brequestAnimationFrame\s*\(")
 TODO = re.compile(r"\b(?:TODO|FIXME|HACK|XXX)\b")
 PROSE = re.compile(r"risco aceito|accepted risk|sem prova|por enquanto|for now|known issue|sem teste|have no test yet"
                    r"|como antes", re.I)
-LEFT_OUT = "ficou de fora"
+LEFT_OUT = re.compile(r"^--\s.*ficou de fora", re.S)
+LEFT_OUT_QUOTED = re.compile(r"(?:^|[\"'])--\s[^\"']*ficou de fora")
 SKIP_NAMES = {"skip", "skipIf", "skipUnless", "expectedFailure", "skipTest", "SkipTest", "xfail", "skipif"}
 BROAD = {"Exception", "BaseException"}
 SLEEP_MODULES = {"time", "asyncio"}
-PS_LOOP = re.compile(r"\b(?:for|foreach|while|do)\b\s*(?:\([^{]*\))?\s*\{", re.I)
+PS_LOOP = re.compile(r"\b(?:for|foreach|while|do)\b", re.I)
 PROOF_LABEL = re.compile(r"^(?:how it was (?:proven|proved|tested)|proof\b|prova\b|como foi provado)", re.I)
-PROOF_CONTENT = re.compile(r"`[^`]+`|https?://|!\[")
+SECTION_LABEL = re.compile(r"^\s*(?:#{1,6}\s+(?P<heading>[^:]+?)(?::\s*(?P<rest>.*))?\s*$"
+                           r"|\*\*(?P<bold>[^*]+?):?\*\*:?\s*(?P<rest2>.*)$"
+                           r"|(?P<plain>[A-Z][^:`]{1,40}):\s*(?P<rest3>.*)$)")
+RUN_LINK = re.compile(r"https://github\.com/[\w.-]+/[\w.-]+/actions/runs/\d+")
+IMAGE = re.compile(r"!\[[^\]]*\]\([^)]+\)|<img\s|https://github\.com/user-attachments/")
+PROOF_SPAN = re.compile(r"^\s*(?:python|py|gh|git|pwsh|powershell|bash|node|npm|ruff)\b"
+                        r"|[\w./\\-]+\.(?:py|ps1|yml|js|sh|bat|iss|cpp|html)\b")
 BIG_FILES = {"engine_py_lines": "engine.py", "server_py_lines": "server.py",
              "index_html_lines": "themes/ritmelli/index.html", "agents_md_lines": "AGENTS.md"}
 
@@ -504,8 +511,11 @@ def is_sleep(node, aliases):
 
 
 def is_dev(path):
-    name = Path(path).name
-    return path.startswith(("dev/", ".github/")) or name.startswith(("testa", "test_", "teste_"))
+    return path.startswith(("dev/", ".github/"))
+
+
+def is_test(path):
+    return testa_tudo().is_test(path)
 
 
 def sleeps(t):
@@ -522,11 +532,11 @@ def sleeps(t):
 
 
 def sleeps_app(t):
-    return [i for i in sleeps(t) if not is_dev(i[0])]
+    return [i for i in sleeps(t) if not is_dev(i[0]) and not is_test(i[0])]
 
 
 def sleeps_dev(t):
-    return [i for i in sleeps(t) if is_dev(i[0])]
+    return [i for i in sleeps(t) if is_dev(i[0]) and not is_test(i[0])]
 
 
 def theme_code(t, pattern):
@@ -577,24 +587,46 @@ def python_retries(tree):
     return found
 
 
-def braces(code, start):
+def closing(code, start, opening, close):
     depth = 0
     for i in range(start, len(code)):
-        if code[i] == "{":
+        if code[i] == opening:
             depth += 1
-        elif code[i] == "}":
+        elif code[i] == close:
             depth -= 1
             if depth == 0:
-                return code[start:i + 1]
-    return code[start:]
+                return i
+    return len(code) - 1
+
+
+def powershell_loops(code):
+    loops = []
+    for m in PS_LOOP.finditer(code):
+        i = m.end()
+        while i < len(code) and code[i].isspace():
+            i += 1
+        if i < len(code) and code[i] == "(":
+            i = closing(code, i, "(", ")") + 1
+            while i < len(code) and code[i].isspace():
+                i += 1
+        if i < len(code) and code[i] == "{":
+            loops.append((m.start(), i, closing(code, i, "{", "}")))
+    return loops
 
 
 def powershell_retries(code):
+    loops = powershell_loops(code)
     found = []
-    for m in PS_LOOP.finditer(code):
-        body = braces(code, m.end() - 1)
+    for start, body_start, body_end in loops:
+        own, cut = [], body_start
+        for inner_start, _, inner_end in loops:
+            if body_start < inner_start and inner_end <= body_end and inner_start >= cut:
+                own.append(code[cut:inner_start])
+                cut = inner_end + 1
+        own.append(code[cut:body_end + 1])
+        body = "".join(own)
         if re.search(r"\btry\s*\{", body, re.I) and START_SLEEP.search(body):
-            found.append(code.count("\n", 0, m.start()) + 1)
+            found.append(code.count("\n", 0, start) + 1)
     return found
 
 
@@ -707,10 +739,10 @@ def skipped_tests(t):
                 if isinstance(node, ast.Call) or not any(
                         isinstance(c, ast.Call) and c.func is node for c in ast.walk(tree)):
                     items.append((p, node.lineno))
-        items += [(p, n) for n, s in python_strings(t, p) if s.startswith("--") and LEFT_OUT in s
-                  and not ISSUE.search(s)]
+        items += [(p, n) for n, s in python_strings(t, p) if LEFT_OUT.match(s) and not ISSUE.search(s)]
     for p in t.paths(".yml", ".ps1", ".psd1"):
-        items += [(p, n) for n, code in sorted(t.lexed(p).code.items()) if LEFT_OUT in code and not ISSUE.search(code)]
+        items += [(p, n) for n, code in sorted(t.lexed(p).code.items())
+                  if LEFT_OUT_QUOTED.search(code) and not ISSUE.search(code)]
     return sorted(set(items))
 
 
@@ -774,11 +806,19 @@ def non_ascii_identifiers(t):
     return items
 
 
+LOADED = {}
+
+
 def load_dev_module(name):
-    spec = importlib.util.spec_from_file_location(name, ROOT / "dev" / f"{name}.py")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    if name not in LOADED:
+        spec = importlib.util.spec_from_file_location(name, ROOT / "dev" / f"{name}.py")
+        LOADED[name] = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(LOADED[name])
+    return LOADED[name]
+
+
+def testa_tudo():
+    return load_dev_module("testa_tudo")
 
 
 def hooks(t):
@@ -894,11 +934,21 @@ def base_commit():
     return out.strip() if code == 0 else ""
 
 
+class BaseError(Exception):
+    pass
+
+
 def base_ceilings(base):
     if not base:
         return None
+    if git("rev-parse", "--verify", "--quiet", f"{base}^{{commit}}")[0] != 0:
+        raise BaseError(f"the base {base} is not a commit here: its ceilings can't be read")
+    if git("cat-file", "-e", f"{base}:dev/garden.json")[0] != 0:
+        return None
     code, out = git("show", f"{base}:dev/garden.json")
-    return json.loads(out) if code == 0 else None
+    if code != 0:
+        raise BaseError(f"the dev/garden.json of the base {base} can't be read")
+    return json.loads(out)
 
 
 def added_lines(base):
@@ -957,7 +1007,12 @@ def run():
     counts = scoreboard(working_tree())
     ceilings = json.loads(CEILINGS.read_text(encoding="utf-8"))
     base = base_commit()
-    failures, summary = check(counts, ceilings, base_ceilings(base), added_lines(base))
+    try:
+        before = base_ceilings(base)
+    except BaseError as ex:
+        print(f"FAIL  {ex}")
+        return 1
+    failures, summary = check(counts, ceilings, before, added_lines(base))
     for name, value in counts.items():
         print(f"{'ok  ' if count_of(value) == ceilings.get(name) else 'FAIL'}  {name}: {count_of(value)} "
               f"(ceiling {ceilings.get(name)})")
@@ -987,25 +1042,48 @@ def pr_number(event_name, event):
     return None
 
 
+def proof_label(line):
+    m = SECTION_LABEL.match(line)
+    if not m:
+        return None
+    label = m.group("heading") or m.group("bold") or m.group("plain")
+    if not PROOF_LABEL.match(label.strip()):
+        return None
+    return (m.group("rest") or m.group("rest2") or m.group("rest3") or "").strip()
+
+
+def is_section_start(line):
+    return bool(re.match(r"^\s*(?:#{1,6}\s|\*\*[^*]+\*\*)", line)) or proof_label(line) is not None
+
+
+def has_proof(text):
+    if re.search(r"^\s*(?:```|~~~)", text, re.M) or RUN_LINK.search(text) or IMAGE.search(text):
+        return True
+    return any(PROOF_SPAN.search(span) for span in re.findall(r"`([^`\n]+)`", text))
+
+
+def proof_sections(lines):
+    for i, line in enumerate(lines):
+        rest = proof_label(line)
+        if rest is not None:
+            section = [rest]
+            for nxt in lines[i + 1:]:
+                if is_section_start(nxt):
+                    break
+                section.append(nxt)
+            yield "\n".join(section)
+
+
 def description_problems(body):
     lines = (body or "").splitlines()
     problems = []
-    proof = None
-    for i, line in enumerate(lines):
-        label = re.sub(r"^[#*_\s]+", "", line)
-        if PROOF_LABEL.match(label):
-            section = [re.sub(r"^[^:]*:", "", label, count=1)]
-            for nxt in lines[i + 1:]:
-                if re.match(r"^\s*(#+\s|\*\*[^*]+\*\*\s*$)", nxt):
-                    break
-                section.append(nxt)
-            proof = "\n".join(section)
-            if PROOF_CONTENT.search(proof):
-                break
-    if proof is None:
-        problems.append("no proof section (a heading or a bold line like \"How it was proven\" or \"Proof\")")
-    elif not PROOF_CONTENT.search(proof):
-        problems.append("the proof section has no run, test or screenshot (a `command`, a link or an image)")
+    sections = list(proof_sections(lines))
+    if not sections:
+        problems.append("no proof section (a heading, a bold label or a line starting \"How it was proven:\" or "
+                        "\"Proof:\")")
+    elif not any(has_proof(s) for s in sections):
+        problems.append("the proof section has no run, test or screenshot (a command or a test file in `code`, a code "
+                        "block, a link to a run or an image)")
     problems += [f"line {n}: \"{PROSE.search(line).group(0)}\" with no issue link: fix it, or link the issue that "
                  f"tracks it" for n, line in enumerate(lines, 1) if PROSE.search(line) and not ISSUE.search(line)]
     return problems

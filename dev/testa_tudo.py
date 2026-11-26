@@ -108,8 +108,9 @@ SERIAL = {f"dev/testa_{n}.py" for n in ("adianta", "mock", "grava", "comandos", 
 JOBS = 4
 # the steps of the testa.yml that run one script of their own, by name (--passo): the protected folder on the real disk
 # (it creates a folder in Program Files and changes its ACL with icacls, so it needs an administrator: the GitHub
-# machine is one; on a PC, only a test Windows) and the usage data notice of the theme
-PASSOS = {"disco": ("dev/testa_pasta_protegida.py", "--disco"), "metricas": ("dev/fitcheck.py", "--metricas")}
+# machine is one; on a PC, only a test Windows), the usage data notice of the theme and the PR description
+PASSOS = {"disco": ("dev/testa_pasta_protegida.py", "--disco"), "metricas": ("dev/fitcheck.py", "--metricas"),
+          "pr-description": ("dev/garden.py", "--pr-description")}
 # what the --tela and the --compara run
 TELA = ("dev/fitcheck.py", "dev/compara.py", "dev/missing_script.py", "dev/theme_scripts.py")
 NOT_ON_PUSH = "github.event_name != 'push'"
@@ -123,6 +124,7 @@ REQUIRED_MODES = {
     "--tela": ("tela", NOT_ON_PUSH, "fitcheck", "steps.areas.outputs.tela == 'true'"),
     "--passo metricas": ("tela", NOT_ON_PUSH, "Aviso dos dados de uso",
                          "${{ !cancelled() && steps.areas.outputs.tela == 'true' && steps.tela.outcome != 'skipped' }}"),
+    "--passo pr-description": ("testes", NOT_ON_PUSH, "PR description", "${{ !cancelled() }}"),
     "--compara": ("compara", None, "compara", "steps.areas.outputs.roda == 'true'"),
     "--capture": ("compara", None, "compara", "steps.areas.outputs.roda == 'true'"),
 }

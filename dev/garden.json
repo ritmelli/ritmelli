@@ -1,14 +1,14 @@
 {
-  "comment_lines": 6605,
-  "docstring_lines": 4044,
+  "comment_lines": 6584,
+  "docstring_lines": 4065,
   "suppressions": 34,
   "sleeps_app": 43,
-  "sleeps_dev": 184,
+  "sleeps_dev": 75,
   "theme_timers": 30,
   "theme_animation_frames": 16,
   "retries": 29,
   "broad_excepts": 108,
-  "skipped_tests": 7,
+  "skipped_tests": 6,
   "todo_markers": 0,
   "prose_justifications": 35,
   "non_ascii_identifiers": 0,
@@ -21,5 +21,5 @@
   "server_py_lines": 2789,
   "index_html_lines": 1763,
   "agents_md_lines": 80,
-  "agents_rules_without_check": 12
+  "agents_rules_without_check": 11
 }

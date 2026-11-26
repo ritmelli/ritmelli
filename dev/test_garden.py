@@ -102,8 +102,12 @@ CASES = {
     "sleeps_dev": [
         ("in dev/", {"a.py": "import time\ntime.sleep(1)\n"},
          {"a.py": "import time\ntime.sleep(1)\n", "dev/a.py": "import time\ntime.sleep(1)\n"}),
-        ("a test", {"instalador/a.ps1": "Start-Sleep 1\n"},
-         {"instalador/a.ps1": "Start-Sleep 1\n", "instalador/testa-x.ps1": "Start-Sleep 1\n"}),
+        ("a tool, not a test", {"dev/testa_x.py": "import time\ntime.sleep(1)\n",
+                                "dev/test_x.py": "import time\ntime.sleep(1)\n",
+                                "instalador/testa-x.ps1": "Start-Sleep 1\n"},
+         {"dev/testa_x.py": "import time\ntime.sleep(1)\n", "dev/shot.py": "import time\ntime.sleep(1)\n"}),
+        ("a workflow", {"instalador/testa-x.ps1": "Start-Sleep 1\n"},
+         {".github/workflows/w.yml": "jobs:\n  j:\n    runs-on: windows-2025\n    steps:\n      - run: Start-Sleep 1\n"}),
     ],
     "theme_timers": [
         ("setTimeout", {"themes/t/a.js": "// setTimeout(f, 1)\nconst s = 'setTimeout(';\n"},
@@ -130,6 +134,12 @@ CASES = {
          {"a.ps1": "for ($i = 0; $i -lt 3; $i++) { try { f } catch { }; Start-Sleep 1 }\n"}),
         ("powershell in a Python string", {"a.py": "ps = 'do{Start-Sleep 1}while($a)'\n"},
          {"a.py": "ps = 'do{Start-Sleep 1;try{f}catch{}}while($a)'\n"}),
+        ("a powershell loop around a retry", {"a.ps1": "foreach ($x in $y) { f $x }\n"},
+         {"a.ps1": "foreach ($x in $y) {\n  while ($true) { try { f $x; break } catch { Start-Sleep 1 } }\n}\n"}),
+        ("a powershell loop around a retry in a Python string", {"a.py": "ps = 'foreach($x in $y){f $x}'\n"},
+         {"a.py": "ps = 'foreach($x in $y){while($true){try{f $x;break}catch{Start-Sleep 1}}}'\n"}),
+        ("a do-while followed by another loop", {"a.py": "ps = 'do{f}while($a);while($b){Start-Sleep 1}'\n"},
+         {"a.py": "ps = 'do{try{f}catch{};Start-Sleep 1}while($a);while($b){Start-Sleep 1}'\n"}),
     ],
     "broad_excepts": [
         ("except Exception", {"a.py": "try:\n    f()\nexcept OSError:\n    pass\n"},
@@ -153,8 +163,8 @@ CASES = {
          {"dev/t.py": "from unittest import expectedFailure\n@expectedFailure\ndef t():\n    pass\n"}),
         ("ficou de fora", {"dev/t.py": "print('--   o guard ficou de fora: #12')\nr = r'^--\\s.*ficou de fora'\n"},
          {"dev/t.py": "print(f'--   o guard ficou de fora: {e}')\n"}),
-        ("ficou de fora in a workflow", {"a.yml": "steps:\n  - run: echo ok\n"},
-         {"a.yml": "steps:\n  - run: echo 'o pedal ficou de fora'\n"}),
+        ("ficou de fora in a workflow", {"a.yml": "steps:\n  - run: echo 'sem placa, o pedal ficou de fora'\n"},
+         {"a.yml": "steps:\n  - run: echo '--   o pedal ficou de fora'\n"}),
     ],
     "todo_markers": [
         ("in a comment", {"a.py": "PIXELS = ['XXX', '.X.']\n", "a.md": "o METODO e o MÉTODO\n"},
@@ -220,7 +230,8 @@ def count(name, files):
 
 
 EXPECTED_HARMLESS = {"theme_inline_lines": 1, "engine_py_lines": 1, "server_py_lines": 1, "index_html_lines": 1,
-                     "agents_md_lines": 1}
+                     "agents_md_lines": 1, "engine_hooks": 1, "out_of_repo_routes": 1, "engine_reaches": 0,
+                     "app_reaches": 0}
 
 
 def test_counters():
@@ -229,8 +240,7 @@ def test_counters():
     for name, cases in CASES.items():
         for label, harmless, weedy, *delta in cases:
             before, after = count(name, harmless), count(name, weedy)
-            expected = count(name, HOOKS_BASE) if harmless is HOOKS_BASE or name in (
-                "engine_hooks", "out_of_repo_routes", "engine_reaches", "app_reaches") else EXPECTED_HARMLESS.get(name, 0)
+            expected = EXPECTED_HARMLESS.get(name, 0)
             check(before == expected, f"{name}, {label}: the harmless case counts {expected} ({before})")
             step = delta[0] if delta else 1
             check(after == before + step, f"{name}, {label}: the weed counts {step} ({before} -> {after})")
@@ -290,6 +300,23 @@ def test_description():
     check(garden.description_problems("Proof: `python x.py` passes.") == [], "a proof line with its content passes")
     check(garden.description_problems("## Proof\n\nIt works.\n") != [], "a proof section with no run, test or print fails")
     check(garden.description_problems("The problem.\n") != [], "a description with no proof section fails")
+    passing = {
+        "a line label": "How it was proved: `python dev/testa_mock.py` passes 70 of 70.",
+        "a heading with a list": "## How it was proven\n\n- `gh run view 1` shows the step failing on the base.\n",
+        "a link to a run": "## Proof\n\nThe [run](https://github.com/o/r/actions/runs/123) fails on the base.\n",
+        "a screenshot": "**Proof**\n\n![the page](https://github.com/user-attachments/assets/1)\n",
+        "a code block": "## Proof\n\n```\n$ make\nok\n```\n",
+    }
+    for label, body in passing.items():
+        check(garden.description_problems(body) == [], f"a proof section with {label} passes")
+    failing = {
+        "loose backticks": "Proof: `trust me`",
+        "an issue link as the only proof": "## Proof\n\nSee #12 and https://github.com/o/r/issues/12.\n",
+        "the proof after the section ends": "## Proof\n\nIt works.\n\n## Notes\n\n`python dev/x.py`\n",
+        "a heading with nothing under it": "## Proof\n## Other\n![a](https://x/a.png)\n",
+    }
+    for label, body in failing.items():
+        check(garden.description_problems(body) != [], f"a proof section with {label} fails")
     prose = good + "\nThe rest stays for now.\n"
     check(any("for now" in p for p in garden.description_problems(prose)), "a prose phrase with no issue fails")
     check(garden.description_problems(good + "\nThe rest stays for now (#250).\n") == [],
@@ -300,31 +327,39 @@ def test_description():
     check(garden.pr_number("push", {}) is None, "no PR on a push")
 
 
+def test_base():
+    try:
+        garden.base_ceilings("not-a-commit")
+        raised = False
+    except garden.BaseError:
+        raised = True
+    check(raised, "a base that is not a commit fails instead of reading as a base with no scoreboard")
+    _, root = garden.git("rev-list", "--max-parents=0", "HEAD")
+    first = root.split()[0] if root.split() else ""
+    check(bool(first) and garden.base_ceilings(first) is None, "a real base from before the scoreboard has no ceilings")
+    check(garden.base_ceilings("") is None, "no base, no ceilings")
+
+
+PASSO = "python dev/testa_tudo.py --passo pr-description"
+
+
 def workflow_problems(text):
     try:
         doc = workflow_yaml.loads(text, name="testa.yml")
     except workflow_yaml.YamlError as ex:
         return [f"the workflow does not read: {ex}"]
+    tudo = garden.testa_tudo()
+    problems = [f for f in tudo.mode_failures({".github/workflows/testa.yml": doc}) if "--passo pr-description" in f]
+    if tudo.PASSOS.get("pr-description") != ("dev/garden.py", "--pr-description"):
+        problems.append("the pr-description step of PASSOS does not run dev/garden.py --pr-description")
     job = (doc.get("jobs") or {}).get("testes") or {}
-    step = workflow_yaml.find_step(job, "PR description")
-    if step is None:
-        return ["the testes job has no single \"PR description\" step"]
-    problems = []
-    if "python dev/garden.py --pr-description" not in (step.get("run") or ""):
-        problems.append("the step does not run dev/garden.py --pr-description")
-    if step.get("if") not in (None, "${{ !cancelled() }}"):
-        problems.append(f"the step skips on some event ({step.get('if')})")
+    step = workflow_yaml.find_step(job, "PR description") or {}
+    if (step.get("run") or "").strip() != PASSO:
+        problems.append(f"the step runs something else than \"{PASSO}\"")
     if (step.get("env") or {}).get("GH_TOKEN") != "${{ github.token }}":
         problems.append("the step has no GH_TOKEN to read the API")
     if (job.get("permissions") or {}).get("pull-requests") != "read":
         problems.append("the testes job can't read the PR")
-    if job.get("if") != "github.event_name != 'push'":
-        problems.append(f"the testes job skips on the PR or the queue ({job.get('if')})")
-    on = doc.get("on") or {}
-    if "pull_request" not in on or "merge_group" not in on:
-        problems.append("the workflow does not run on the PR and the queue")
-    if any(s.get("continue-on-error") for s in workflow_yaml.job_steps(job)):
-        problems.append("a step of the testes job fails quietly")
     return problems
 
 
@@ -332,16 +367,14 @@ WORKFLOW_MUTANTS = [
     ("the step skipped in the queue", "      - name: PR description\n        if: ${{ !cancelled() }}",
      "      - name: PR description\n        if: ${{ !cancelled() && github.event_name != 'merge_group' }}"),
     ("the step renamed", "      - name: PR description", "      - name: PR text"),
-    ("no token", "          GH_TOKEN: ${{ github.token }}\n        run: python dev/garden.py --pr-description",
-     "        run: python dev/garden.py --pr-description"),
+    ("no token", "          GH_TOKEN: ${{ github.token }}\n        run: " + PASSO, "        run: " + PASSO),
     ("no permission to read the PR", "      contents: read\n      pull-requests: read\n    outputs:",
      "      contents: read\n    outputs:"),
-    ("another command", "run: python dev/garden.py --pr-description", "run: python dev/garden.py"),
-    ("the step quiet on failure", "        run: python dev/garden.py --pr-description",
-     "        continue-on-error: true\n        run: python dev/garden.py --pr-description"),
+    ("another command", "run: " + PASSO, "run: python dev/testa_tudo.py --passo disco"),
+    ("an exit before the command", "        run: " + PASSO, "        run: |\n          exit 0\n          " + PASSO),
+    ("the step quiet on failure", "        run: " + PASSO, "        continue-on-error: true\n        run: " + PASSO),
     ("the job skipped in the queue", "    name: Testes\n    if: github.event_name != 'push'",
      "    name: Testes\n    if: github.event_name == 'pull_request'"),
-    ("the queue trigger gone", "  merge_group:\n", ""),
 ]
 
 
@@ -365,6 +398,7 @@ test_known_misses()
 test_check()
 test_acceptance()
 test_description()
+test_base()
 WORKFLOW_TEXT = (ROOT / ".github" / "workflows" / "testa.yml").read_text(encoding="utf-8")
 problems = workflow_problems(WORKFLOW_TEXT)
 check(problems == [], f"the PR description step runs in the required check on every PR and queue entry ({problems})")
