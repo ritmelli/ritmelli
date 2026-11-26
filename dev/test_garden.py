@@ -1077,9 +1077,37 @@ KNOWN_MISSES = [
     ("suppressions", "a quiet -ErrorAction given by a variable",
      {"a.ps1": "$quiet = 'SilentlyContinue'\nGet-Item x -ErrorAction $quiet\n"},
      (POWERSHELL_SOURCES, r"(?i)-(?:ErrorAction|EA)\b[ \t:]+\$[\w:]+")),
+    ("sleeps_app", "a default of an inline parameter of a PowerShell method",
+     {"a.ps1": "class A { [void] f($x = $(Start-Sleep 1)) { } }\n"},
+     (POWERSHELL_SOURCES, r"(?i)\][ \t]*[\w-]+[ \t]*\([^)\n]*=[ \t]*\$?\(")),
+
+    ("suppressions", "a quiet $ErrorActionPreference in parentheses or from the enum",
+     {"a.ps1": "$ErrorActionPreference = ('SilentlyContinue')\n"},
+     (POWERSHELL_SOURCES, r"(?i)\$(?:global:|script:)?ErrorActionPreference[ \t]*=[ \t]*[(\[]")),
+
+    ("retries", "a PowerShell helper declared with a scope",
+     {"a.ps1": "function global:attempt { try { f } catch { $null } }\nwhile ($true) { if (attempt) { break }; Start-Sleep 1 }\n"},
+     (POWERSHELL_SOURCES, r"(?i)\bfunction[ \t]+(?:global|script|local|private):")),
+
+    ("sleeps_app", "a sleep imported by a wildcard", {"a.py": "from time import *\nsleep(1)\n"},
+     ((".py",), r"(?m)^[ \t]*from[ \t]+(?:time|asyncio)[ \t]+import[ \t]+\*")),
 ]
 
 KNOWN_NOISE = [
+    ("sleeps_app", "an if, elif and else that all set the script, read as if the earlier value reached the use",
+     {"a.py": "import subprocess\nps = 'Start-Sleep 1'\nif a:\n    ps = 'Get-Date'\nelif b:\n    ps = 'Get-Item x'\nelse:\n"
+              "    ps = 'Write-Output 1'\nsubprocess.run(['powershell', '-Command', ps])\n"},
+     ((".py",), r"(?m)^([ \t]*)elif\b[^\n]*:[ \t]*\n\1[ \t]+(\w+)[ \t]*=[^=][^\n]*\n(?:[^\n]*\n){0,40}?[^\n]*"
+                r"['\"]-[Cc]ommand['\"],[ \t]*\2\b")),
+    ("sleeps_app", "the subscript of a local annotation with no value, which Python never runs",
+     {"a.py": "import time\ndef f():\n    a[time.sleep(1)]: int\n"},
+     ((".py",), r"(?m)^[ \t]+[\w.]+\[[^\]\n]*\([^\]\n]*\][ \t]*:[ \t]*[^=\n]+$")),
+    ("sleeps_app", "a sleep in a type alias, whose value Python runs only when it is asked for",
+     {"a.py": "import time\ntype Unused = time.sleep(1)\n"},
+     ((".py",), r"(?m)^[ \t]*type[ \t]+\w+(?:\[[^\]\n]*\])?[ \t]*=")),
+    ("sleeps_app", "a sleep imported from time and shadowed in a function",
+     {"a.py": "from time import sleep\ndef f():\n    sleep = lambda x: x\n    sleep(1)\n"},
+     ((".py",), r"(?ms)\A(?=.*^from[ \t]+(?:time|asyncio)[ \t]+import[^\n]*\bsleep\b)(?=.*^[ \t]+sleep[ \t]*=[^=])")),
     ("sleeps_dev", "a test job inside jobs given by an alias",
      {".github/workflows/w.yml": "x: &js\n  testes:\n    runs-on: windows-2025\n    steps:\n      - run: Start-Sleep 1\n"
                                  "jobs: *js\n"},

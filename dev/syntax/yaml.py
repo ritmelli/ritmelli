@@ -686,7 +686,7 @@ class _Parser:
             if c in "+-" and chomping is None:
                 chomping = c == "+"
                 self.i += 1
-            elif c.isdigit() and c != END and increment is None:
+            elif c in "0123456789" and increment is None:
                 increment = int(c)
                 if increment == 0:
                     self.error("a block scalar indentation indicator of 0")

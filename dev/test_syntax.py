@@ -60,6 +60,7 @@ YAML_ERRORS = [
     ("an alias to an anchor of an earlier document", "---\na: &x 1\n---\nb: *x\n"),
     ("an empty entry in a flow collection", "items: [one,,two]\n"),
     ("an escape out of the range of Unicode", "a: \"\\UFFFFFFFF\"\n"),
+    ("a block scalar indicator that is no ASCII digit", "a: |\u00b2\n  x\n"),
 ]
 
 
