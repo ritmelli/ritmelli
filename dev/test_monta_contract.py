@@ -91,7 +91,7 @@ def manifest_step(job):
 
 def output_lines(run, key):
     path = r"""(?:^|\s)-Path\s+("?)(?:\$env:GITHUB_OUTPUT|\$\{env:GITHUB_OUTPUT\})\1(?=\s|$)"""
-    lines = re.finditer(r"[^\n]*", code(run))
+    lines = re.finditer(r"[^\n;]*", code(run))
     return [(m.start(), m.group(0)) for m in lines if re.match(r"\s*Add-Content\b", m.group(0), re.I)
             and re.search(path, m.group(0), re.I) and re.search(rf"""["']{key}=""", m.group(0))]
 
@@ -541,6 +541,10 @@ def main():
         "a second Add-Content writing parcial=false": lambda d: source_step(d, "parcial").update(
             run=source_step(d, "parcial")["run"].rstrip("\n")
             + '\nAdd-Content -Path $env:GITHUB_OUTPUT -Value "parcial=false" -Encoding ascii\n'),
+        "a parcial=false after the real write on the same line": lambda d: source_step(d, "parcial").update(
+            run=re.sub(r'("parcial=\$\(\$parcial[^"]*" -Encoding ascii)',
+                       r'\1; Add-Content -Path $env:GITHUB_OUTPUT -Value "parcial=false"',
+                       source_step(d, "parcial")["run"])),
         "a later parcial write from another variable": lambda d: source_step(d, "parcial").update(
             run=source_step(d, "parcial")["run"].rstrip("\n")
             + '\nAdd-Content -Path $env:GITHUB_OUTPUT -Value "parcial=$($other.ToString())" -Encoding ascii\n'),
