@@ -125,6 +125,23 @@ def http_shutdown_with_the_pipe_open():
           f"{', ' + text[text.index('Fatal Python error'):][:120] if 'Fatal Python error' in text else ''})")
 
 
+def refusals_before_start():
+    with tempfile.TemporaryDirectory(prefix="ritmelli-mock-refusals-") as tmp:
+        local = Path(tmp) / "local"
+        user_data = local / "Ritmelli" / "library"
+        user_data.mkdir(parents=True)
+        env = dict(os.environ, LOCALAPPDATA=str(local))
+        for args, expected in ((["--stop-on-stdin-eof"], "--stop-on-stdin-eof only works with --mock"),
+                               (["--papel-local", "celular"], "--papel-local only works with --mock"),
+                               (["--metricas-teste"], "--metricas-teste only works with --mock"),
+                               (["--mock", "--data-dir", str(user_data)], "--mock never uses the user's data")):
+            p = subprocess.run([sys.executable, str(ROOT / "server.py"), "--no-browser", "--port",
+                                str(so_mock.free_port()), *args], cwd=ROOT, env=env, stdin=subprocess.DEVNULL,
+                               capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
+            check(p.returncode != 0 and expected in p.stderr,
+                  f"server.py {' '.join(args[:2])}: refused before it starts ({p.returncode}, {p.stderr.strip()[-120:]})")
+
+
 def flag_only_for_a_server_that_knows_it():
     with tempfile.TemporaryDirectory(prefix="ritmelli-old-checkout-") as tmp:
         old = Path(tmp)
@@ -136,6 +153,7 @@ def flag_only_for_a_server_that_knows_it():
 
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
+    refusals_before_start()
     flag_only_for_a_server_that_knows_it()
     http_shutdown_with_the_pipe_open()
     stop_while_measuring("phone", ["--papel-local", "celular"])

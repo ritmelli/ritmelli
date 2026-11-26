@@ -12,6 +12,9 @@ instalador vai encher; sem ela, do PATH. O yt-dlp recebe os dois que acharem (`Y
 `%LOCALAPPDATA%\Vitrola`: o `migra()` renomeia essa pasta para a nova quando o servidor liga,
 antes de qualquer módulo calcular os caminhos dele; se ela estiver presa, os dados seguem nela
 naquela abertura e a troca tenta de novo na próxima.
+O `--mock` mora numa pasta temporária (`dados_do_mock`), nunca na de quem usa, e o
+`call_when_stdin_ends` espera o fim da entrada padrão do `--stop-on-stdin-eof`: lê o descritor 0 direto,
+sem o `sys.stdin` com buffer, cuja trava a thread parada nele seguraria na saída do interpretador.
 
 A regra da pasta protegida (`pasta_protegida`): as duas tarefas do Windows que rodam como SYSTEM o
 `ritmelli.exe` da pasta do app (a do filtro de microfone e a da atualização) só usam uma pasta que

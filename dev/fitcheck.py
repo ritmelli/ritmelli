@@ -152,13 +152,23 @@ async def navigate_and_wait(cmd, url, expr, blocked, timeout_s):
     return await wait_ready(cmd, expr, blocked, timeout_s)
 
 
+async def wait_for_state(events, reader, timeout_s):
+    loaded = asyncio.ensure_future(events.state_loaded.wait())
+    done, _ = await asyncio.wait({loaded, reader}, timeout=timeout_s, return_when=asyncio.FIRST_COMPLETED)
+    loaded.cancel()
+    return Ready.READY if loaded in done else Ready.CHROME_GONE if reader in done else Ready.TIMED_OUT
+
+
 class PageEvents:
     def __init__(self):
         self.page_errors, self.browser_errors, self.failed_responses = [], [], []
+        self.state_requests, self.state_loaded = set(), asyncio.Event()
 
     def new_load(self):
         self.browser_errors.clear()
         self.failed_responses.clear()
+        self.state_requests.clear()
+        self.state_loaded.clear()
 
     def take(self, m):
         method, params = m.get("method"), m.get("params", {})
@@ -167,9 +177,14 @@ class PageEvents:
         elif method == "Log.entryAdded" and params["entry"].get("level") == "error":
             entry = params["entry"]
             self.browser_errors.append(f"{entry.get('text', '')} {entry.get('url', '')}".strip())
-        elif method == "Network.responseReceived" and params["response"].get("status", 0) >= 400:
+        elif method == "Network.responseReceived":
             response = params["response"]
-            self.failed_responses.append(f"{response['status']} {response.get('url', '')}")
+            if response.get("status", 0) >= 400:
+                self.failed_responses.append(f"{response['status']} {response.get('url', '')}")
+            elif urllib.parse.urlsplit(response.get("url", "")).path == "/api/state":
+                self.state_requests.add(params["requestId"])
+        elif method == "Network.loadingFinished" and params.get("requestId") in self.state_requests:
+            self.state_loaded.set()
 
 
 def diagnostic_js(conditions):
@@ -564,7 +579,11 @@ async def aviso_no_chrome(base, botao):
             async def load_and_wait_notice():
                 so_mock.confere(url)
                 events.new_load()
-                ready = await navigate_and_wait(cmd, url, PRONTA, barrados, PRONTA_S)
+                try:
+                    await cmd("Page.navigate", url=url)
+                    ready = await wait_for_state(events, tarefa, PRONTA_S)
+                except CDP_GONE:
+                    ready = Ready.CHROME_GONE
                 if ready is not Ready.READY:
                     r["not_ready"].append(await report_not_ready(cmd, "notice", ready, READY_CONDITIONS, events,
                                                                  PRONTA_S))

@@ -11,8 +11,8 @@ starts is a fake Popen: nothing is run.
   even to the app port), a 401 that isn't the pairing one, another status, a body that isn't JSON; the 200 and the
   pairing 401 with the marker pass;
 - confere_pagina and libera_ou_barra turn away the page or document from another origin;
-- the Filho stops a child started with the stop flag by closing its stdin, with no request, and an older one by the
-  /api/shutdown only while it answers as a --mock; it kills its own handle only when the child does not exit;
+- the Filho stops a child started with the stop flag by closing its stdin, with no request, and fails loudly when it
+  has to kill one that does not exit; an older one gets the /api/shutdown only while it answers as a --mock;
 - sobe returns the Filho only with the child alive and the marker, and kills the child when that doesn't happen;
 - sai_se_o_app_ligado exits when the app port answers (that answer is faked: nothing connects to it).
 
@@ -267,8 +267,9 @@ def child(srv):
           f"({srv.requests[n:]}, exit {alive.returncode})")
     stubborn = FakeChild(stops_on_eof=False)
     f = so_mock.Filho(stubborn, srv.port)
-    f.encerra(espera=1)
-    check(stubborn.stdin.closed and stubborn.killed, "a child that does not exit when its stdin closes: its handle killed")
+    msg = refused(f.encerra, espera=1)
+    check(stubborn.stdin.closed and stubborn.killed and msg is not None and "did not stop" in msg,
+          f"a child that does not exit when its stdin closes: its handle killed, and the stop fails saying so ({msg})")
     srv.says(200, {"ok": True})
     old = FakeChild(piped=False)
     f = so_mock.Filho(old, srv.port)
