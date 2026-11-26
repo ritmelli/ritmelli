@@ -20,10 +20,9 @@ até 80 linhas (o `dev/garden.py` confere as duas).
   faz o filtro de verdade ler o que o `injeta.py` escreve.
 - Efeito de voz: as configurações moram no `fx.py`, e o `microfone/preset.py` as leva ao motor em C++. Etapa nova
   precisa do par no `microfone/apo/voz.h` (o `dev/testa_voz.py` falha sem ele).
-- A chave escrita entre aspas num `data-i18n*` ou dentro de uma chamada do `I18N.t` existe nas duas línguas:
-  `themes/ritmelli/i18n/i18n_en.properties` e `i18n_pt_BR.properties`, com as mesmas chaves na mesma ordem, e as da
-  galeria em `gallery/i18n/`; a chave `server.*` de cada `i18n.msg` e `i18n.Recusa` do servidor existe em todo tema com
-  `i18n/`, com os mesmos parâmetros (o `testa_i18n` confere as duas coisas).
+- A chave escrita entre aspas num `data-i18n*` ou numa chamada do `I18N.t` existe nas duas línguas, com as mesmas chaves
+  na mesma ordem (`themes/ritmelli/i18n/` e `gallery/i18n/`), e a chave `server.*` de cada `i18n.msg` e `i18n.Recusa` do
+  servidor existe em todo tema com `i18n/`, com os mesmos parâmetros (o `testa_i18n` confere as duas coisas).
 - Rota nova do `server.py` entra na tabela do `permissao.py`, que o `guard` confere: rota fora da tabela é só do PC, e o
   `dev/testa_mock.py` falha enquanto ela não entra.
 - As travas do servidor se pegam numa ordem só: a de [comandos.md](docs/arquitetura/comandos.md#as-travas).
@@ -31,16 +30,18 @@ até 80 linhas (o `dev/garden.py` confere as duas).
   `permissao.py`, os acessos dos outros módulos da raiz aos privados do motor, do `App` e do Automático, os do resto do
   `server.py` aos da `Library` e as escritas diretas no estado do `App` e do motor; o `dev/garden.py` segura cada conta
   no seu teto ([fx.md](docs/arquitetura/fx.md), [comandos.md](docs/arquitetura/comandos.md)).
-- As linhas dentro dos blocos `<style>` e `<script>` do `themes/ritmelli/index.html` não sobem: o teto
-  `theme_inline_lines` do `dev/garden.py`.
+- A página do tema e a da galeria saem do servidor numa peça só, com o JS e o CSS dentro: o `theme_page.py` recusa com
+  500 o modelo que não monta (o `dev/testa_mock.py` confere cada recusa; o `dev/theme_page_oracle.py`, no Chrome, que o
+  modelo aceito tem os scripts e as folhas que a montagem leu), a página servida não tem `<link rel="stylesheet">` nem
+  `<script src>` do tema (o `dev/missing_script.py`), e o `themes/ritmelli/index.html` tem 0 linhas dentro de `<style>`
+  e `<script>` (o teto `theme_inline_lines` do `dev/garden.py`).
 - PR que só muda código do tema de lugar: `python dev/theme_rebuild.py origin/main` sai 0 só se ele só move código, 1 se
   muda algo e 3 se a página sai da forma estrita (o `dev/test_theme_rebuild.py` confere a ferramenta).
 - O PR que mexe na montagem (o `BUILD_PATHS` do `dev/testa_tudo.py`) só passa no "Testa o PR" com uma execução aprovada
   do "Monta o instalador" (`monta.yml`) no head: rode-o na branch (o "Verdict", provado pelo `dev/test_ci_workflow.py`).
-- O contrato da montagem com a publicação do `ritmelli-server` tem três verificações: o `dev/test_monta_contract.py` (os
-  nomes dos artefatos e dos jobs e o passo do manifesto da `monta.yml`), os casos do `build_manifest.py` no
-  `instalador/atualizacao/testa_parcial.py` (a chamada do `publica.py`) e o `atualizacao/test_contract.py` do server,
-  que roda o script num build de mentira ([dev.md](docs/arquitetura/dev.md#a-montagem)).
+- O contrato da montagem com a publicação do `ritmelli-server` tem três verificações
+  ([dev.md](docs/arquitetura/dev.md#a-montagem)): o `dev/test_monta_contract.py`, os casos do `build_manifest.py` no
+  `instalador/atualizacao/testa_parcial.py` e o `atualizacao/test_contract.py` do server.
 
 ## O mapa: área, arquivos e teste
 
@@ -68,7 +69,6 @@ Rode na raiz, com o venv: `$env:PYTHONUTF8 = '1'; python -m ruff check .; python
 onde entra teste novo: o [Contributing](README.md#contributing) do README). O check "Testa o PR" junta os jobs do
 `testa.yml`: o `testes` roda o `dev/testa_tudo.py` sem os longos e o `dev/garden.py`, que também lê a descrição do PR (a
 seção de prova); a mudança de print no `compara` só bloqueia com a etiqueta `extracao-tema`. A fila de merge da `main`
-exige ele e o "Trusted author" (`dev/test_trusted_author.py`: PR de quem não é um dos dois mantenedores só passa
-aprovado por um deles no head atual), e recusa PR com a etiqueta `needs-owner` (o passo "Verdict" do `testa.yml` e o
-`dequeue-on-label.yml`, testados pelo `dev/test_needs_owner.py`). Como entrar na fila:
-[dev.md](docs/arquitetura/dev.md#a-fila).
+([dev.md](docs/arquitetura/dev.md#a-fila)) exige ele e o "Trusted author" (`dev/test_trusted_author.py`: PR de quem não
+é um dos dois mantenedores só passa aprovado por um deles no head atual), e recusa PR com a etiqueta `needs-owner` (o
+passo "Verdict" do `testa.yml` e o `dequeue-on-label.yml`, testados pelo `dev/test_needs_owner.py`).
