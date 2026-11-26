@@ -56,18 +56,20 @@ confere a reserva e a entrada antes de fechar a virada e tirar a passagem prepar
 preparada de quem vale. Os Próximos sobrepostos (o segundo chega antes de o primeiro voltar, mesmo com o primeiro já
 trocando o disco) dividem o mesmo avanço (`App.proximo`), se o prato ainda é a linha dele ou a que a reserva dele
 publicou: um só toca, e todos respondem a entrada dele. Se tocar falha antes de publicar, o erro vai para todos eles (o
-primeiro levanta o dele, e cada um que espera, no `Proximo.espera`, um `QueuePlayFailed` causado por ele); com a reserva
-já resolvida antes por outro (o Parar), o primeiro responde o mesmo que os outros, e o erro vai para a tela
-(`engine.error`) se o prato segue parado. O Próximo depois de um Parar segue sozinho. O avanço já em curso que o Próximo
-encontra ao chegar (o do fim do disco) e a virada pendente que ele vê são o avanço dele, mesmo se terminarem antes de
-ele reservar, e também o que outro começa na linha dele antes de ele reservar; o prato que muda de linha antes disso
-fica como está se trocou de disco (o Parar), e com o mesmo disco (um seek) o Próximo segue, com o grupo passando para a
-linha do seek. O grupo já resolvido, com o primeiro Próximo ainda gravando a posição, aceita quem chega se tocou e o
-prato segue na linha que ele publicou. O Próxima com a virada pendente devolve a entrada dela; se ela já saiu da fila,
-segue para a primeira. O Próximo que concilia a virada passa o grupo para a linha dela, e quem chega nesse meio se junta
-a ele; o grupo só fica com a virada se a entrada dela ainda está na fila. No `_volta_fila` e no `auto_round`, se tocar
-falhar, o erro vai para a tela (`Engine.set_error`, lido em `engine.error`); em todos, a entrada quebrada sai da fila,
-menos quando outra reserva em curso vai tocá-la. A gravação da posição que falha depois da troca não desfaz o avanço.
+primeiro e cada um que espera, no `Proximo.espera`, levantam um `QueuePlayFailed` causado por ele); com a reserva já
+resolvida antes por outro (o Parar), o primeiro responde o mesmo que os outros, e o erro vai para a tela
+(`engine.error`) se o prato segue na linha que aquele Parar deixou (o `Reserva.resolved_line`, conferido pelo
+`Engine.warn_on`: sem outro disco nem outro Parar). O Próximo depois de um Parar segue sozinho. O avanço já em curso que
+o Próximo encontra ao chegar (o do fim do disco) e a virada pendente que ele vê são o avanço dele, mesmo se terminarem
+antes de ele reservar, e também o que outro começa na linha dele antes de ele reservar; o prato que muda de linha antes
+disso fica como está se trocou de disco (o Parar), e com o mesmo disco (um seek) o Próximo segue, com o grupo passando
+para a linha do seek. O grupo já resolvido, com o primeiro Próximo ainda gravando a posição, aceita quem chega se tocou
+e o prato segue na linha que ele publicou. O Próxima com a virada pendente devolve a entrada dela; se ela já saiu da
+fila, segue para a primeira. O Próximo que concilia a virada passa o grupo para a linha dela, e quem chega nesse meio se
+junta a ele; o grupo só fica com a virada se a entrada dela ainda está na fila. No `_volta_fila` e no `auto_round`, se
+tocar falhar, o erro vai para a tela (`Engine.set_error`, lido em `engine.error`); em todos, a entrada quebrada sai da
+fila, menos quando outra reserva em curso vai tocá-la. A gravação da posição que falha depois da troca não desfaz o
+avanço.
 
 Três avanços tentam de novo, cada um pela sua regra; os dois primeiros até `ADVANCE_TRIES` vezes:
 
@@ -221,8 +223,9 @@ sem o tocar de outro disco, o esquecer e a reserva; as trocas de lugar, a reserv
 de áudio, sem o job; e os dois juntos, com uma troca de lugar só e sem o tocar de outro disco, o esquecer e a reserva; o
 pulo na barra só entra na terceira), e roda também os mutantes: cada propriedade tem um que desfaz o que ela protege, e
 o mutante tem de ser pego. Antes do TLC, ele confere que cada execução do código que passa confere todas as invariantes
-da sua spec (as duas da #294 deixam de fora só a que a #294 quebra) e o deadlock, e que a de justiça confere o
-`ReservationsResolve`, sem a simetria e sem a reabertura do motor.
+da sua spec (só deixa de fora uma invariante a execução que repete a configuração de uma falha conhecida da #294, e só a
+que essa falha quebra) e o deadlock, e que a de justiça confere o `ReservationsResolve`, sem a simetria e sem a
+reabertura do motor.
 No PR, o job `tla` do `testa.yml` roda isso numa máquina ubuntu (`python dev/testa_tudo.py
 --passo tla`). No PC, precisa do Java no PATH; o `TLA2TOOLS` aponta para um `tla2tools.jar` já baixado. As duas corridas
 da #211 se repetem no App de verdade no `dev/test_races_211.py`, com os passos do contraexemplo, um de cada vez.

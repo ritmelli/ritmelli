@@ -378,6 +378,8 @@ def rename_part_failures(runs, cfg_text):
 
 def invariant_failures(runs, cfgs):
     out, fair = [], []
+    known = {(r.spec, frozenset(r.constants), r.expect.split()[1]) for r in runs
+             if r.title.startswith("known failure #294") and r.expect.startswith("invariant ")}
     for run in (r for r in runs if r.expect == "pass"):
         blocks = parse_cfg(write_cfg(cfgs[run.spec], run))
         if run.specification is not None:
@@ -388,7 +390,9 @@ def invariant_failures(runs, cfgs):
         missing = REQUIRED[run.spec] - set(blocks["INVARIANTS"]) - set(run.unchecked)
         out += [f"{run.title} does not check {sorted(missing)}"] if missing else []
         out += [f"{run.title} names its invariants"] if run.invariants is not None else []
-        out += [f"{run.title} leaves out more than one invariant"] if len(run.unchecked) > 1 else []
+        stray = [i for i in run.unchecked if (run.spec, frozenset(run.constants), i) not in known]
+        out += [f"{run.title} leaves out {stray}, which no known failure of #294 in its configuration breaks"
+                ] if stray else []
         out += [f"{run.title} does not check deadlock"] if blocks["CHECK_DEADLOCK"] != ["TRUE"] else []
     return out + ([] if fair else ["no passing run checks ReservationsResolve under FairSpec"])
 
@@ -418,6 +422,8 @@ def main():
     code = next(r for r in RUNS if r.title == "LocksAndSwitch, the code as it is")
     fair = next(r for r in RUNS if r.expect == "pass" and r.specification == "FairSpec")
     drop = next(r for r in RUNS if r.unchecked)
+    moves = next(r for r in RUNS if r.title == "Races211, the code as it is: the queue moves, the passage and the audio "
+                                               "version")
     for name, schedule in (
             ("the code run names its invariants without HistoryOnceInOrder",
              [replace(r, invariants=tuple(sorted(REQUIRED["LocksAndSwitch"] - {"HistoryOnceInOrder"})))
@@ -425,7 +431,11 @@ def main():
             ("the fairness run checks no property", [replace(r, properties=()) if r is fair else r for r in RUNS]),
             ("the schedule has no fairness run", [r for r in RUNS if r is not fair]),
             ("a #294 run leaves out a second invariant",
-             [replace(r, unchecked=r.unchecked + ("TypeOK",)) if r is drop else r for r in RUNS])):
+             [replace(r, unchecked=r.unchecked + ("TypeOK",)) if r is drop else r for r in RUNS]),
+            ("a #294 run leaves out an invariant no known failure of its configuration breaks",
+             [replace(r, unchecked=("NoOrphanLoading",)) if r is drop else r for r in RUNS]),
+            ("a run with no known failure leaves out SwitchEntryMatchesPlatter",
+             [replace(r, unchecked=("SwitchEntryMatchesPlatter",)) if r is moves else r for r in RUNS])):
         check(invariant_failures(schedule, cfgs) != [], f"the mutant where {name} fails")
     java = shutil.which("java")
     check(java is not None, "java is on the PATH")

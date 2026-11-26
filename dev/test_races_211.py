@@ -1091,6 +1091,27 @@ def prepare_published_right_after_the_poll(A, E, readers):
           f"(launched {launches.qids})")
 
 
+def stream_prepare_failed_then_the_file_reached_the_shelf(A, E, readers):
+    check(play(A, E, readers, "d1"), "d1 is on the platter, read")
+    cmd.limpar_fila(A)
+    x = {"id": None, "youtube_id": "kkkkkkkkkkk", "url": None, "title": "similar", "channel": "c", "duration": 600.0,
+         "job": None, "qid": "similar11", "auto": True}
+    with A.fila_lock:
+        A.change_queue(lambda: A.fila.append(x))
+    launches = Launches()
+    with mock.patch.object(eng, "TRANS_PREP_S", 1e6):
+        watch(A, launches)
+        A.passagem_falhou = A.last_prepare_key
+        watch(A, launches)
+        A.lib.add({"id": "shelf11", "title": "similar", "file": "shelf11.m4a", "duration": 600.0, "lufs": -14.0,
+                   "youtube_id": "kkkkkkkkkkk"})
+        watch(A, launches)
+    A.lib.remove("shelf11")
+    check(launches.qids == [x["qid"], x["qid"]],
+          f"a stream prepare that failed is not started again from the same stream, and the file that then reaches "
+          f"the shelf gets its own attempt (launched {launches.qids})")
+
+
 def prepared_head_moved_back_during_the_poll(A, E, readers):
     check(play(A, E, readers, "d1"), "d1 is on the platter, read")
     x, y = (dict(e, auto=False) for e in two_entries(A, 10))
@@ -1241,6 +1262,7 @@ def main():
                 engine_prepare_failure_right_after_the_poll(A, E, readers)
                 prepare_published_right_after_the_poll(A, E, readers)
                 prepared_head_moved_back_during_the_poll(A, E, readers)
+                stream_prepare_failed_then_the_file_reached_the_shelf(A, E, readers)
                 audio_version_entries(A, E)
                 audio_version_while_an_entry_plays_from_the_queue(A)
                 file_wait_after_a_passage_switch(A, E, readers)

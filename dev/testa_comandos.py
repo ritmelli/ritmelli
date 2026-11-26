@@ -2804,7 +2804,8 @@ def engine_seams(A, E):
             E.__class__, E._qlock = engine_class, qlock
         A._volta_passagem()
     pairs = [(a, b) for a, b in zip(reads, reads[1:]) if a[0] == "failure"]
-    confere(A.passagem_falhou == (id(E.track), x["qid"], x.get("youtube_id") or x.get("url")) and again is None,
+    confere(A.passagem_falhou == A.last_prepare_key and A.passagem_falhou[:2] == (id(E.track), x["qid"])
+            and again is None,
             f"the passage watcher takes the prepare failure out of the engine, once ({A.passagem_falhou})")
     confere(uses and all(uses), f"and reads and clears it under the engine's _qlock ({uses})")
     confere(len(pairs) == 2 and all(b[0] == "pronto" and a[1:] == b[1:] == (a[1], True) for a, b in pairs),

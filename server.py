@@ -593,8 +593,7 @@ class App:
         self.sonoridade_falhou = set()  # os discos da prateleira que o ffmpeg nao mediu: nao tenta de novo
         self._son_lock = threading.Lock()
         self.parado_sem_fila = None  # disco que acabou com a fila vazia: a parecida que chegar toca
-        self.preparando = self.last_prepare_key = None
-        self.passagem_falhou = None
+        self.preparando = self.last_prepare_key = self.passagem_falhou = None
         self.closing = False
         # a janela propria (janela.py), quando ha: fechar ela desliga o servidor (pede_desligar), e o servidor que
         # para sozinho fecha ela (main). O loop e o desliga sao do servir e do build
@@ -1484,14 +1483,15 @@ class App:
         return tr
 
     # passagem para a proxima (a transicao de DJ) --------------------------
-    def fonte_de(self, x):
-        """The queue entry's record for the engine's second deck, or None when the passage does not apply (the
-        _vigia_fila plays it at the end, as an entry with no download): from the shelf, a builder of the file's record;
-        the Automatico's similar one, the stream; one still downloading, the running download's stream."""
+    def shelf_item(self, x):
         j = self.jobs.get(x.get("job") or "")
-        it = (self.lib.get(x["id"]) if x.get("id") else None) or \
-             (self.lib.by_youtube(x["youtube_id"]) if x.get("youtube_id") else None) or \
-             (self.lib.get(j["item_id"]) if j and j.get("item_id") else None)
+        return j, self.lib.get(x.get("id")) or (self.lib.by_youtube(x["youtube_id"]) if x.get("youtube_id") else None) \
+            or (self.lib.get(j.get("item_id")) if j else None)
+
+    def fonte_de(self, x):
+        """The second deck's record, or None when the passage does not apply (the _vigia_fila plays it at the end):
+        from the shelf, a builder of the file's record; else the Automatico's stream or the running download's."""
+        j, it = self.shelf_item(x)
         if it:
             return lambda: dict(it, path=str(LIB / it["file"]), **marca_auto(x))
         alvo = x.get("youtube_id") or x.get("url")
@@ -1556,7 +1556,7 @@ class App:
                     and cap.status in ("playing", "paused", "buffering"))
             if pronto is not None and (not pode or x["qid"] != pronto):
                 e.cancelar_pronto()
-        source = seen.get("youtube_id") or seen.get("url")
+        source = (seen.get("youtube_id") or seen.get("url"), (self.shelf_item(seen)[1] or {}).get("file"))
         if failed is not None:
             self.passagem_falhou = tried if tried is not None and tried[1] == failed else (id(tr), failed, source)
         if not pode or (pronto is not None and x["qid"] == pronto) or dur - cap.pos > eng.TRANS_PREP_S:
