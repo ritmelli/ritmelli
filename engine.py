@@ -1038,8 +1038,8 @@ class Injetor:
         # a pista da voz no comando (um processo converte a voz e o filtro poe no lugar da do microfone): o fone e o
         # medidor levam a voz dela, que e o que o jogo ouve, e nao a crua
         p = m.pista_le()  # sempre le: a posicao anda junto com o escritor
-        self.motor.voice_pedal.track(m.pista_ligou())
         self.motor._pista_viva = viva = m.pista_viva()
+        self.motor.voice_pedal.track(m.pista_ligou())
         if viva and len(p):
             p = np.concatenate([self._resto_pista, p])
             n = len(p) // BLOCK * BLOCK

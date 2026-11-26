@@ -97,7 +97,7 @@ class FiltroFalso:
             a.voz_taxa = self.taxa
             a.voz_escrito = fim + k
             self.enviado += k
-            if a.pista_ligada and k32.GetTickCount64() - a.pista_batida < injeta.PISTA_MS:
+            if a.pista_estado & 1 and k32.GetTickCount64() - a.pista_batida < injeta.PISTA_MS:
                 if a.pista_lido[0] < 0:
                     a.pista_lido[0] = a.pista_inicio
                 ini = a.pista_lido[0]
@@ -146,7 +146,7 @@ def roda_pista(filtro, conv, segundos, ajuste=None):
     t0 = time.perf_counter()
     while p.vai and time.perf_counter() - t0 < segundos:
         time.sleep(0.05)
-    ligada_antes = bool(filtro.a.pista_ligada)
+    ligada_antes = bool(filtro.a.pista_estado & 1)
     p.vai = False
     t.join(timeout=2)
     m.fecha()
@@ -161,7 +161,7 @@ class TestaPista(unittest.TestCase):
         try:
             p, ligada = roda_pista(f, ConversorFalso(), 2.0)
             self.assertTrue(ligada, "a pista ligou")
-            self.assertFalse(f.a.pista_ligada, "sair desliga a pista na hora")
+            self.assertFalse(f.a.pista_estado & 1, "sair desliga a pista na hora")
             self.assertIsNone(p.erro)
             lido = np.concatenate(f.lido)
             self.assertGreater(len(lido), pista.COLCHAO + N, "o filtro leu o colchao e a voz")
@@ -235,7 +235,7 @@ class TestaPista(unittest.TestCase):
             p, _ = roda_pista(f, ConversorFalso(falha=True), 3.0)
             self.assertIn("placa sumiu", p.erro or "")
             self.assertFalse(p.vai)
-            self.assertFalse(f.a.pista_ligada, "a voz do microfone volta")
+            self.assertFalse(f.a.pista_estado & 1, "a voz do microfone volta")
         finally:
             f.fecha()
 
@@ -409,7 +409,7 @@ class TestaProcesso(unittest.TestCase):
                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env)
             self.assertEqual(p.stdout.readline().strip(), "pronto")
             time.sleep(3)
-            self.assertTrue(f.a.pista_ligada)
+            self.assertTrue(f.a.pista_estado & 1)
             secas = f.secas
             time.sleep(3)
             self.assertEqual(f.secas, secas, "a pista nao secou depois da partida")
@@ -419,7 +419,7 @@ class TestaProcesso(unittest.TestCase):
             self.assertEqual(p.wait(timeout=15), 0)
             p.stdout.close()
             p.stderr.close()
-            self.assertFalse(f.a.pista_ligada)
+            self.assertFalse(f.a.pista_estado & 1)
             lido = np.concatenate(f.lido)[pista.COLCHAO:]
             self.assertGreater(float(np.sqrt((lido ** 2).mean())), 1e-4, "a voz convertida nao e silencio")
         finally:

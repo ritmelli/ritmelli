@@ -57,7 +57,7 @@ class Anel(ctypes.Structure):
                 ("voz_fx", ctypes.c_float * VOZ_QUADROS), ("preset", ctypes.c_uint8 * PRESET_BYTES),
                 ("voz_dono", ctypes.c_uint32), ("fx_dono", ctypes.c_uint32), ("voz_batida", ctypes.c_int64),
                 ("fx_batida", ctypes.c_int64),
-                ("pista_ligada", ctypes.c_uint32), ("pista_ligou_ms", ctypes.c_uint32),
+                ("pista_estado", ctypes.c_uint64),
                 ("pista_escrito", ctypes.c_int64), ("pista_batida", ctypes.c_int64), ("pista_inicio", ctypes.c_int64),
                 ("pista_lido", ctypes.c_int64 * LEITORES), ("pista", ctypes.c_float * (PISTA_QUADROS * CANAIS))]
 
@@ -69,7 +69,7 @@ assert Anel.fx_escrito.offset == 328000 and Anel.preset_seq.offset == 328008 and
 assert Anel.preset.offset == 328024 + VOZ_QUADROS * 4
 assert Anel.voz_dono.offset == 459096 and Anel.fx_dono.offset == 459100
 assert Anel.voz_batida.offset == 459104 and Anel.fx_batida.offset == 459112
-assert Anel.pista_ligada.offset == 459120 and Anel.pista_escrito.offset == 459128 and Anel.pista_batida.offset == 459136
+assert Anel.pista_estado.offset == 459120 and Anel.pista_escrito.offset == 459128 and Anel.pista_batida.offset == 459136
 assert Anel.pista_inicio.offset == 459144 and Anel.pista_lido.offset == 459152 and Anel.pista.offset == 459216
 assert ctypes.sizeof(Anel) == 459216 + PISTA_QUADROS * CANAIS * 4
 
@@ -202,17 +202,16 @@ class Microfone:
         folga escreve um pouco de silencio logo depois de ligar, antes da voz."""
         new = ligada and not self._pista_ligou
         self.a.pista_batida = k32.GetTickCount64()
-        if ligada and not self.a.pista_ligada:
+        if ligada and not self.a.pista_estado & 1:
             self.a.pista_inicio = self.a.pista_escrito  # antes de ligar: o filtro so le a marca com a pista ligada
         self._pista_ligou = ligada
         if new:
-            on = ctypes.c_uint64.from_address(ctypes.addressof(self.a) + Anel.pista_ligada.offset)
-            on.value = (1 + round(clock() * 1000) % (2**32 - 1)) << 32 | 1
+            self.a.pista_estado = (1 + round(clock() * 1000) % (2**32 - 1)) << 32 | 1
         else:
-            self.a.pista_ligada = 1 if ligada else 0
+            self.a.pista_estado = self.a.pista_estado & ~1 | (1 if ligada else 0)
 
     def pista_ligou(self):
-        return self.a.pista_ligou_ms
+        return self.a.pista_estado >> 32
 
     def pista_pulso(self):
         """O escritor da pista esta vivo (chamar a cada volta, mesmo sem ter o que escrever)."""
@@ -239,7 +238,7 @@ class Microfone:
     def pista_viva(self):
         """A pista da voz esta no comando: ligada e com o escritor batendo (o filtro poe a voz dela no lugar da do
         microfone)."""
-        return bool(self.a.pista_ligada) and k32.GetTickCount64() - self.a.pista_batida < PISTA_MS
+        return bool(self.a.pista_estado & 1) and k32.GetTickCount64() - self.a.pista_batida < PISTA_MS
 
     def pista_le(self):
         """A voz da pista escrita desde a ultima leitura (float32 mono, 48 kHz): o que o jogo ouve no lugar da voz do
@@ -328,7 +327,7 @@ if __name__ == "__main__":
     if sys.argv[1] == "estado":
         m = Microfone()
         print(f"ring ok: written {m.a.escrito}, target {m.a.alvo:#010x}, no_voice {m.a.sem_voz}, voice {m.a.voz_escrito} "
-              f"at {m.a.voz_taxa} Hz, voice track {'on' if m.a.pista_ligada else 'off'} "
+              f"at {m.a.voz_taxa} Hz, voice track {'on' if m.a.pista_estado & 1 else 'off'} "
               f"({m.a.pista_escrito} written, heartbeat {k32.GetTickCount64() - m.a.pista_batida} ms ago)")
         for i, l in enumerate(m.a.leitor):
             if l.dono:
