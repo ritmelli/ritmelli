@@ -6,6 +6,7 @@ runs on a mutant of the real file and has to catch it. Standard library only.
     python dev/test_monta_contract.py
 """
 import copy
+import json
 import re
 import sys
 from pathlib import Path
@@ -21,7 +22,7 @@ INPUTS = ("notas", "notas_en")
 REQUIRED_JOBS = ("testa", "testa-atualizador", "testa-migracao", "testa-parcial")
 SETUP, EXE = f"Ritmelli-{MARK}", f"ritmelli-exe-{MARK}"
 NOTES = {"NOTAS": ("${{ inputs.notas }}", "--notas"), "NOTAS_EN": ("${{ inputs.notas_en }}", "--notas-en")}
-STEP_OUTPUTS = {"anterior": r"steps\.([\w-]+)\.outputs\.([\w-]+) != ''",
+STEP_OUTPUTS = {"anterior": r"steps\.([\w-]+)\.outputs\.([\w-]+)\s*!=\s*''",
                 "parcial": r"steps\.([\w-]+)\.outputs\.(parcial)"}
 OTHER_VERSION = re.compile(r"Ritmelli-(?:[0-9]|<version>|\$\{\{.*?\}\})(?:[0-9.]|<version>|\$\{\{.*?\}\})*")
 
@@ -192,6 +193,18 @@ def shown(doc, name):
     return next(j for k, j in doc["jobs"].items() if display(k, j) == name or display(k, j).startswith(name + " ("))
 
 
+def source_step(doc, name):
+    value = inner(doc["jobs"]["monta"]["outputs"][name])
+    return step_by_id(doc["jobs"]["monta"], re.fullmatch(STEP_OUTPUTS[name], value).group(1))
+
+
+def rename_step(doc, old, new):
+    monta = doc["jobs"]["monta"]
+    step_by_id(monta, old)["id"] = new
+    text = json.dumps(monta).replace(f"steps.{old}.", f"steps.{new}.")
+    doc["jobs"]["monta"] = json.loads(text)
+
+
 def mutant(doc, change):
     doc = copy.deepcopy(doc)
     change(doc)
@@ -286,16 +299,15 @@ def main():
         "the anterior output written as a constant": lambda d: d["jobs"]["monta"]["outputs"].update(anterior="false"),
         "the anterior output inverted": lambda d: d["jobs"]["monta"]["outputs"].update(
             anterior=d["jobs"]["monta"]["outputs"]["anterior"].replace("!=", "==")),
-        "the step behind the anterior output under a condition": lambda d: step_by_id(
-            d["jobs"]["monta"], "anterior").update({"if": "github.event_name == 'push'"}),
+        "the step behind the anterior output under a condition": lambda d: source_step(d, "anterior").update(
+            {"if": "github.event_name == 'push'"}),
         "the parcial output with a longer key": lambda d: d["jobs"]["monta"]["outputs"].update(
-            parcial="${{ steps.monta.outputs.parcial-exe }}"),
+            parcial=d["jobs"]["monta"]["outputs"]["parcial"].replace("outputs.parcial", "outputs.parcial-exe")),
         "the parcial output from another key": lambda d: d["jobs"]["monta"]["outputs"].update(
             parcial="${{ steps.congela.outputs.versao }}"),
-        "the id of the step behind the anterior output": lambda d: step_by_id(d["jobs"]["monta"], "anterior").update(
-            id="previous"),
-        "the parcial the monta step writes": lambda d: step_by_id(d["jobs"]["monta"], "monta").update(
-            run=step_by_id(d["jobs"]["monta"], "monta")["run"].replace('"parcial=$', '"partial=$')),
+        "the id of the step behind the anterior output": lambda d: source_step(d, "anterior").update(id="previous"),
+        "the parcial the monta step writes": lambda d: source_step(d, "parcial").update(
+            run=source_step(d, "parcial")["run"].replace('"parcial=$', '"partial=$')),
         "the parcial output": lambda d: d["jobs"]["monta"]["outputs"].pop("parcial"),
         "the versao output": lambda d: d["jobs"]["monta"]["outputs"].update(
             versao="${{ steps.freeze.outputs.versao }}"),
@@ -368,9 +380,18 @@ def main():
     check("$item" in manifest_step(item["jobs"]["monta"])["run"] and contract_problems(item) == []
           and comment_notes_loop(manifest_step(item["jobs"]["monta"])["run"]).count("# foreach") == 1,
           "the notes loop with another variable keeps the contract and its mutant still comments it out")
+    compact = mutant(doc, lambda d: d["jobs"]["monta"]["outputs"].update(
+        anterior=d["jobs"]["monta"]["outputs"]["anterior"].replace(" != ", "!=")))
+    check("!=''" in compact["jobs"]["monta"]["outputs"]["anterior"] and contract_problems(compact) == [],
+          "the anterior comparison written without spaces keeps the contract")
+    renamed_steps = mutant(doc, lambda d: (rename_step(d, source_step(d, "anterior")["id"], "previous_build"),
+                                           rename_step(d, source_step(d, "parcial")["id"], "build")))
+    check(contract_problems(renamed_steps) == [], "the steps behind anterior and parcial with other ids keep the "
+                                                  "contract")
     for base, label in ((doc, ""), (spaces, " (version expression without spaces)"),
                         (packed_folder, " (folder of --saida assigned without spaces)"),
-                        (renamed_job, " (testa job with another id)")):
+                        (renamed_job, " (testa job with another id)"),
+                        (renamed_steps, " (steps behind anterior and parcial with other ids)")):
         for name, change in mutants.items():
             check(contract_problems(mutant(base, change)) != [], f"the check catches {name} changed{label}")
     print(f"{'all passed' if not failures else f'{len(failures)} failed'}")
