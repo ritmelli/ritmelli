@@ -36,10 +36,10 @@ até 80 linhas (o `dev/garden.py` confere as duas).
   `theme_inline_lines` do `dev/garden.py`.
 - O PR que mexe na montagem (o `BUILD_PATHS` do `dev/testa_tudo.py`) só passa no "Testa o PR" com uma execução aprovada
   do "Monta o instalador" (`monta.yml`) no head: rode-o na branch (o "Verdict", provado pelo `dev/test_ci_workflow.py`).
-  O `dev/test_monta_contract.py` exige os artefatos `Ritmelli-<versão>` e `ritmelli-exe-<versão>` em toda montagem, um
-  job mostrado como `testa`, `testa-atualizador` e `testa-migracao` (ou com o sufixo de matriz, `nome (...)`) na
-  montagem com a versão anterior, e o `testa-parcial` na que tem parcial: são o que a publicação procura
-  ([dev.md](docs/arquitetura/dev.md#a-montagem)).
+- O contrato da montagem com a publicação do `ritmelli-server` tem três verificações: o `dev/test_monta_contract.py` (os
+  nomes dos artefatos e dos jobs e o passo do manifesto da `monta.yml`), os casos do `build_manifest.py` no
+  `instalador/atualizacao/testa_parcial.py` (a chamada do `publica.py`) e o `atualizacao/test_contract.py` do server,
+  que roda o script num build de mentira ([dev.md](docs/arquitetura/dev.md#a-montagem)).
 
 ## O mapa: área, arquivos e teste
 
@@ -56,7 +56,7 @@ até 80 linhas (o `dev/garden.py` confere as duas).
 | Protocolo da sessão remota | `docs/protocolo-remoto.md`, `docs/protocolo-remoto/v1/` | `testa_protocolo` (`--gera` escreve as fixtures de novo) |
 | Filtro e efeitos | `microfone/`, `fx.py`, `instalador/mudos.iss`, `winvol.py` | `testa_filtro`, `testa_mfx`, `testa_microfone`, `testa_anel`, `testa_aparelho_mudo` (os casos do setup de teste precisam do Inno Setup 6: sem ele, pulam no PC e reprovam no GitHub), `testa_voz` e `microfone/apo/teste/teste_reamostra.py` (este, o `testa_filtro`, o `testa_microfone` e o `testa_voz` precisam das DLLs do `microfone\apo\compila.bat teste`), `test_winvol` (o volume do microfone, com aparelhos falsos do Windows) |
 | Troca de voz | `pistavoz.py`, `pista.py`, `conversor.py`, `vozes.json` | `testa_pedal_voz`, `testa_vozes`, `testa_pista`, `testa_conversor` |
-| Atualizações | `atualizacao.py`, `atualizador.py`, `instalador/atualizacao/` | `testa_atualizacao`, `testa_atualizador` e `instalador/atualizacao/testa_parcial.py` |
+| Atualizações | `atualizacao.py`, `atualizador.py`, `instalador/atualizacao/` | `testa_atualizacao`, `testa_atualizador`, `instalador/atualizacao/testa_parcial.py` e `test_uninstall_wait` (a espera do desinstalador do `instalador/testa-atualizador.ps1`) |
 | Textos | `i18n.py`, `themes/ritmelli/i18n/`, `gallery/i18n/` | `testa_i18n` |
 | Dados de uso | `metricas.py` e o aviso deles no tema | `testa_metricas`; o aviso, `fitcheck.py --metricas` (sobe os próprios `--mock --metricas-teste`, sem rede) |
 | Troca de nome | `migra.py` | `testa_migra` |
