@@ -104,8 +104,10 @@ def partial_probed(job, folder):
     source = re.fullmatch(STEP_OUTPUTS["parcial"], inner((job.get("outputs") or {}).get("parcial", "")) or "")
     step = source and step_by_id(job, source.group(1))
     wanted = normal_path(folder) + "/Ritmelli-$env:VERSAO-parcial.exe"
-    probes = re.findall(r"""Test-Path\s+(?:-Path\s+)?(["'])([^"']+)\1""", code(step.get("run", ""))) if step else []
-    return any(normal_path(path) == wanted for _, path in probes)
+    if not step or inner((step.get("env") or {}).get("VERSAO", "")) != inner(VERSION):
+        return False
+    probes = re.findall(r'Test-Path\s+(?:-Path\s+)?"([^"]+)"', code(step.get("run", "")))
+    return any(normal_path(path) == wanted for path in probes)
 
 
 def step_output_problem(job, name):
@@ -502,6 +504,10 @@ def main():
             run=step_by_id(d["jobs"]["monta"], "congela")["run"].replace(
                 "-Path $env:GITHUB_OUTPUT -Value \"versao=", '-Path "$env:GITHUB_OUTPUT.tmp" -Value "versao=')),
         "the ritmelli-exe upload in a job that needs testa-parcial": lambda d: move_exe_upload(d),
+        "the partial setup looked for in single quotes": lambda d: source_step(d, "parcial").update(
+            run=re.sub(r'Test-Path "([^"]*-parcial\.exe)"', r"Test-Path '\1'", source_step(d, "parcial")["run"])),
+        "the VERSAO of the step behind the parcial output": lambda d: source_step(d, "parcial")["env"].update(
+            VERSAO="${{ steps.congela.outputs.version }}"),
         "the partial setup the monta step looks for": lambda d: source_step(d, "parcial").update(
             run=source_step(d, "parcial")["run"].replace("-parcial.exe\"", "-partial.exe\"")),
         "testa-atualizador only on push": lambda d: shown(d, "testa-atualizador").update(
