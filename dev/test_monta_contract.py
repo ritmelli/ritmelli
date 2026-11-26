@@ -93,11 +93,12 @@ def output_lines(run, key):
     path = r"""(?:^|\s)-Path\s+("?)(?:\$env:GITHUB_OUTPUT|\$\{env:GITHUB_OUTPUT\})\1(?=\s|$)"""
     lines = re.finditer(r"[^\n]*", code(run))
     return [(m.start(), m.group(0)) for m in lines if re.match(r"\s*Add-Content\b", m.group(0), re.I)
-            and re.search(path, m.group(0), re.I) and f'"{key}=$' in m.group(0)]
+            and re.search(path, m.group(0), re.I) and re.search(rf"""["']{key}=""", m.group(0))]
 
 
 def writes_output(run, key):
-    return bool(output_lines(run, key))
+    lines = output_lines(run, key)
+    return len(lines) == 1 and f'"{key}=$' in lines[0][1]
 
 
 def bare(condition):
@@ -116,6 +117,7 @@ def partial_probed(job, folder):
     written = r'"parcial=\$\(\${0}\.ToString\(\)\.ToLower\(\)\)"|"parcial=\${0}"'
     return any(normal_path(m.group(2)) == wanted
                and len(re.findall(rf"\${m.group(1)}\b\s*[-+*/]?=(?!=)", run, re.I)) == 1
+               and len(output_lines(run, "parcial")) == 1
                and any(at > m.start() and re.search(written.format(m.group(1)), line, re.I)
                        for at, line in output_lines(run, "parcial")) for m in probes)
 
@@ -536,6 +538,12 @@ def main():
                 'Add-Content -Path $env:GITHUB_OUTPUT -Value "parcial=$($other.')),
         "the parcial written before the probe": lambda d: source_step(d, "parcial").update(
             run=move_output_before_probe(source_step(d, "parcial")["run"])),
+        "a second Add-Content writing parcial=false": lambda d: source_step(d, "parcial").update(
+            run=source_step(d, "parcial")["run"].rstrip("\n")
+            + '\nAdd-Content -Path $env:GITHUB_OUTPUT -Value "parcial=false" -Encoding ascii\n'),
+        "a second Add-Content writing an empty versao": lambda d: step_by_id(d["jobs"]["monta"], "congela").update(
+            run=step_by_id(d["jobs"]["monta"], "congela")["run"].rstrip("\n")
+            + '\nAdd-Content -Path $env:GITHUB_OUTPUT -Value "versao=" -Encoding ascii\n'),
         "the partial probe negated": lambda d: source_step(d, "parcial").update(
             run=re.sub(r'= Test-Path ("[^"]*-parcial\.exe")', r"= -not (Test-Path \1)",
                        source_step(d, "parcial")["run"])),
