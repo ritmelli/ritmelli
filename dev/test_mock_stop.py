@@ -34,8 +34,26 @@ server.App = guard_crossed
 sys.argv = ["server.py", "--no-browser", "--port", sys.argv[2], *sys.argv[3:]]
 server.main()
 """
+REAL_TIME_MEASUREMENT_DRIVER = """
+import subprocess
+import sys
+import types
+sys.path.insert(0, sys.argv[1])
+import server
+import sonoridade
+
+
+class RealTime(subprocess.Popen):
+    def __init__(self, args, *rest, **kwargs):
+        at = args.index("-i")
+        super().__init__([*args[:at], "-re", *args[at:]], *rest, **kwargs)
+
+
+sonoridade.subprocess = types.SimpleNamespace(**{**vars(subprocess), "Popen": RealTime})
+sys.argv = ["server.py", *sys.argv[2:]]
+server.main()
+"""
 HOLDER_WAIT_S = 30.0
-PROCESS_SUSPEND_RESUME = 0x0800
 CHILD_HOLDS_THE_TRACK = '''
 import subprocess
 import sys
@@ -67,7 +85,7 @@ class RmProcessInfo(ctypes.Structure):
                 ("AppStatus", wintypes.ULONG), ("TSSessionId", wintypes.DWORD), ("bRestartable", wintypes.BOOL)]
 
 
-def holder_processes(path):
+def holders(path):
     rm = ctypes.WinDLL("rstrtmgr")
     session, key = wintypes.DWORD(), ctypes.create_unicode_buffer(64)
     if rm.RmStartSession(ctypes.byref(session), 0, key):
@@ -80,27 +98,9 @@ def holder_processes(path):
         infos = (RmProcessInfo * 16)()
         if rm.RmGetList(session, ctypes.byref(needed), ctypes.byref(count), infos, ctypes.byref(reasons)):
             raise OSError("RmGetList failed")
-        return [(infos[i].strAppName, infos[i].Process.dwProcessId) for i in range(count.value)]
+        return [infos[i].strAppName for i in range(count.value)]
     finally:
         rm.RmEndSession(session)
-
-
-def holders(path):
-    return [name for name, _ in holder_processes(path)]
-
-
-def suspend(pid):
-    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
-    kernel.OpenProcess.restype = wintypes.HANDLE
-    handle = kernel.OpenProcess(PROCESS_SUSPEND_RESUME, False, pid)
-    if not handle:
-        raise ctypes.WinError(ctypes.get_last_error())
-    try:
-        status = ctypes.WinDLL("ntdll").NtSuspendProcess(wintypes.HANDLE(handle))
-        if status:
-            raise OSError(f"NtSuspendProcess failed for {pid}: {status:#x}")
-    finally:
-        kernel.CloseHandle(wintypes.HANDLE(handle))
 
 
 def shelf_with_one_long_track(tmp):
@@ -122,8 +122,8 @@ def shelf_with_one_long_track(tmp):
 def wait_for_ffmpeg_on(path):
     deadline = time.monotonic() + HOLDER_WAIT_S
     while time.monotonic() < deadline:
-        found = [(name, pid) for name, pid in holder_processes(path) if name.lower().startswith("ffmpeg")]
-        if found:
+        found = holders(path)
+        if any(name.lower().startswith("ffmpeg") for name in found):
             return found
         time.sleep(0.05)
     return []
@@ -135,17 +135,15 @@ def stop_while_measuring(role, extras):
         data, wav = shelf_with_one_long_track(tmp)
         port = so_mock.free_port()
         with open(tmp / "server.log", "w", encoding="utf-8") as log:
-            srv = so_mock.sobe([sys.executable, str(ROOT / "server.py"), "--mock", "--no-browser", "--port", str(port),
-                                "--data-dir", str(data), *extras], port, cwd=ROOT, stdout=log,
+            srv = so_mock.sobe([sys.executable, "-c", REAL_TIME_MEASUREMENT_DRIVER, str(ROOT), "--mock", "--no-browser",
+                                "--port", str(port), "--data-dir", str(data), *extras], port, cwd=ROOT, stdout=log,
                                stderr=subprocess.STDOUT, env=dict(os.environ, LOCALAPPDATA=str(tmp / "local")))
             try:
                 measuring = wait_for_ffmpeg_on(wav)
-                for _, pid in measuring:
-                    suspend(pid)
             finally:
                 stop_error = stop(srv)
-        check(bool(measuring), f"{role}: the shelf loudness measurement opened the track with ffmpeg, held there "
-                               f"(suspended) until the stop ({measuring})")
+        check(bool(measuring), f"{role}: the shelf loudness measurement, read at real time (-re) so it lasts past the "
+                               f"stop, opened the track with ffmpeg ({measuring})")
         left = holders(wav)
         try:
             os.remove(wav)
@@ -223,7 +221,7 @@ def measurement_stopped_by_the_given_kill():
     name = rf"\\.\pipe\ritmelli-measure-stop-{os.getpid()}"
     pipe = _winapi.CreateNamedPipe(name, _winapi.PIPE_ACCESS_DUPLEX | _winapi.FILE_FLAG_OVERLAPPED, 0, 1, 65536, 65536,
                                    0, _winapi.NULL)
-    result, kills, waited_by, connected, broken = [], [], [], False, False
+    result, kills, waited_by, connected, returned_in_time, broken = [], [], [], False, False, False
     measuring = threading.Thread(target=lambda: result.append(sonoridade.mede_arquivo(Path(name), engine.FFMPEG)),
                                  daemon=True)
     returned = threading.Event()
@@ -253,7 +251,7 @@ def measurement_stopped_by_the_given_kill():
             writing, _ = _winapi.WriteFile(pipe, endless_wav_header(), overlapped=True)
             writing.GetOverlappedResult(True)
             stopping.start()
-            returned.wait(HOLDER_WAIT_S)
+            returned_in_time = returned.wait(HOLDER_WAIT_S)
             measuring.join(HOLDER_WAIT_S)
             try:
                 writing, _ = _winapi.WriteFile(pipe, bytes(1024), overlapped=True)
@@ -263,13 +261,13 @@ def measurement_stopped_by_the_given_kill():
     finally:
         _winapi.CloseHandle(pipe)
         measuring.join(HOLDER_WAIT_S)
-        if connected:
+        if stopping.ident is not None:
             stopping.join(HOLDER_WAIT_S)
     stop_waited = stopping in waited_by
-    check(connected and len(kills) == 1 and stop_waited and returned.is_set() and result == [None] and broken,
+    check(connected and len(kills) == 1 and stop_waited and returned_in_time and result == [None] and broken,
           f"stop_measurements ends a measurement still reading its track through the kill it is given (the engine's "
           f"mata) and waits for it: the ffmpeg is gone when it returns (opened {connected}, {len(kills)} kill, "
-          f"waited by the stop {stop_waited}, returned {returned.is_set()}, {result}, gone {broken})")
+          f"waited by the stop {stop_waited}, returned {returned_in_time}, {result}, gone {broken})")
 
 
 def stop(srv):
