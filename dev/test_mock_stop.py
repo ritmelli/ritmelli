@@ -1,5 +1,6 @@
 import _winapi
 import ctypes
+import gc
 import io
 import json
 import os
@@ -8,6 +9,7 @@ import sys
 import tempfile
 import threading
 import time
+import tracemalloc
 import wave
 from ctypes import wintypes
 from pathlib import Path
@@ -202,6 +204,40 @@ def flag_only_for_a_server_that_knows_it():
               "would refuse it")
 
 
+def pipe_named(name):
+    return _winapi.CreateNamedPipe(name, _winapi.PIPE_ACCESS_DUPLEX | _winapi.FILE_FLAG_OVERLAPPED, 0, 1, 65536, 65536,
+                                   0, _winapi.NULL)
+
+
+def connect_within(pipe, seconds):
+    connecting = _winapi.ConnectNamedPipe(pipe, overlapped=True)
+    if _winapi.WaitForSingleObject(connecting.event, int(seconds * 1000)) != _winapi.WAIT_OBJECT_0:
+        connecting.cancel()
+    _, error = connecting.GetOverlappedResult(True)
+    return error == 0
+
+
+def connect_that_times_out_leaves_nothing_pending():
+    rounds = 300
+    gc.collect()
+    tracemalloc.start()
+    before = tracemalloc.take_snapshot()
+    connected = []
+    for i in range(rounds):
+        pipe = pipe_named(rf"\\.\pipe\ritmelli-nobody-{os.getpid()}-{i}")
+        try:
+            connected.append(connect_within(pipe, 0.001))
+        finally:
+            _winapi.CloseHandle(pipe)
+    gc.collect()
+    after = tracemalloc.take_snapshot()
+    tracemalloc.stop()
+    kept = sum(d.size_diff for d in after.compare_to(before, "filename") if d.size_diff > 0)
+    check(not any(connected) and kept < rounds * 50,
+          f"a pipe connect that nobody answers is cancelled and collected before the pipe closes: {rounds} of them "
+          f"keep {kept} bytes ({connected.count(True)} connected)")
+
+
 def endless_wav_header():
     buf = io.BytesIO()
     with wave.open(buf, "wb") as w:
@@ -219,8 +255,7 @@ def measurement_stopped_by_the_given_kill():
     import engine
     import sonoridade
     name = rf"\\.\pipe\ritmelli-measure-stop-{os.getpid()}"
-    pipe = _winapi.CreateNamedPipe(name, _winapi.PIPE_ACCESS_DUPLEX | _winapi.FILE_FLAG_OVERLAPPED, 0, 1, 65536, 65536,
-                                   0, _winapi.NULL)
+    pipe = pipe_named(name)
     result, kills, waited_by, connected, returned_in_time, broken = [], [], [], False, False, False
     measuring = threading.Thread(target=lambda: result.append(sonoridade.mede_arquivo(Path(name), engine.FFMPEG)),
                                  daemon=True)
@@ -245,8 +280,7 @@ def measurement_stopped_by_the_given_kill():
     stopping = threading.Thread(target=stop, daemon=True)
     try:
         measuring.start()
-        connecting = _winapi.ConnectNamedPipe(pipe, overlapped=True)
-        connected = _winapi.WaitForSingleObject(connecting.event, int(HOLDER_WAIT_S * 1000)) == _winapi.WAIT_OBJECT_0
+        connected = connect_within(pipe, HOLDER_WAIT_S)
         if connected:
             writing, _ = _winapi.WriteFile(pipe, endless_wav_header(), overlapped=True)
             writing.GetOverlappedResult(True)
@@ -443,9 +477,40 @@ def compara_folder_removed_when_the_stop_fails():
           f"a compara whose server stop fails keeps that failure and still removes its temporary folder ({refused})")
 
 
+def compara_folder_removed_when_the_server_refuses():
+    made, real_mkdtemp = [], compara.tempfile.mkdtemp
+
+    def mkdtemp(*args, **kwargs):
+        made.append(real_mkdtemp(*args, **kwargs))
+        return made[-1]
+
+    argv = sys.argv
+    with tempfile.TemporaryDirectory(prefix="ritmelli-refusal-check-") as folder:
+        checkout = Path(folder) / "checkout"
+        checkout.mkdir()
+        (checkout / "server.py").write_text("import sys\nsys.exit(3)\n", encoding="utf-8")
+        compara.tempfile.mkdtemp = mkdtemp
+        sys.argv = ["compara.py", "--ref", "--sizes", "390x844@3", "--pasta", str(Path(folder) / "out"), "--raiz",
+                    str(checkout)]
+        try:
+            compara.main()
+            refused = None
+        except SystemExit as ex:
+            refused = str(ex.code)
+        finally:
+            sys.argv = argv
+            compara.tempfile.mkdtemp = real_mkdtemp
+    server_folders = [m for m in made if "ritmelli-compara-" in Path(m).name]
+    check(refused is not None and len(server_folders) == 1 and not Path(server_folders[0]).exists(),
+          f"a compara whose server refuses to start exits with that refusal and still removes its temporary folder "
+          f"({refused}, {server_folders})")
+
+
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
     compara_folder_removed_when_the_stop_fails()
+    compara_folder_removed_when_the_server_refuses()
+    connect_that_times_out_leaves_nothing_pending()
     job_api_failures()
     resume_cleanup_when_terminate_fails()
     resume_that_fails()

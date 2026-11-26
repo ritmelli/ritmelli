@@ -442,15 +442,15 @@ def main():
     destino.mkdir(parents=True)
     tmp = Path(tempfile.mkdtemp(prefix="ritmelli-compara-"))
     porta = free_port()
-    with open(pasta / "servidor.log", "w", encoding="utf-8") as log:
-        srv = sobe_servidor(tmp, porta, log, raiz)
-        try:
-            erros, instaveis = asyncio.run(prints(a, srv, destino))
-        finally:
+    try:
+        with open(pasta / "servidor.log", "w", encoding="utf-8") as log:
+            srv = sobe_servidor(tmp, porta, log, raiz)
             try:
-                para_servidor(srv)
+                erros, instaveis = asyncio.run(prints(a, srv, destino))
             finally:
-                shutil.rmtree(tmp, ignore_errors=True)
+                para_servidor(srv)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
     for e in erros:
         print(f"ERRO   {e}")
     for i in instaveis:
