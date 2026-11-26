@@ -229,6 +229,13 @@ class Main(unittest.TestCase):
         self.assertEqual(sent, [("GET", "/api/effects"), ("POST", "/api/devices"), ("GET", "/api/state"),
                                 ("POST", "/api/shutdown")])
 
+    def test_the_filter_wait_needs_the_ring_open_too(self):
+        why, _, result = self.run_main(state(), "--cycles", "1",
+                                       events=[(1.0, state(anel=False)), (2.0, state(0, 0, 9.0, 10.0)),
+                                               (15.0, state(0, 0, 9.0, 10.0)), (25.0, None)])
+        self.assertIsNone(why, "a reader with the ring not open yet is not the filter reading it")
+        self.assertEqual(result["cycles"][0]["dry_outs"], 0)
+
     def test_a_fallback_microphone_after_the_filter_read_stops_before_the_pedal(self):
         why, sent, _ = self.run_main(state(), events=[(1.0, state(mic=FALLBACK))])
         self.assertIn(f"opened the microphone '{FALLBACK}' and not 'IN 1'", why)
@@ -274,9 +281,9 @@ class Main(unittest.TestCase):
                           result["longest_return_ms_since_the_ring_opened"]), (0, None, 9.0))
 
     def test_the_result_lists_only_the_dry_outs_between_its_cuts(self):
-        told = [dry_out_line(2, 7)] + [dry_out_line(n, 1) for n in (1, 2, 3)]
+        told = [dry_out_line(12, 7)] + [dry_out_line(n, 1) for n in (11, 12, 13)]
         why, _, result = self.run_main(state(), "--cycles", "1",
-                                       events=[(1.0, state(1, 0, 9.0, 10.0)), (15.0, state(2, 0, 656.0, 10.0)),
+                                       events=[(1.0, state(11, 0, 9.0, 10.0)), (15.0, state(12, 0, 656.0, 10.0)),
                                                (25.0, None)],
                                        late_lines=told)
         self.assertIsNone(why)

@@ -1316,12 +1316,16 @@ class TestVoicePedalDryOut(unittest.TestCase):
     def test_a_new_reader_is_in_the_state_before_the_ring_is_filled_for_it(self):
         self.wait_filled()
         before = self.inj.estado()["leitores_trocados"]
+        self.readers_held.clear()
+        self.readers_gate.clear()
+        self.assertTrue(self.readers_held.wait(3), "the injector never got to its readers")
         self.write_held.clear()
         self.write_gate.clear()
         self.a.leitor[0].dono = 2
         self.drain.set()
+        self.readers_gate.set()
         self.assertTrue(self.write_held.wait(3), "the ring was never filled for the new reader")
-        self.assertEqual(self.inj.estado()["leitores_trocados"], before + 1,
+        self.assertEqual((self.inj.secas, self.inj.estado()["leitores_trocados"]), (0, before + 1),
                          "the new reader waited for the ring to be filled for it")
 
     def test_the_readers_and_their_changes_are_published_together(self):

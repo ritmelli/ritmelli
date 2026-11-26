@@ -116,6 +116,10 @@ def mic_refusal(asked, state):
     return None
 
 
+def reading(st):
+    return st["microfone"]["anel"] and st["microfone"]["leitores"] >= 1
+
+
 def interruption(states_seen, mic):
     for st in states_seen:
         m = st["microfone"]
@@ -223,11 +227,11 @@ def main():
             events = urllib.request.urlopen(base + "/api/events", timeout=30)
             record = Record(events)
             try:
-                read = record.until(clock() + UP_S, want=lambda st: st["microfone"]["leitores"] >= 1)
+                read = record.until(clock() + UP_S, want=reading)
             except StreamBroken as ex:
                 sys.exit(f"waiting for the filter to read the ring: {ex} (see {server_err})")
             last = record.current
-            if last is None or last["microfone"]["leitores"] < 1:
+            if last is None or not reading(last):
                 sys.exit(f"the filter of {a.mic} never read the ring (see {server_err}; {len(read)} state(s) seen)")
             refusal = mic_refusal(a.mic, last)
             if refusal:
