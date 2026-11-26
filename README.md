@@ -547,7 +547,7 @@ If you changed the interface, also run `dev/fitcheck.py` against the `--mock` se
 has to pass, as it does on `main`. If you changed the welcome screen, also run it with `--boas-vindas`.
 
 If you changed the audio engine, the server, the filter or the updates, also run the tests that cover your change.
-The description at the top of each file (in Portuguese) says exactly what it checks.
+The description at the top of each test file explains what it checks.
 
 - The audio engine (`engine.py`, `sonoridade.py`, `transicao.py`): `dev/testa_ganho.py`, `dev/testa_preabre.py`,
   `dev/testa_congela.py`, `dev/testa_microfone.py`, `dev/testa_passagens.py` (the week of transition records in
