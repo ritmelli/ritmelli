@@ -1334,14 +1334,8 @@ def sem_rede():
                 srv.encerra(15)
                 arm.close()
     finally:
-        # o servidor saiu, mas o ffmpeg que media a sonoridade de um disco ainda pode estar com o .wav aberto: a pasta
-        # sai quando ele soltar
-        for _ in range(60):
-            shutil.rmtree(t, ignore_errors=True)
-            if not t.exists():
-                break
-            time.sleep(0.25)
-        confere(not t.exists(), f"a pasta do teste saiu ({t})")
+        shutil.rmtree(t, ignore_errors=True)
+        confere(not t.exists(), f"the test folder is removed at the first try, right after the server stops ({t})")
 
 
 tabela()

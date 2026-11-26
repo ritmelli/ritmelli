@@ -50,7 +50,7 @@ import permissao as perm
 import pastas
 import sonoridade
 from pastas import save_json
-from music import YT_ID, chaves_musica, find_track, segundos, thumb, track_artists
+from music import YT_ID, find_track, segundos, thumb, track_artists
 from versao import VERSAO
 from yt_erros import erro_do_video, yt_msg
 
@@ -598,29 +598,8 @@ class App:
         # os Proximos sobrepostos dividem um avanco so (comandos.pular): o em curso, ou None; muda sob a proximo_lock
         self.proximo = None
         self.proximo_lock = threading.Lock()  # antes do _qlock, e nunca com a fila_lock
-        # Automatico: a semente e o ultimo disco que o usuario escolheu; o mix, o Mix do YouTube ainda
-        # nao usado de mix_base (a semente, ou a ultima parecida quando o da semente acaba);
-        # fora, o que nao entra (tocou nesta sessao, ou o usuario tirou da fila). Vem ligado na instalacao nova; quem ja
-        # usava guardou o "auto" no config.json (o save_cfg grava a cada mudanca) e segue como estava
-        self.auto = bool(self.cfg.get("auto", True))
-        self.semente = None
-        self.mix, self.mix_base, self.ponte = None, None, None
-        self.mix_buscando, self.mix_falhou = False, 0.0
-        self.fora = set()
-        self.fora_musica = set()  # a mesma musica do que esta no fora, em outro video
-        # o andamento do comeco e do fim de cada disco (andamento.py), medido uma vez so: a ordem das parecidas
-        self.andamentos_path = data_dir / "andamentos.json"
-        self.andamentos = (json.loads(self.andamentos_path.read_text(encoding="utf-8"))
-                           if self.andamentos_path.exists() else {})
-        self.andamentos_versao = 0
-        self.andamento_falhou = {}
-        # a versao so de audio de cada parecida que veio como video (id do video -> a faixa, ou None), procurada uma
-        # vez so: toca a faixa do album, que comeca na musica, e nao o clipe com intro
-        self.versoes_path = data_dir / "versoes_audio.json"
-        self.versoes = (json.loads(self.versoes_path.read_text(encoding="utf-8"))
-                        if self.versoes_path.exists() else {})
-        # a logica do Automatico (automatico.py), que le e muda este estado; o mix_do sai do App a cada chamada
-        self.automatico = automatico.Automatico(self, lambda yid: self.mix_do(yid))
+        self.automatico = automatico.Automatico(self, lambda yid: self.mix_do(yid), data_dir,
+                                                auto=bool(self.cfg.get("auto", True)))
         # o volume automatico: o LUFS de quem tocou sem estar na prateleira (o stream das parecidas), por youtube_id; o
         # da prateleira mora no library.json, em cada disco ("lufs")
         self.sonoridades_path = data_dir / "sonoridades.json"
@@ -708,7 +687,7 @@ class App:
             tr = None if tr is None else dict(tr)
             fora = virou[2] if virou is not None else None
             fila = [dict(x) for x in self.fila if x["qid"] != fora]
-            shuffle, auto, historico = self.fila_ordem is not None, self.auto, len(self.historico)
+            shuffle, auto, historico = self.fila_ordem is not None, self.automatico.auto, len(self.historico)
         snap = e.snapshot()
         snap.update(status=status, duration=None if tr is None else tr.get("duration"),
                     track=None if tr is None else self._com_bpm(  # o andamento ja medido, para o deck do tema
@@ -751,7 +730,7 @@ class App:
 
     def _com_bpm(self, x):
         """A entrada da fila para a tela, com o andamento do comeco dela quando ja foi medido."""
-        t = self.tempo_of(x)
+        t = self.automatico.tempo_of(x)
         b = t and (t.get("ini") or t.get("fim"))
         return dict(x, bpm=round(b, 1)) if b else dict(x)
 
@@ -767,7 +746,7 @@ class App:
         e = self.engine
         self.grava_cfg(mic=e.devices["mic"], monitor=e.devices["monitor"],
                        vol=e.vol, mon_vol=e.mon_vol, monitor_on=e.monitor_on,
-                       voice_mon_vol=e.voice_mon_vol, auto=self.auto, volume_auto=e.volume_auto)
+                       voice_mon_vol=e.voice_mon_vol, auto=self.automatico.auto, volume_auto=e.volume_auto)
 
     def boas_vindas_pendentes(self):
         """As boas-vindas aparecem na primeira vez: prateleira vazia e nunca fechadas. Quem ja usava o app antes delas
@@ -1329,12 +1308,6 @@ class App:
         if any(y is x for y in self.fila):
             self.remove_from_queue(x)
 
-    def _recusar(self, x):
-        """Com fila_lock: parecida que o usuario tirou da fila nao volta nesta sessao."""
-        if x.get("auto") and x.get("youtube_id"):
-            self.fora.add(x["youtube_id"])
-            self.fora_musica |= chaves_musica(x)
-
     def aleatorio(self, on):
         """Aleatorio do YouTube Music: ligar embaralha o A seguir (a ordem nova aparece na
         lista); desligar volta a ordem que o usuario montou, sem os que ja sairam. As parecidas do
@@ -1401,7 +1374,7 @@ class App:
             if x:
                 self.remove_from_queue(x)
                 if recusar:
-                    self._recusar(x)
+                    self.automatico.refuse(x)
             return x
 
     def esquecer(self, iid, yid):
@@ -1442,7 +1415,7 @@ class App:
     def limpar_fila(self):
         with self.fila_lock:
             for x in self.fila:
-                self._recusar(x)
+                self.automatico.refuse(x)
             self._replace_queue([], None if self.fila_ordem is None else [])
 
     def mover_na_fila(self, qid, to):
@@ -1664,18 +1637,6 @@ class App:
 
     def ligar_auto(self, on):
         return self.automatico.ligar_auto(on)
-
-    @staticmethod
-    def chave_andamento(x):
-        """Onde o andamento do disco fica guardado: o id do video, ou o do disco da prateleira sem video."""
-        if not x:
-            return None
-        return x.get("youtube_id") or (f"lib:{x['id']}" if x.get("id") else None)
-
-    def tempo_of(self, x):
-        """{"ini", "fim"} do disco, ou None ainda sem medida."""
-        c = self.chave_andamento(x)
-        return self.andamentos.get(c) if c else None
 
     @staticmethod
     def search_songs(q):
@@ -2690,19 +2651,19 @@ def main():
     ap.add_argument("--metricas-teste", action="store_true",
                     help="with --mock: the usage data notice and choice work, but nothing is read from the installer "
                          "and nothing is sent (the events stay in memory)")
+    ap.add_argument("--stop-on-stdin-eof", action="store_true", help="with --mock: stop when stdin closes (dev/so_mock.py)")
     ap.add_argument("--version", action="version", version=f"Ritmelli {VERSAO}")
     a = ap.parse_args()
-    if a.metricas_teste and not a.mock:
-        sys.exit("--metricas-teste only works with --mock")
-    if a.papel_local is not None and not a.mock:
-        sys.exit("--papel-local only works with --mock")
-    dados = Path(a.data_dir) if a.data_dir else LIB
-    if a.mock:  # o download de mentira na pasta de quem usa virava disco falso na prateleira (#117)
-        dados = pastas.dados_do_mock(a.data_dir)
-        if dados is None:
-            sys.exit(f"--mock never uses the user's data ({a.data_dir}): pass another --data-dir, or none for a "
-                     "temporary copy")
+    mock_only = [f for f in ("metricas_teste", "papel_local", "stop_on_stdin_eof") if getattr(a, f) and not a.mock]
+    if mock_only:
+        sys.exit(f"--{mock_only[0].replace('_', '-')} only works with --mock")
+    dados = pastas.dados_do_mock(a.data_dir) if a.mock else Path(a.data_dir) if a.data_dir else LIB
+    if dados is None:
+        sys.exit(f"--mock never uses the user's data ({a.data_dir}): pass another --data-dir, or none for a "
+                 "temporary copy")
     A = App(a.port, dados, mock=a.mock, metricas_teste=a.metricas_teste, papel_local=a.papel_local or "pc")
+    if a.stop_on_stdin_eof:
+        pastas.call_when_stdin_ends(A.pede_desligar)
     if not a.mock:  # no --mock, o processo do YouTube so abre no primeiro pedido de quem testa (#128)
         threading.Thread(target=fora.aquece, daemon=True).start()  # o primeiro pedido ao YouTube ja acha o de reserva
     d = A.engine.active
@@ -2737,10 +2698,10 @@ def main():
 def roda(A, a):
     """O servidor ate desligar, e o audio fechado no fim. Com a janela, ela fecha junto."""
     try:
-        asyncio.run(servir(A, build(A), a.port, rede=not (a.so_local or a.mock)))
-    except (GracefulExit, KeyboardInterrupt):
-        pass
+        with contextlib.suppress(GracefulExit, KeyboardInterrupt):
+            asyncio.run(servir(A, build(A), a.port, rede=not (a.so_local or a.mock)))
     finally:
+        sonoridade.stop_measurements(eng.mata)
         A.metricas.fecha()  # o uso ate aqui e o que ficou na fila, antes de o audio fechar (no maximo 3 s sem rede)
         A.engine.close()
         if A.janela is not None:
