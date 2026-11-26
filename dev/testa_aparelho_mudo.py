@@ -473,7 +473,7 @@ class TestaLinhaDeComando(unittest.TestCase):
 class TestDiagnosticStreams(unittest.TestCase):
     def _run(self, child, args, no_console=False, closed_pipes=False):
         with tempfile.TemporaryDirectory() as tmp:
-            script, saida = Path(tmp) / "child.py", Path(tmp) / "saida.json"
+            script, result_file = Path(tmp) / "child.py", Path(tmp) / "result.json"
             script.write_text(child.replace("RAIZ", repr(str(RAIZ))), "utf-8")
             env = dict(os.environ, NO_CONSOLE="1" if no_console else "")
             streams = {}
@@ -482,23 +482,38 @@ class TestDiagnosticStreams(unittest.TestCase):
                 os.close(read_end)
                 streams = {"stdout": write_end, "stderr": write_end}
             try:
-                p = subprocess.Popen([sys.executable, str(script), *args(tmp, str(saida))], env=env, **streams)
+                p = subprocess.run([sys.executable, str(script), *args(tmp, str(result_file))], env=env, timeout=60,
+                                   **streams)
             finally:
                 if closed_pipes:
                     os.close(write_end)
-            code = p.wait(60)
-            return code, json.loads(saida.read_text("ascii"))
+            return p.returncode, json.loads(result_file.read_text("ascii"))
 
     def _install(self, **kw):
-        return self._run(INSTALL_CHILD, lambda tmp, saida: ["instala-todos", "--dll", __file__, "--saida", saida], **kw)
+        def args(tmp, result_file):
+            return ["instala-todos", "--dll", __file__, "--saida", result_file]
+        return self._run(INSTALL_CHILD, args, **kw)
 
     def _missing_dll(self, **kw):
-        def args(tmp, saida):
-            return ["instala-todos", "--dll", str(Path(tmp) / "none.dll"), "--saida", saida]
+        def args(tmp, result_file):
+            return ["instala-todos", "--dll", str(Path(tmp) / "none.dll"), "--saida", result_file]
         return self._run(INSTALL_CHILD, args, **kw)
 
     def _stuck_check(self, **kw):
-        return self._run(TRAVA, lambda tmp, saida: [saida], **kw)
+        return self._run(TRAVA, lambda tmp, result_file: [result_file], **kw)
+
+    def test_interrupted_result_write_leaves_no_file(self):
+        def broken_dump(obj, f):
+            f.write('{"ok": true,')
+            raise OSError(28, "No space left on device")
+        with tempfile.TemporaryDirectory() as tmp:
+            result_file = Path(tmp) / "result.json"
+            with mock.patch.object(filtro, "_protegida", lambda: True), \
+                    mock.patch.object(filtro, "_migra_registro", lambda: None), \
+                    mock.patch.object(filtro, "instala_todos", lambda dll: None), \
+                    mock.patch.object(filtro.json, "dump", broken_dump), self.assertRaises(OSError):
+                filtro.main(["instala-todos", "--dll", __file__, "--saida", str(result_file)])
+            self.assertFalse(result_file.exists(), "the setup reads a half-written result as ok")
 
     def test_no_console_like_the_executable(self):
         self.assertEqual(self._install(no_console=True),
@@ -739,22 +754,22 @@ AJUDANTE = """import json, os, sys
 from unittest import mock
 sys.path.insert(0, RAIZ)
 from microfone import microfone as filtro
-mudos = os.environ["MUDOS_TESTE"]
-if mudos == "sem":
+scenario = os.environ["MUDOS_TESTE"]
+if scenario == "sem":
     sys.exit(1)
 filtro._protegida = lambda: True
-if mudos == "falha":
-    def instala_todos(dll):
+if scenario == "fail":
+    def install_all(dll):
         sys.exit("a microphone failed (test)")
 else:
-    r = json.loads(mudos)
+    r = json.loads(scenario)
     if isinstance(r, list):
         r = {"conferidos": ["a"] * 5, "mudos": r, "falhas": [], "travou": False,
              "resumo": "devices: 5 checked" + ("; silent: " + "; ".join(r) if r else "")}
-    def instala_todos(dll):
+    def install_all(dll):
         return r
 with mock.patch.object(filtro, "_migra_registro", lambda: None), \\
-        mock.patch.object(filtro, "instala_todos", instala_todos):
+        mock.patch.object(filtro, "instala_todos", install_all):
     sys.exit(filtro.main(sys.argv[2:] + ["--dll", __file__]))
 """
 
@@ -892,7 +907,7 @@ class TestaInstalador(unittest.TestCase):
         self.assertIn("mic filter: the setup exits with 9", log)
 
     def test_failed_filter_fails_the_setup(self):
-        log = self._log("falha", exit_code=9)
+        log = self._log("fail", exit_code=9)
         self.assertIn("aparelhos: sem conferencia", log, "the summary is there, and it is not enough")
         self.assertIn("mic filter: failed: a microphone failed (test)", log)
         self.assertRegex(log, r"Parameters: .*--microfone instala-todos.*\s+.*Process exit code: 1")

@@ -48,7 +48,7 @@ function Saidas($log) {
   $saidas = [ordered]@{}
   $param = $null
   foreach ($l in Get-Content $log) {
-    if ($l -match 'Parameters: (.*)$') { $param = $Matches[1] -replace ' --saida ".*"', '' }
+    if ($l -match 'Parameters: (.*)$') { $param = $Matches[1] -replace ' --saida "[^"]*"', '' }
     elseif ($l -match 'Process exit code: (\d+)' -and $param) { $saidas[$param] = [int]$Matches[1]; $param = $null }
   }
   return $saidas
@@ -140,10 +140,11 @@ try {
   $antes, $depois = (Saidas $log1), (Saidas $log2)
   foreach ($k in $depois.Keys) {
     "  $k -> $($depois[$k]) (na instalacao comum, $($antes[$k]))"
-    if ($depois[$k] -ne 0 -and $antes[$k] -eq 0) { Falha "como SYSTEM, o ritmelli.exe $k saiu com $($depois[$k])" }
+    if ($depois[$k] -ne 0 -and $antes[$k] -eq 0) { Get-Content $log2 -Tail 40; Falha "como SYSTEM, o ritmelli.exe $k saiu com $($depois[$k])" }
   }
   $micStep = '--microfone instala-todos --tarefa'
   if ($antes[$micStep] -ne 0 -or $depois[$micStep] -ne 0) {
+    Get-Content $log2 -Tail 40
     Falha "the mic filter step exited with '$($antes[$micStep])' for the user and '$($depois[$micStep])' as SYSTEM"
   }
   if (-not (Select-String $log2 -Pattern 'mic filter: ok' -SimpleMatch -Quiet)) {

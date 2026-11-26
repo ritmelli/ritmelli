@@ -391,7 +391,11 @@ jobs:
           $micKey = 'HKLM:\SOFTWARE\Ritmelli\Microfone'
           if (-not (Test-Path $micKey)) { New-Item $micKey -Force | Out-Null }
           New-ItemProperty $micKey -Name '_mudos' -PropertyType MultiString -Value 'IN 1-2 (CI silent device)' -Force | Out-Null
-          $silent = { (Get-ItemProperty $micKey -Name '_mudos' -ErrorAction SilentlyContinue)._mudos }
+          $silent = {
+            $k = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey('SOFTWARE\Ritmelli\Microfone')
+            if (-not $k) { return $false }
+            try { $k.GetValueNames() -contains '_mudos' } finally { $k.Close() }
+          }
           if (-not (& $silent)) { throw "couldn't record the _mudos value before the uninstall" }
           Start-Process "$app\unins000.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART'
           for ($i = 0; $i -lt 120 -and (Test-Path "$app\ritmelli.exe"); $i++) { Start-Sleep 1 }

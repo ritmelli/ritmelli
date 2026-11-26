@@ -1038,8 +1038,10 @@ def main(argv=None):
             res["mudos"] = r["mudos"]
             res["aparelhos"] = aparelhos_de(r["mudos"])
         if a.saida:  # em ASCII (a letra com acento vai escapada): o Pascal do instalador le sem saber de UTF-8
-            with open(a.saida, "w", encoding="ascii") as f:
+            partial = a.saida + ".partial"
+            with open(partial, "w", encoding="ascii") as f:
                 json.dump(res, f)
+            os.replace(partial, a.saida)
         if not res["ok"]:
             _log(res["erro"])
         rc = 0 if res["ok"] else 1
