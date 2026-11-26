@@ -154,11 +154,13 @@ jobs:
   # filter, the engine, the effects or their tests
   microfone:
     name: Filtro do microfone
+    needs: etiquetas
     if: github.event_name != 'push'
     runs-on: windows-2025
     timeout-minutes: 25
     outputs:
       resumo: ${{ steps.resumo.outputs.resumo }}
+      monta: ${{ steps.areas.outputs.monta }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -170,7 +172,9 @@ jobs:
           python-version: '3.12.10'
       - name: O PR mexe no filtro?
         id: areas
-        run: python dev/testa_tudo.py --areas $env:BASE
+        env:
+          BUILD_BASE: ${{ github.event_name == 'merge_group' && needs.etiquetas.outputs.queue_base || github.event.pull_request.base.sha || github.event.before }}
+        run: python dev/testa_tudo.py --areas $env:BASE --build-base $env:BUILD_BASE
       - uses: ./.github/actions/python
         if: steps.areas.outputs.microfone == 'true'
         with:
@@ -493,6 +497,8 @@ jobs:
           R_COMPARA: ${{ needs.compara.outputs.resumo }}
           LINHAS: ${{ needs.testes.outputs.linhas }}
           MUDARAM: ${{ needs.compara.outputs.mudaram }}
+          MONTA: ${{ needs.microfone.outputs.monta }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
           estados=("$S_ETIQUETAS" "$S_TESTES" "$S_BENCH" "$S_CAPTURE" "$S_MICROFONE" "$S_TELA" "$S_TLA" "$S_COMPARA")
           # a cancelled run proved nothing either way: it fails, and leaves the PR comment as the last run that ended wrote it
@@ -526,6 +532,34 @@ jobs:
             labels_ok=false
           fi
           if [ "$S_ETIQUETAS" != success ]; then avisos+=("❌ **Etiquetas:** the labels job ended in $S_ETIQUETAS"); fi
+          build_ok=true
+          if [ "$GITHUB_EVENT_NAME" != push ] && [ "$MONTA" = true ]; then
+            build_head="$PR_HEAD"
+            if [ "$GITHUB_EVENT_NAME" = merge_group ]; then
+              build_head=$(gh pr view "$LABELS_PR" -R "$REPO" --json headRefOid --jq .headRefOid) || build_head=""
+            fi
+            if [ -z "$build_head" ]; then
+              avisos+=("❌ **monta.yml:** the head of PR $LABELS_PR did not come: run this job again")
+              build_ok=false
+            elif build_run=$(gh api "repos/$REPO/actions/workflows/monta.yml/runs?head_sha=$build_head&status=success&per_page=1" \
+              --jq '.workflow_runs[0].html_url // empty'); then
+              if [ -n "$build_run" ]; then
+                avisos+=("✅ **monta.yml:** the PR changes the build, and [Monta o instalador passed]($build_run) on \`${build_head:0:12}\`")
+              elif [ "$GITHUB_EVENT_NAME" = pull_request ] && [ "$DO_REPO" != true ]; then
+                avisos+=("❌ **monta.yml:** the PR changes the build and no passed Monta o instalador run is on \`${build_head:0:12}\`: it comes from a fork, so a maintainer pushes this commit to a branch of $REPO, runs \`gh workflow run monta.yml -R $REPO --ref <that branch>\`, and runs this job again when it passes")
+                build_ok=false
+              else
+                avisos+=("❌ **monta.yml:** the PR changes the build and no passed Monta o instalador run is on \`${build_head:0:12}\`: run \`gh workflow run monta.yml --ref <branch>\` on this head, and this job again when it passes")
+                build_ok=false
+              fi
+            else
+              avisos+=("❌ **monta.yml:** the query of the Monta o instalador runs failed: run this job again")
+              build_ok=false
+            fi
+          elif [ "$GITHUB_EVENT_NAME" != push ] && [ "$MONTA" != false ]; then
+            avisos+=("❌ **monta.yml:** the filter job did not say whether the PR changes the build (monta=$MONTA)")
+            build_ok=false
+          fi
           for a in "${avisos[@]}"; do
             if [[ "$a" == ❌* ]]; then echo "::error::${a//\*/}"; else echo "::notice::${a//\*/}"; fi
           done
@@ -543,6 +577,7 @@ jobs:
           vale() { [ "$1" = success ] || { [ "$2" = pula ] && [ "$1" = skipped ] && [ -n "$fila" ]; }; }
           marca() { if [ "$1" = success ]; then echo "✅"; elif vale "$1" "$2"; then echo "⏭️ neste push"; else echo "❌ ($1)"; fi; }
           ok=$labels_ok
+          $build_ok || ok=false
           for s in "$S_TESTES" "$S_BENCH" "$S_CAPTURE" "$S_MICROFONE" "$S_TELA" "$S_TLA"; do vale "$s" pula || ok=false; done
           for s in "$S_COMPARA" "$S_ETIQUETAS"; do vale "$s" || ok=false; done
           if $ok; then

@@ -47,7 +47,8 @@ def verdict(block, event, labels_now, seen="[]", labels_pr="7", states=None):
     env = {"GITHUB_EVENT_NAME": event, "GH_TOKEN": "x", "REPO": "ritmelli/ritmelli",
            "PR": "7" if event == "pull_request" else "", "HEAD": SHA, "RUN_ID": "1", "ATTEMPT": "1",
            "EXECUCAO": "https://example.invalid/run", "DO_REPO": "true" if event == "pull_request" else "false",
-           "LABELS_PR": labels_pr, "LABELS": seen, "LINHAS": "", "MUDARAM": "0"}
+           "LABELS_PR": labels_pr, "LABELS": seen, "LINHAS": "", "MUDARAM": "0",
+           "MONTA": "" if event == "push" else "false", "PR_HEAD": ""}
     env.update({f"S_{n}": (states or {}).get(n, "success") for n in NEEDS})
     env.update({f"R_{n}": f"resumo {n}" for n in NEEDS[1:]})
     return run_step(block, env, {"labels": labels_now})
