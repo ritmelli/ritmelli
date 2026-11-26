@@ -81,7 +81,7 @@ class VoicePedalStart:
             pedal += " (after the ring was last filled, maybe after it ran dry)"
         if up_at is None:
             return on_at, f"{pedal}, its voice track isn't up yet"
-        if (now if lo is None else lo) - up_at > AFTER_TRACK_S:
+        if (lo if lo is not None else now if empty_at is None else empty_at) - up_at > AFTER_TRACK_S:
             return on_at, None
         if empty_at is not None and up_at > empty_at + TICK_S:
             return on_at, f"{pedal}, its voice track came up {now - up_at:.2f} s ago, after the ring ran dry"

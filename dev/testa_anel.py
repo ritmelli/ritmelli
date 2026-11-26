@@ -680,6 +680,21 @@ class TestVoicePedalStart(unittest.TestCase):
         counts = [dryouts.RingDryOuts(dryouts.VoicePedalStart()) for _ in range(2)]
         self.assertEqual(counts[1].state()["injetor"], counts[0].state()["injetor"] + 1)
 
+    def test_without_a_fill_the_window_ends_at_the_empty_read(self):
+        now = [1.0]
+        pedal = dryouts.VoicePedalStart(clock=lambda: now[0])
+        dry = dryouts.RingDryOuts(pedal)
+        with mock.patch("sys.stderr", io.StringIO()) as log:
+            pedal.sent(pedal.pedal(True))
+            now[0] = 1.1
+            pedal.track(stamp(1.1))
+            now[0] = 6.0
+            dry.read_ring(lambda: 0)
+            now[0] = 6.2
+            dry.ran_dry(0.2, 1, 0.0)
+        self.assertEqual(dry.while_pedal_starting, 1, "the ring was seen empty 4.9 s after the track came up")
+        self.assertIn("its voice track came up 5.10 s ago", log.getvalue())
+
     def test_an_ended_start_is_not_taken_without_a_fill_seen(self):
         now = [0.0]
         pedal = dryouts.VoicePedalStart(clock=lambda: now[0])
