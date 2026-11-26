@@ -283,6 +283,17 @@ class Main(unittest.TestCase):
         self.assertIsNone(why, "a reader with the ring not open yet is not the filter reading it")
         self.assertEqual(result["cycles"][0]["dry_outs"], 0)
 
+    def test_the_filter_wait_needs_the_ring_headroom_measured(self):
+        why, _, result = self.run_main(state(), "--cycles", "1",
+                                       events=[(1.0, state(folga=None)), (2.0, state(1, 0, 656.0, 10.0)),
+                                               (15.0, state(1, 0, 656.0, 10.0)), (25.0, None)])
+        self.assertIsNone(why)
+        self.assertEqual(result["cycles"][0]["dry_outs"], 0,
+                         "a dry-out before the ring measured its headroom is not the first cycle's")
+        why, sent, _ = self.run_main(state(), events=[(1.0, state(folga=None)), (70.0, state(folga=None))])
+        self.assertIn("the filter of IN 1 never read the ring", why)
+        self.assertNotIn(("POST", "/api/settings"), sent)
+
     def test_a_ring_never_open_stops_before_the_pedal(self):
         why, sent, _ = self.run_main(state(), events=[(1.0, state(anel=False)), (70.0, state(anel=False))])
         self.assertIn("the filter of IN 1 never read the ring", why)

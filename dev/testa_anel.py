@@ -510,7 +510,7 @@ class TestVoicePedalStart(unittest.TestCase):
         self.assertEqual(dry.while_pedal_starting, 0, "the start's own track came up 6.0 s before the ring was filled")
         self.assertNotIn("voice pedal: its voice track came up", log.getvalue())
 
-    def test_a_ring_filled_after_the_off_is_not_the_pedals_in_either_phase_of_turning_off(self):
+    def test_a_ring_filled_after_the_off_is_not_the_pedals_and_at_its_clock_reading_may_be(self):
         for done, filled in ((False, 2.0), (True, 2.0), (False, 2.2), (True, 2.2)):
             with self.subTest(turning_off_done=done, filled=filled):
                 now = [0.0]
@@ -529,8 +529,18 @@ class TestVoicePedalStart(unittest.TestCase):
                     now[0] = 2.8
                     dry.read_ring(lambda: 0)
                     dry.ran_dry(0.6, 1, 0.0)
-                self.assertEqual(dry.while_pedal_starting, 0, "the ring had music 0.2 s after the pedal turned off")
-                self.assertIn("the microphone ring ran dry (", log.getvalue())
+                if filled == 2.0:
+                    self.assertEqual(dry.while_pedal_starting, 1, "the off and the fill at one clock reading")
+                    self.assertIn("and off 0.80 s ago (at the clock reading of the ring's last fill, maybe before it "
+                                  "ran dry)", log.getvalue())
+                else:
+                    self.assertEqual(dry.while_pedal_starting, 0, "the ring had music 0.2 s after the pedal turned off")
+                    self.assertIn("the microphone ring ran dry (", log.getvalue())
+
+    def test_without_a_fill_a_pedal_off_at_the_empty_read_may_be_the_dry_outs(self):
+        counted, log = self.run_starts([(1.0, "on"), (1.2, "empty"), (1.2, "off")], 1.3)
+        self.assertEqual(counted, 1)
+        self.assertIn("(at the clock reading of the ring's empty read, maybe before it ran dry)", log)
 
     def test_a_track_up_before_the_off_of_a_start_turning_off_is_its(self):
         now, pedal, dry = self.pedal_turning_off(0.1, 6.1, 6.2)

@@ -118,7 +118,8 @@ def mic_refusal(asked, state):
 
 
 def reading(st):
-    return st["microfone"]["anel"] and st["microfone"]["leitores"] >= 1
+    m = st["microfone"]
+    return m["anel"] and m["leitores"] >= 1 and m["folga_min_ms"] is not None
 
 
 def interruption(states_seen, mic):

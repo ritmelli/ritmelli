@@ -73,11 +73,11 @@ class VoicePedalStart:
         start, ended = self._on, self._ended
         off_by = lo if lo is not None else empty_at
         if empty_at is not None and (start is None or start[0] > empty_at):
-            start = next((e for e in reversed(ended) if e[0] <= empty_at and e[1] > off_by), start)
+            start = next((e for e in reversed(ended) if e[0] <= empty_at and e[1] >= off_by), start)
         if start is None:
             return None, None
         on_at, off_at, up_at, _, seen_at = start
-        if (empty_at is not None and on_at > empty_at) or (None not in (off_by, off_at) and off_at <= off_by):
+        if (empty_at is not None and on_at > empty_at) or (None not in (off_by, off_at) and off_at < off_by):
             return on_at, None
         now = self.clock()
         pedal = f"the pedal turned on {now - on_at:.2f} s ago"
@@ -89,7 +89,10 @@ class VoicePedalStart:
             pedal += " (with no fill seen, maybe after it ran dry)"
         if off_at is not None:
             pedal += f" and off {now - off_at:.2f} s ago"
-            if empty_at is not None and off_at <= empty_at:
+            if off_at == off_by:
+                read = "last fill" if lo is not None else "empty read"
+                pedal += f" (at the clock reading of the ring's {read}, maybe before it ran dry)"
+            elif empty_at is not None and off_at <= empty_at:
                 pedal += " (before the ring was seen empty, maybe before it ran dry)"
         if up_at is None:
             return on_at, f"{pedal}, its voice track isn't up yet"
