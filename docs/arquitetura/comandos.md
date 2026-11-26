@@ -215,12 +215,11 @@ acima (as três da #294 e do controle, as seis da troca de nome e a do acerto na
 download, o stream e a troca roda em quatro partes, que juntas são a configuração inteira (o `RENAME_PARTS` do
 `dev/test_tla.py`, que confere contra o `Races211.cfg` que cada escolha entra uma vez): o download que falha, e o que
 põe o disco na prateleira com o stream que dá áudio, com o stream calado e uma entrada na fila, e com o stream calado e
-duas; o `DownloadOutcomes`, o `StreamReaderStartsWith` e o `QueueLengths` da configuração têm todas as escolhas): o
-download, o stream e a troca, sem as trocas de lugar na fila, uma vez com o tocar de outro disco e outra com o esquecer
-da prateleira; o download, o stream e um pulo na barra, sem as trocas de lugar e sem o tocar de outro disco, o esquecer
-e a reserva; as trocas de lugar, a reserva, a preparação da passagem e a versão de áudio, sem o job; e os dois juntos,
-com uma troca de lugar só e sem o tocar de outro disco, o esquecer e a reserva; o pulo na barra só entra na terceira), e
-roda também os mutantes: cada propriedade tem um que desfaz o que ela protege, e o mutante tem de ser pego.
+duas): o download, o stream e a troca, sem as trocas de lugar na fila, uma vez com o tocar de outro disco e outra com o
+esquecer da prateleira; o download, o stream e um pulo na barra, sem as trocas de lugar e sem o tocar de outro disco, o
+esquecer e a reserva; as trocas de lugar, a reserva, a preparação da passagem e a versão de áudio, sem o job; e os dois
+juntos, com uma troca de lugar só e sem o tocar de outro disco, o esquecer e a reserva; o pulo na barra só entra na
+terceira), e roda também os mutantes: cada propriedade tem um que desfaz o que ela protege, e o mutante tem de ser pego.
 No PR, o job `tla` do `testa.yml` roda isso numa máquina ubuntu (`python dev/testa_tudo.py
 --passo tla`). No PC, precisa do Java no PATH; o `TLA2TOOLS` aponta para um `tla2tools.jar` já baixado. As duas corridas
 da #211 se repetem no App de verdade no `dev/test_races_211.py`, com os passos do contraexemplo, um de cada vez.

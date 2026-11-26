@@ -1091,6 +1091,32 @@ def prepare_published_right_after_the_poll(A, E, readers):
           f"(launched {launches.qids})")
 
 
+def prepared_head_moved_back_during_the_poll(A, E, readers):
+    check(play(A, E, readers, "d1"), "d1 is on the platter, read")
+    x, y = (dict(e, auto=False) for e in two_entries(A, 10))
+    with A.fila_lock:
+        A.change_queue(lambda: (A.fila.clear(), A.fila.extend([x, y])))
+    held, take = [], E.take_prepare_failure
+
+    def moves_back_and_publishes():
+        held.append(A.fila_lock.locked())
+        if not held[-1]:
+            cmd.mover_na_fila(A, y["qid"], 0)
+            with E.state_section():
+                E.pronto_tag = y["qid"]
+        return take()
+    with mock.patch.object(eng, "TRANS_PREP_S", 1e6), mock.patch.object(server.threading, "Thread", Launches()), \
+            mock.patch.object(E, "take_prepare_failure", moves_back_and_publishes):
+        A._volta_passagem()
+    survived = E.pronto_tag
+    A.preparando = None
+    with E.state_section():
+        E.pronto_tag = None
+    check(held == [True] or survived == y["qid"],
+          f"a head that moves back and gets its prepared deck between the watcher's read of the queue and of the engine "
+          f"keeps that deck (fila_lock held at the read: {held}, prepared after: {survived})")
+
+
 def audio_version_entries(A, E):
     cmd.limpar_fila(A)
     entry = {"id": None, "url": None, "title": "similar", "channel": "c", "duration": 300.0, "job": None,
@@ -1181,6 +1207,7 @@ def main():
                 engine_prepare_failure_read_with_another_head(A, E, readers)
                 engine_prepare_failure_right_after_the_poll(A, E, readers)
                 prepare_published_right_after_the_poll(A, E, readers)
+                prepared_head_moved_back_during_the_poll(A, E, readers)
                 audio_version_entries(A, E)
                 audio_version_while_an_entry_plays_from_the_queue(A)
                 file_wait_after_a_passage_switch(A, E, readers)

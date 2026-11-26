@@ -1560,18 +1560,18 @@ class App:
             except Exception as ex:
                 print(f"transition: the switch didn't close the queue: {ex}", file=sys.stderr, flush=True)
         tr = (cap := e.captura()).track
+        dur = tr.get("duration") if tr else None
         with self.fila_lock:
             x = self.fila[0] if self.fila else None
             seen = dict(x or {})
-        busy, (failed, pronto), tried = self.preparando, e.take_prepare_failure(), self.last_prepare_key
+            busy, (failed, pronto), tried = self.preparando, e.take_prepare_failure(), self.last_prepare_key
+            pode = (x is not None and dur and tr.get("path") and not e.loop
+                    and cap.status in ("playing", "paused", "buffering"))
+            if pronto is not None and (not pode or x["qid"] != pronto):
+                e.cancelar_pronto()
         source = seen.get("youtube_id") or seen.get("url")
         if failed is not None:
             self.passagem_falhou = tried if tried is not None and tried[1] == failed else (id(tr), failed, source)
-        dur = tr.get("duration") if tr else None
-        pode = (x is not None and dur and tr.get("path") and not e.loop
-                and cap.status in ("playing", "paused", "buffering"))
-        if pronto is not None and (not pode or x["qid"] != pronto):
-            e.cancelar_pronto()
         if not pode or (pronto is not None and x["qid"] == pronto) or dur - cap.pos > eng.TRANS_PREP_S:
             return
         chave = (id(tr), x["qid"], source)

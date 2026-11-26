@@ -42,6 +42,14 @@ RENAME_SWITCH = RENAME + (("WithTheJobSwitch", "TRUE"), ("DownloadEndsBeforeTheS
 RENAME_PLAY = (("WithTheRename", "TRUE"), ("WithTheJobOnThePlatter", "FALSE"), ("WithTheMoves", "FALSE"),
                ("WithTheSeek", "FALSE"), ("WithTheForget", "FALSE"))
 PART_CONSTANTS = ("DownloadOutcomes", "StreamReaderStartsWith", "QueueLengths")
+REQUIRED = {
+    "Races211": {"TypeOK", "LockOrderKept", "NoOrphanLoading", "NoStaleLoading", "SwitchEntryMatchesPlatter",
+                 "ReservedEntryMatchesRead", "StreamActsOnItsAttempt", "NoRefusalWhilePlaying",
+                 "NoPassageFromBeforeTheSeek", "FinishedDownloadReachesThePlatter", "HandoverOnlyOntoTheJobsRecord",
+                 "PlatterHasTheCurrentName"},
+    "LocksAndSwitch": {"TypeOK", "LockOrderKept", "SwitchOnlyToHead", "SwitchClosesOnce", "OneAdvance",
+                       "HistoryOnceInOrder", "QuiescentReservationsResolved"},
+}
 RENAME_PARTS = (
     ("the download failing", ("error",), ("done", "st_reading"), (1, 2)),
     ("the download putting it on the shelf and the stream with audio", ("shelved",), ("done",), (1, 2)),
@@ -351,9 +359,16 @@ def cfg_choices(cfg_text):
             for name in PART_CONSTANTS]
 
 
-def rename_part_failures(parts, cfg_text):
+def run_choices(run, cfg_text):
+    constants = dict(run.constants)
+    return [cfg_choices(f"CONSTANTS\n{n} = {constants[n]}\n")[i] if n in constants else whole
+            for i, (n, whole) in enumerate(zip(PART_CONSTANTS, cfg_choices(cfg_text)))]
+
+
+def rename_part_failures(runs, cfg_text):
+    parts = [r for r in runs if r.spec == "Races211" and any(n in dict(r.constants) for n in PART_CONSTANTS)]
     whole = set(itertools.product(*cfg_choices(cfg_text)))
-    covered = [c for _, *choices in parts for c in itertools.product(*choices)]
+    covered = [c for r in parts for c in itertools.product(*run_choices(r, cfg_text))]
     out = [f"the rename parts leave out {sorted(whole - set(covered), key=str)}"] if whole - set(covered) else []
     out += [f"the rename parts choose {sorted(set(covered) - whole, key=str)}, which the cfg does not"
             ] if set(covered) - whole else []
@@ -361,16 +376,35 @@ def rename_part_failures(parts, cfg_text):
     return out
 
 
+def invariant_failures(runs, cfgs):
+    out = []
+    for run in runs:
+        if run.expect == "pass" and run.invariants is None and run.specification is None:
+            found = set(parse_cfg(write_cfg(cfgs[run.spec], run)).get("INVARIANTS", []))
+            out += [f"{run.title} does not check {sorted(REQUIRED[run.spec] - found)}"] if REQUIRED[run.spec] - found else []
+    return out
+
+
 def main():
-    cfg = (MODELS / "Races211.cfg").read_text(encoding="utf-8")
-    found = rename_part_failures(RENAME_PARTS, cfg)
-    check(found == [], f"the {len(RENAME_PARTS)} rename runs together are the whole configuration of the cfg, each "
-                       f"choice once ({found})")
-    check(rename_part_failures(RENAME_PARTS[:-1], cfg) != [], "the mutant without the last rename part fails")
+    cfgs = {spec: (MODELS / f"{spec}.cfg").read_text(encoding="utf-8") for spec in REQUIRED}
+    cfg = cfgs["Races211"]
+    parts = [r for r in RUNS if r.title.startswith("Races211, the code as it is: the download, the stream and the swap, "
+                                                    "with the record renamed on the shelf, ")]
+    found = rename_part_failures(RUNS, cfg)
+    check(found == [] and len(parts) == len(RENAME_PARTS),
+          f"the {len(parts)} rename runs scheduled together are the whole configuration of the cfg, each choice once "
+          f"({found})")
+    check(rename_part_failures([r for r in RUNS if r is not parts[-1]], cfg) != [],
+          "the mutant whose schedule leaves out the last rename run fails")
     wider = cfg.replace('StreamReaderStartsWith = {"done", "st_reading"}',
                         'StreamReaderStartsWith = {"done", "st_reading", "sr_dropped"}')
-    check(wider != cfg and rename_part_failures(RENAME_PARTS, wider) != [],
-          "the mutant whose cfg gains a choice the rename parts do not run fails")
+    check(wider != cfg and rename_part_failures(RUNS, wider) != [],
+          "the mutant whose cfg gains a choice the rename runs do not run fails")
+    found = invariant_failures(RUNS, cfgs)
+    check(found == [], f"every passing run of the code checks every invariant of its spec ({found[:2]})")
+    narrower = dict(cfgs, LocksAndSwitch=cfgs["LocksAndSwitch"].replace("    HistoryOnceInOrder\n", "", 1))
+    check(narrower != cfgs and invariant_failures(RUNS, narrower) != [],
+          "the mutant whose LocksAndSwitch.cfg drops HistoryOnceInOrder fails")
     java = shutil.which("java")
     check(java is not None, "java is on the PATH")
     if java is None:
