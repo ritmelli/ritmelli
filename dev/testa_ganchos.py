@@ -442,7 +442,7 @@ class ModuleBindings:
 
     def bind(self, scope, name, is_module):
         key = (id(scope), name)
-        self.bound[key] = self.bound.get(key, True) and is_module
+        self.bound[key] = self.bound.get(key, False) or is_module
 
     def is_module(self, name, scope):
         while scope is not None:
@@ -473,7 +473,8 @@ def module_private_reaches(module, tree, owner_module, names):
 
 
 CONTAINER_MUTATORS = frozenset(("add", "append", "extend", "insert", "pop", "remove", "discard", "clear",
-                                "setdefault", "popitem", "sort", "reverse"))
+                                "setdefault", "popitem", "sort", "reverse", "difference_update",
+                                "intersection_update", "symmetric_difference_update"))
 APP_NAMES = frozenset(("A", "app"))
 ENGINE_NAMES = frozenset(("E", "e", "engine", "motor"))
 
@@ -692,6 +693,7 @@ MODULE_CAUGHT = [
     ("the module after a comprehension that reuses its name", MODULE_OWNER,
      "import owner as e\n\nnames = [e for e in ()]\ne._x\n"),
     ("a default argument", MODULE_OWNER, "import owner as e\n\n\ndef f(e=e._x):\n    return e\n"),
+    ("a reach before the alias is rebound", MODULE_OWNER, "import owner as e\n\ne._x()\ne = None\n"),
     ("a parameter annotation", MODULE_OWNER, "import owner as e\n\n\ndef f(e: e._x):\n    return e\n"),
     ("a return annotation", MODULE_OWNER, "import owner as e\n\n\ndef f(e) -> e._x:\n    return e\n"),
     ("the first iterable of a comprehension", MODULE_OWNER,
@@ -735,6 +737,7 @@ WRITES_CAUGHT = [
     ("an item of an item", APP_NAMES, "def f(A):\n    A.x[0][1] = 2\n"),
     ("a del", APP_NAMES, "def f(A):\n    del A.x\n"),
     ("a container method", APP_NAMES, "def f(app):\n    app.x.append(1)\n"),
+    ("a set method that changes it", APP_NAMES, "def f(A, ids):\n    A.x.difference_update(ids)\n"),
     ("a container method on an item", APP_NAMES, "def f(A):\n    A.x[0]['tags'].append(1)\n"),
     ("setattr", APP_NAMES, "def f(A):\n    setattr(A, 'x', 1)\n"),
     ("a read-only property", APP_NAMES, "def f(A):\n    A.p = 1\n"),
