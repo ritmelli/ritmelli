@@ -16,7 +16,8 @@ por vez (os do `SERIAL`, que medem tempo, um a um e sozinhos, depois dos outros)
 dele: o `STDLIB` (que a `monta.yml` roda antes de instalar), o `COMPLETO`, o `LONG_TESTS` (os
 dois testes longos, a banca das passagens, o `testa_passagem`, e o `test_capture`: o comando sem opção os
 roda depois do `COMPLETO`; no `testa.yml`, o job de Testes roda o `--without-long`, e cada teste longo tem
-um job próprio ao lado (a Banca, `--long bench`, e a Captura, `--long capture`)) e o `MICROFONE` (este sempre um a um; o job do filtro roda com o
+um job próprio ao lado (a Banca, `--long bench`, e a Captura, `--long capture`, esta só quando o PR mexe na
+tela, como o job Tela)) e o `MICROFONE` (este sempre um a um; o job do filtro roda com o
 Inno Setup, para o setup de teste do `testa_aparelho_mudo`). No `COMPLETO` e no `LONG_TESTS`, biblioteca
 ou ffmpeg faltando é falha. Todo teste do `git ls-files`, de qualquer pasta (`test*.py`, `testa*.py`,
 `teste*.py` e os `test*.ps1`; todo teste novo, em inglês, nasce `test_*`), tem destino: uma lista, um
@@ -55,8 +56,9 @@ rodando reprova a parada dizendo isso; no último caso, a recusa diz o nome de c
 quando o servidor parou e se ele ainda rodava depois da espera. Um `server.py` mais velho, sem a flag (a base de um `compara`), desliga
 pelo `POST /api/shutdown`, só enquanto responde como `--mock`, e o job dele também sai vazio
 (`dev/testa_so_mock.py`, `dev/test_mock_stop.py`). O `dev/test_capture.py` roda o `--capture` de verdade (os prints,
-a chave e o `head_cache` que o workflow lê para salvar). O `dev/test_compara_push_steps.py` roda os
-passos do Compara que, no push, capturam sem calcular as áreas nem resolver a base. O
+a chave e o `head_cache` que o workflow lê para salvar) e o `--capture-base` de uma base cuja captura já está na
+pasta (não captura nem salva) e de uma base que não é commit. O `dev/test_compara_push_steps.py` roda os
+passos do Compara: HEAD que, no push, capturam sem calcular as áreas nem resolver a base. O
 `dev/test_release_workflow.py` lê os workflows e as ações locais como YAML: toda action fixada num
 commit (as duas da SignPath no mesmo), o `sparse-checkout` de cada job da `monta.yml` com o que os
 scripts dele leem, a conferência do recurso de versão das DLLs depois da montagem e no job do
@@ -80,11 +82,13 @@ ou o passo desligado), e nenhum outro artefato que a esteira tomaria pela versã
 que deixe de rodar numa dessas montagens), o `congela`, o passo do `publica.py` e os passos das saídas
 `anterior` e `parcial` não podem ter `if:`, nenhum passo antes do `publica.py` o cita, e o que está em
 comentário do PowerShell não conta (no `--saida`, um comentário também reprova, porque o server o lê cru). O
-`--tela` junta o `fitcheck` e o `compara` do jeito do PR (no `testa.yml` o `compara` roda num job à parte,
-pelo `--compara`, com a referência da base no cache do Actions), e o `--areas` é o filtro por caminho do
+`--tela` junta o `fitcheck` e o `compara` do jeito do PR (no `testa.yml` o `compara` roda em três jobs:
+o Compara: base e o Compara: HEAD capturam em paralelo, pelo `--capture-base` e pelo `--capture`, a base só
+quando o cache do Actions não a tem, e o Compara compara as duas pelo `--compara --head-capture`; o
+`dev/test_ci_workflow.py` exige a captura da base num job próprio, sem `needs` entre os dois), e o `--areas` é o filtro por caminho do
 `.github/workflows/testa.yml`, que roda tudo isso em todo PR e na fila de merge. A fila leva a `main` ao mesmo
-commit que testou, então o push na `main` roda só a captura do `compara` desse commit para o cache (o
-`--capture`), e o "Testa o PR" do push reprova se nenhuma execução da fila passou nele. As bibliotecas da CI
+commit que testou, então o push na `main` roda só a captura do HEAD desse commit para o cache (o
+Compara: HEAD, pelo `--capture`), e o "Testa o PR" do push reprova se nenhuma execução da fila passou nele. As bibliotecas da CI
 se instalam com as versões do `instalador/travas.txt` (`-c`) e as de dev com as do `dev/travas.txt` (o `-c` do
 `requirements-dev.txt`); os dois entram na chave do cache delas e na da captura do `compara`, e o PR que muda um
 deles dispara todas as áreas. No PR, só abrir, reabrir e um
