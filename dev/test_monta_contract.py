@@ -108,7 +108,15 @@ def step_output_problem(job, name):
 
 
 def code(run):
-    return "\n".join(line.split("#", 1)[0] for line in str(run).splitlines())
+    text = re.sub(r"<#.*?#>", "", str(run), flags=re.S)
+    return "\n".join(line.split("#", 1)[0] for line in text.splitlines())
+
+
+def skipped(jobs, job_id, seen=()):
+    job = jobs.get(job_id) or {}
+    needs = job.get("needs") or []
+    needs = [needs] if isinstance(needs, str) else needs
+    return switched_off(job.get("if")) or any(n not in seen and skipped(jobs, n, seen + (job_id,)) for n in needs)
 
 
 SAIDA = r"""['"]--saida['"],\s*(?:(['"])([^'"]*)\1|\$(\w+))\s*[,)]"""
@@ -141,10 +149,9 @@ def contract_problems(doc):
     problems += [f"monta.yml has no {name} input" for name in INPUTS if name not in inputs]
     jobs = doc.get("jobs") or {}
     for required in REQUIRED_JOBS:
-        shown_as = [j for k, j in jobs.items()
-                    if display(k, j) == required or display(k, j).startswith(required + " (")]
-        if not shown_as or any(switched_off(j.get("if")) for j in shown_as):
-            problems.append(f"monta.yml has no job shown as {required}, or one of them is switched off")
+        ids = [k for k, j in jobs.items() if display(k, j) == required or display(k, j).startswith(required + " (")]
+        if not ids or any(skipped(jobs, k) for k in ids):
+            problems.append(f"monta.yml has no job shown as {required} that always runs")
     monta = jobs.get("monta") or {}
     congela = step_by_id(monta, "congela")
     if congela is None:
@@ -198,20 +205,26 @@ def contract_problems(doc):
     return problems
 
 
+def notes_loop(lines):
+    start = next(i for i, line in enumerate(lines) if line.lstrip().startswith("foreach") and "NOTAS_EN" in line)
+    depth = 0
+    for end in range(start, len(lines)):
+        depth += lines[end].count("{") - lines[end].count("}")
+        if depth <= 0:
+            return start, end
+    return start, len(lines) - 1
+
+
 def comment_notes_loop(run):
-    lines, out, depth = str(run).splitlines(), [], None
-    for line in lines:
-        if depth is None and line.lstrip().startswith("foreach") and "NOTAS_EN" in line:
-            depth = 0
-        if depth is not None:
-            depth += line.count("{") - line.count("}")
-            out.append("# " + line)
-            if depth <= 0:
-                depth = None
-                continue
-        else:
-            out.append(line)
-    return "\n".join(out) + "\n"
+    lines = str(run).splitlines()
+    start, end = notes_loop(lines)
+    return "\n".join(lines[:start] + ["# " + line for line in lines[start:end + 1]] + lines[end + 1:]) + "\n"
+
+
+def block_notes_loop(run):
+    lines = str(run).splitlines()
+    start, end = notes_loop(lines)
+    return "\n".join(lines[:start] + ["<#"] + lines[start:end + 1] + ["#>"] + lines[end + 1:]) + "\n"
 
 
 def shown(doc, name):
@@ -426,6 +439,11 @@ def main():
             move_folder(d)),
         "a second active --saida": lambda d: edit_run(d, lambda run: run.replace(
             "'--saida', $saida)", "'--saida', $saida, '--saida', 'elsewhere')")),
+        "testa-atualizador needing a switched-off job": lambda d: (
+            d["jobs"].update({free_job(d, "gate"): {"runs-on": "ubuntu-latest", "if": "false",
+                                                    "steps": [{"run": "echo"}]}}),
+            shown(d, "testa-atualizador").update(needs=["monta", [k for k in d["jobs"] if k.startswith("gate")][-1]])),
+        "the notes loop in a block comment": lambda d: edit_run(d, block_notes_loop),
         "a switched-off job shown like testa-atualizador": lambda d: d["jobs"].update(
             {free_job(d, "extra"): dict(copy.deepcopy(shown(d, "testa-atualizador")),
                                         name="testa-atualizador (extra)", **{"if": "${{ false }}"})}),
