@@ -789,7 +789,7 @@ class TestDiagnosticStreams(unittest.TestCase):
         def result_lines(node):
             return [n.lineno for n in ast.walk(node)
                     if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "_result"]
-        self.assertEqual(result_lines(main), [line for s in confere.body for line in result_lines(s)],
+        self.assertEqual(sorted(result_lines(main)), sorted(line for s in confere.body for line in result_lines(s)),
                          "main answers on stdout only for confere")
 
 
