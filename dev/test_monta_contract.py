@@ -81,8 +81,17 @@ def manifest_step(job):
     return found[0] if len(found) == 1 else None
 
 
-def writes_versao(run):
-    return any(re.search(r"\$\{?env:GITHUB_OUTPUT\}?", c, re.I) and '"versao=$' in c for c in code(run).splitlines())
+def writes_output(run, key):
+    return any(re.search(r"\$\{?env:GITHUB_OUTPUT\}?", c, re.I) and f'"{key}=$' in c for c in code(run).splitlines())
+
+
+def step_output_problem(job, name):
+    value = inner((job.get("outputs") or {}).get(name, ""))
+    source = re.match(r"steps\.([\w-]+)\.outputs\.(\w+)\b", value or "")
+    step = source and step_by_id(job, source.group(1))
+    if not step or not writes_output(step.get("run", ""), source.group(2)):
+        return f"the {name} output of the monta job does not come from a step that writes it to its GITHUB_OUTPUT"
+    return None
 
 
 def code(run):
@@ -124,12 +133,11 @@ def contract_problems(doc):
         problems.append("the monta job has no congela step")
     elif "if" in congela:
         problems.append("the congela step runs only under an if:, so the versao may be empty")
-    elif not writes_versao(congela.get("run", "")):
+    elif not writes_output(congela.get("run", ""), "versao"):
         problems.append("the congela step does not write versao= to its GITHUB_OUTPUT")
     if inner((monta.get("outputs") or {}).get("versao", "")) != inner(VERSION):
         problems.append(f"the versao output of the monta job is not {VERSION}")
-    problems += [f"the monta job has no {name} output, which the jobs the pipeline requires read"
-                 for name in ("anterior", "parcial") if not str((monta.get("outputs") or {}).get(name) or "").strip()]
+    problems += [p for p in (step_output_problem(monta, name) for name in ("anterior", "parcial")) if p]
     run_uploads = uploads(jobs)
     found = {name: [w for n, w, _ in run_uploads if n == name] for name in (SETUP, EXE)}
     problems += [f"the run uploads {len(w)} artifacts named {n}, not 1" for n, w in found.items() if len(w) != 1]
@@ -271,6 +279,11 @@ def main():
             run=step_by_id(d["jobs"]["monta"], "congela")["run"].replace('"versao=$v"', '"version=$v"')),
         "the Ritmelli upload switched off": lambda d: upload(d, setup).update({"if": "${{ false }}"}),
         "the anterior output": lambda d: d["jobs"]["monta"]["outputs"].pop("anterior"),
+        "the anterior output written as a constant": lambda d: d["jobs"]["monta"]["outputs"].update(anterior="false"),
+        "the id of the step behind the anterior output": lambda d: step_by_id(d["jobs"]["monta"], "anterior").update(
+            id="previous"),
+        "the parcial the monta step writes": lambda d: step_by_id(d["jobs"]["monta"], "monta").update(
+            run=step_by_id(d["jobs"]["monta"], "monta")["run"].replace('"parcial=$', '"partial=$')),
         "the parcial output": lambda d: d["jobs"]["monta"]["outputs"].pop("parcial"),
         "the versao output": lambda d: d["jobs"]["monta"]["outputs"].update(
             versao="${{ steps.freeze.outputs.versao }}"),

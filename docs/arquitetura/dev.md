@@ -48,12 +48,13 @@ pela ação `.github/actions/inno-setup`. O `dev/test_monta_contract.py` (no STD
 `monta.yml` o roda antes de montar) exige os nomes da `monta.yml` que a esteira de publicação do
 `ritmelli-server` lê: o `workflow_dispatch` com os inputs `notas` e `notas_en`, que chegam ao passo do
 manifesto; os jobs `testa`, `testa-atualizador`, `testa-migracao` e `testa-parcial`, pelo nome que a API
-mostra; o passo `congela`, cuja `versao` dá nome aos artefatos, e as saídas `anterior` e `parcial` do job `monta`,
-que os jobs exigidos leem; e os artefatos `Ritmelli-<versão>` (a pasta que o passo do `publica.py` recebe
-no `--saida`) e `ritmelli-exe-<versão>` (um caminho só, sem curinga, que termina no `ritmelli.exe`), cada um
-uma vez na execução inteira, contados como o server conta (sem o job ou o passo desligado), e nenhum outro
-artefato que a esteira tomaria pela versão (`Ritmelli-1.2.3`). Os dois artefatos, o `congela` e o passo do
-`publica.py` não podem ter `if:`, e o que está em comentário do PowerShell não conta.
+mostra; o passo `congela`, cuja `versao` dá nome aos artefatos, e as saídas `anterior` e `parcial` do job
+`monta`, que os jobs exigidos leem, cada uma vinda de um passo que a grava no `GITHUB_OUTPUT`; e os artefatos
+`Ritmelli-<versão>` (a pasta que o passo do `publica.py` recebe no `--saida`) e `ritmelli-exe-<versão>` (um
+caminho só, sem curinga, que termina no `ritmelli.exe`), cada um uma vez na execução inteira, contados como o
+server conta (sem o job ou o passo desligado), e nenhum outro artefato que a esteira tomaria pela versão
+(`Ritmelli-1.2.3`). Os dois artefatos, o `congela` e o passo do `publica.py` não podem ter `if:`, e o que está
+em comentário do PowerShell não conta.
 O `--tela` junta o `fitcheck` e o `compara` do jeito do PR (no
 `testa.yml` o `compara` roda num job à parte, pelo `--compara`, com a referência da base no
 cache do Actions), e o `--areas` é o filtro por caminho do `.github/workflows/testa.yml`, que
