@@ -176,6 +176,8 @@ async def wait_notice(cmd, deadline):
             r = await asyncio.wait_for(cmd("Runtime.evaluate", expression=NOTICE_OPEN, returnByValue=True), left)
         except TimeoutError:
             return False
+        except CDP_GONE:
+            return None
         if time.monotonic() > deadline:
             return False
         if r.get("result", {}).get("value") is True:
@@ -482,8 +484,15 @@ async def run(a):
             await cmd("Fetch.enable", patterns=so_mock.DOCUMENTOS)
             for sz in a.sizes.split(","):
                 w, h = map(int, sz.split("x"))
-                await cmd("Emulation.setDeviceMetricsOverride", width=w, height=h,
-                          deviceScaleFactor=1, mobile=w < 600)
+                try:
+                    await cmd("Emulation.setDeviceMetricsOverride", width=w, height=h,
+                              deviceScaleFactor=1, mobile=w < 600)
+                except CDP_GONE:
+                    verdict = await report_not_ready(cmd, f"{sz:>10}", Ready.CHROME_GONE, READY_CONDITIONS, events,
+                                                     PRONTA_S)
+                    print(f"FALHA  {verdict}; nothing more checked")
+                    falhas += 1
+                    break
                 try:
                     so_mock.confere(a.url)  # antes de cada navegacao: a porta pode ter mudado de dono
                     erros.clear()
@@ -499,7 +508,7 @@ async def run(a):
                             continue
                         print(f"FALHA  {verdict}; nothing more checked")
                         break
-                    await confere_pagina(cmd, a.url, barrados)  # a page that left for another origin is refused here
+                    await confere_pagina(cmd, a.url, barrados)
                     await asyncio.sleep(a.wait)
                     await confere_pagina(cmd, a.url, barrados)
                     if a.js:
@@ -643,11 +652,13 @@ async def aviso_no_chrome(base, botao):
                     ready = await wait_for_state(events, tarefa, PRONTA_S)
                 except CDP_GONE:
                     ready = Ready.CHROME_GONE
-                if ready is not Ready.READY:
-                    r["not_ready"].append(await report_not_ready(cmd, "notice", ready, READY_CONDITIONS, events,
-                                                                 PRONTA_S))
-                    return False
-                return await wait_notice(cmd, events.state_at + AVISO_ESPERA_S)
+                if ready is Ready.READY:
+                    seen = await wait_notice(cmd, events.state_at + AVISO_ESPERA_S)
+                    if seen is not None:
+                        return seen
+                    ready = Ready.CHROME_GONE
+                r["not_ready"].append(await report_not_ready(cmd, "notice", ready, READY_CONDITIONS, events, PRONTA_S))
+                return False
 
             foco = "(e => e && (e.value || e.id || e.tagName))(document.activeElement)"
             for domain in DIAGNOSTIC_DOMAINS:

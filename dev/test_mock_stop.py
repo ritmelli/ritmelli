@@ -147,7 +147,7 @@ def http_shutdown_with_the_pipe_open():
                 srv.api("POST", "/api/shutdown", espera=5)
                 code = srv.srv.wait(30)
             finally:
-                srv.encerra()
+                stop(srv)
         text = (tmp / "server.log").read_text(encoding="utf-8", errors="replace")
     check(code == 0 and "Fatal Python error" not in text,
           f"pc: the /api/shutdown with the stdin pipe still open exits cleanly (exit {code}"
@@ -250,8 +250,104 @@ def resume_that_fails():
           f"a server that cannot be resumed is refused and ended, with its job closed ({refused}, ended {ended})")
 
 
+class KernelWith:
+    def __init__(self, real, **overrides):
+        self.real, self.overrides = real, overrides
+
+    def __getattr__(self, name):
+        return self.overrides.get(name) or getattr(self.real, name)
+
+
+def holder_in_a_job(tmp):
+    _, wav = shelf_with_one_long_track(Path(tmp))
+    proc, job = so_mock.start_job([sys.executable, "-c", CHILD_HOLDS_THE_TRACK, str(wav), "hangs"],
+                                  stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+    proc.stdout.readline()
+    return proc, job, wav
+
+
+def job_api_failures():
+    with tempfile.TemporaryDirectory(prefix="ritmelli-job-api-", ignore_cleanup_errors=True) as tmp:
+        proc, job, wav = holder_in_a_job(tmp)
+        real = job.k
+
+        def partial(handle, kind, info, size, returned):
+            ok = real.QueryInformationJobObject(handle, kind, info, size, returned)
+            if kind == 3:
+                info._obj.NumberOfAssignedProcesses += 1
+            return ok
+
+        job.k = KernelWith(real, QueryInformationJobObject=partial)
+        try:
+            job.members()
+            partial_refused = None
+        except so_mock.Recusa as ex:
+            partial_refused = str(ex)
+        job.k = KernelWith(real, IsProcessInJob=lambda *args: 0)
+        try:
+            job.members()
+            check_refused = None
+        except so_mock.Recusa as ex:
+            check_refused = str(ex)
+        job.k = KernelWith(real, QueryInformationJobObject=lambda *args: 0)
+        try:
+            job.end()
+            end_refused = None
+        except so_mock.Recusa as ex:
+            end_refused = str(ex)
+        try:
+            proc.wait(10)
+            server_ended = True
+        except subprocess.TimeoutExpired:
+            server_ended = False
+            proc.kill()
+    check(partial_refused is not None and "more than it lists" in partial_refused,
+          f"a job listing shorter than the job is refused ({partial_refused})")
+    check(check_refused is not None and "could not be checked" in check_refused,
+          f"a job member that cannot be checked is refused ({check_refused})")
+    check(end_refused is not None and "did not list" in end_refused and server_ended,
+          f"a job whose listing fails while it ends is still terminated, and the stop fails saying it could not "
+          f"confirm the exits ({end_refused}, server ended {server_ended})")
+
+
+def resume_cleanup_when_terminate_fails():
+    real_resume, real_kernel, real_close, closed = so_mock._resume, so_mock._kernel, so_mock._Job.close, []
+
+    def terminate_fails(*args):
+        raise OSError("terminate failed")
+
+    def close(job):
+        closed.append(job.job is not None)
+        real_close(job)
+
+    started = []
+    real_popen = so_mock.subprocess.Popen
+
+    def popen(*args, **kwargs):
+        started.append(real_popen(*args, **kwargs))
+        return started[-1]
+
+    so_mock._resume = lambda process: 0xC0000001
+    so_mock._kernel = lambda: KernelWith(real_kernel(), TerminateProcess=terminate_fails)
+    so_mock._Job.close, so_mock.subprocess.Popen = close, popen
+    try:
+        so_mock.start_job([sys.executable, "-c", "print('never runs')"], stdout=subprocess.PIPE, text=True)
+        raised = None
+    except (so_mock.Recusa, OSError) as ex:
+        raised = ex
+    finally:
+        so_mock._resume, so_mock._kernel, so_mock._Job.close, so_mock.subprocess.Popen = (
+            real_resume, real_kernel, real_close, real_popen)
+    ended = len(started) == 1 and started[0].poll() is not None
+    check(isinstance(raised, OSError) and True in closed and ended,
+          f"when the terminate of a server that could not be resumed fails, its job is still closed (which ends it) "
+          f"and the process waited for ({raised!r}, closed {closed}, ended {ended})")
+
+
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
+    job_api_failures()
+    resume_cleanup_when_terminate_fails()
     resume_that_fails()
     refusals_before_start()
     flag_only_for_a_server_that_knows_it()
