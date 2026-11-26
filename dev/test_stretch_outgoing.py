@@ -140,18 +140,19 @@ def level(speed, rng):
 
 def incoming_level(speed, rng):
     x = stereo(0.1 * rng.standard_normal(int(DURATION_S * SR)))
-    n_sob, n_ramp = int(INCOMING_OVERLAP_S * SR), int(INCOMING_RAMP_S * SR)
-    z, _ = engine.esticar(x, speed, n_sob, n_ramp, int(speed * n_sob + n_ramp * (1 + speed) / 2))
+    n_overlap, n_ramp = int(INCOMING_OVERLAP_S * SR), int(INCOMING_RAMP_S * SR)
+    z, _ = engine.esticar(x, speed, n_overlap, n_ramp, int(speed * n_overlap + n_ramp * (1 + speed) / 2))
     drops, ok, msg = start_drop(x, z, "incoming level", speed)
     cut = int(INCOMING_SILENT_MS / LEVEL_WINDOW_MS)
-    symptom = min(drops[:cut]) < -LEVEL_DROP_DB and min(drops[cut:]) >= -INCOMING_GAP_DB
+    d = np.array(drops)
+    symptom = bool(np.isfinite(d).all()) and d[:cut].min() < -LEVEL_DROP_DB and d[cut:].min() >= -INCOMING_GAP_DB
     if ok:
         check(False, f"{msg}: passed, but it is a known failure (#{INCOMING_ISSUE}): if the fix is on purpose, the "
                      "case leaves the known failures in the same PR")
     elif symptom:
         print(f"known #{INCOMING_ISSUE} {msg}")
     else:
-        check(False, f"{msg}, and from {INCOMING_SILENT_MS:.0f} ms on the quietest window is {min(drops[cut:]):+.1f} dB "
+        check(False, f"{msg}, and from {INCOMING_SILENT_MS:.0f} ms on the quietest window is {d[cut:].min():+.1f} dB "
                      f"(a gap is more than {INCOMING_GAP_DB:.0f} dB down): more than the silent start of #{INCOMING_ISSUE}")
     return min(drops)
 
