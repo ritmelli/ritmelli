@@ -115,19 +115,61 @@ PASSOS = {"disco": ("dev/testa_pasta_protegida.py", "--disco"), "metricas": ("de
 TELA = ("dev/fitcheck.py", "dev/compara.py", "dev/missing_script.py", "dev/theme_scripts.py")
 NOT_ON_PUSH = "github.event_name != 'push'"
 AFTER_RUFF = "${{ !cancelled() && steps.ruff.outcome != 'skipped' }}"
+SUMMARY_ARG = r'--resumo "$env:RUNNER_TEMP\resumo.md"'
+COMPARA_RUN = "\n".join((
+    "if ($env:GITHUB_EVENT_NAME -eq 'push') {",
+    f'  python dev/testa_tudo.py --capture "$env:RUNNER_TEMP\\compara-head" --pasta "$env:RUNNER_TEMP\\tela" {SUMMARY_ARG}',
+    "  exit $LASTEXITCODE",
+    "}",
+    'python dev/testa_tudo.py --compara --base $env:BASE_SHA --pasta "$env:RUNNER_TEMP\\tela" --ref-cache '
+    f'"$env:RUNNER_TEMP\\compara-ref" {SUMMARY_ARG}',
+    "$cod = $LASTEXITCODE",
+    "if ($cod -eq 2) {",
+    "  Add-Content -Path $env:GITHUB_OUTPUT -Value 'mudou=true' -Encoding utf8",
+    "  if ($env:EXTRACAO -eq 'true') { '::error::the compara prints changed, and the PR has the extracao-tema label'; exit 1 }",
+    "  '::warning::the compara prints changed: the differences are in the compara artifact, for review'",
+    "  exit 0",
+    "}",
+    "exit $cod"))
 REQUIRED_MODES = {
-    "--without-long": ("testes", NOT_ON_PUSH, "Testes", AFTER_RUFF),
-    "--passo disco": ("testes", NOT_ON_PUSH, "Pasta protegida no disco", AFTER_RUFF),
-    "--long bench": ("bench", NOT_ON_PUSH, "Banca", None),
-    "--long capture": ("capture", NOT_ON_PUSH, "Captura", None),
-    "--microfone": ("microfone", NOT_ON_PUSH, "Testes do filtro", "steps.areas.outputs.microfone == 'true'"),
-    "--tela": ("tela", NOT_ON_PUSH, "fitcheck", "steps.areas.outputs.tela == 'true'"),
+    "--without-long": ("testes", NOT_ON_PUSH, "Testes", AFTER_RUFF,
+                       f"python dev/testa_tudo.py --without-long {SUMMARY_ARG}"),
+    "--passo disco": ("testes", NOT_ON_PUSH, "Pasta protegida no disco", AFTER_RUFF,
+                      "python dev/testa_tudo.py --passo disco"),
+    "--long bench": ("bench", NOT_ON_PUSH, "Banca", None, f"python dev/testa_tudo.py --long bench {SUMMARY_ARG}"),
+    "--long capture": ("capture", NOT_ON_PUSH, "Captura", None, f"python dev/testa_tudo.py --long capture {SUMMARY_ARG}"),
+    "--microfone": ("microfone", NOT_ON_PUSH, "Testes do filtro", "steps.areas.outputs.microfone == 'true'",
+                    f"python dev/testa_tudo.py --microfone {SUMMARY_ARG}"),
+    "--tela": ("tela", NOT_ON_PUSH, "fitcheck", "steps.areas.outputs.tela == 'true'",
+               f'python dev/testa_tudo.py --tela --pasta "$env:RUNNER_TEMP\\tela" {SUMMARY_ARG}'),
     "--passo metricas": ("tela", NOT_ON_PUSH, "Aviso dos dados de uso",
-                         "${{ !cancelled() && steps.areas.outputs.tela == 'true' && steps.tela.outcome != 'skipped' }}"),
-    "--passo pr-description": ("testes", NOT_ON_PUSH, "PR description", "${{ !cancelled() }}"),
-    "--compara": ("compara", None, "compara", "steps.areas.outputs.roda == 'true'"),
-    "--capture": ("compara", None, "compara", "steps.areas.outputs.roda == 'true'"),
+                         "${{ !cancelled() && steps.areas.outputs.tela == 'true' && steps.tela.outcome != 'skipped' }}",
+                         "python dev/testa_tudo.py --passo metricas"),
+    "--passo pr-description": ("testes", NOT_ON_PUSH, "PR description", "${{ !cancelled() }}",
+                               "python dev/testa_tudo.py --passo pr-description"),
+    "--compara": ("compara", None, "compara", "steps.areas.outputs.roda == 'true'", COMPARA_RUN),
+    "--capture": ("compara", None, "compara", "steps.areas.outputs.roda == 'true'", COMPARA_RUN),
 }
+COMPARA_ENV = {"EXTRACAO": "${{ steps.areas.outputs.extracao }}", "BASE_SHA": "${{ steps.chave.outputs.base }}"}
+REQUIRED_ENV = {"--compara": COMPARA_ENV, "--capture": COMPARA_ENV,
+                "--passo pr-description": {"GH_TOKEN": "${{ github.token }}"}}
+PS1_TESTS = {
+    "instalador/testa-atualizador.ps1": (
+        "testa-atualizador", None, "Instala, a tarefa atualiza e o Ritmelli abre de novo", None,
+        r'instalador\testa-atualizador.ps1 -Setup "saida\Ritmelli-$env:VERSAO-setup.exe" -Manifesto saida\manifest.json'),
+    "instalador/testa-parcial.ps1": (
+        "testa-parcial", "needs.monta.outputs.parcial == 'true'", "Instala a anterior, aplica a parcial e confere", None,
+        r'instalador\testa-parcial.ps1 -Manifesto saida\manifest.json -Parcial "saida\Ritmelli-$env:VERSAO-parcial.exe"'),
+    "instalador/testa-migracao.ps1": (
+        "testa-migracao", "needs.monta.outputs.anterior == 'true'",
+        "Instala a publicada, o setup novo por cima e confere (${{ matrix.scenario }})", None,
+        r'instalador\testa-migracao.ps1 -Setup "saida\Ritmelli-$env:VERSAO-setup.exe" -Versao $env:VERSAO '
+        r'-Scenario $env:SCENARIO'),
+}
+PS1_ENV = {"instalador/testa-atualizador.ps1": {"VERSAO": "${{ needs.monta.outputs.versao }}"},
+           "instalador/testa-parcial.ps1": {"VERSAO": "${{ needs.monta.outputs.versao }}"},
+           "instalador/testa-migracao.ps1": {"VERSAO": "${{ needs.monta.outputs.versao }}",
+                                             "SCENARIO": "${{ matrix.scenario }}"}}
 REQUIRED_JOB = "testa-o-pr"
 VERDICT_STEP = "Verdict"
 # what goes into the key of a compara capture besides the commit and the Chrome version: the scripts that take it and
@@ -183,40 +225,60 @@ def tracked(root=RAIZ):
     return [f for f in out.decode("utf-8").split("\0") if f]
 
 
+def step_failures(where, jobs, job_id, job_if, step_name, step_if, run, env):
+    """What takes a step out of its run: its job or step gone, a condition other than job_if and step_if, a
+    continue-on-error, a run other than run, an env other than env, or a step its condition and env read by id that is
+    not a single earlier step of the job."""
+    job = jobs.get(job_id)
+    if job is None:
+        return [f"{where}: the job is gone"]
+    falhas = []
+    if job.get("if") != job_if:
+        falhas.append(f"{where}: the job runs with if: {job.get('if')}, not {job_if}")
+    if job.get("continue-on-error") is not None:
+        falhas.append(f"{where}: the job has continue-on-error")
+    step = find_step(job, step_name)
+    if step is None:
+        return falhas + [f"{where}: no single step with that name"]
+    if step.get("if") != step_if:
+        falhas.append(f"{where}: the step runs with if: {step.get('if')}, not {step_if}")
+    if step.get("continue-on-error") is not None:
+        falhas.append(f"{where}: the step has continue-on-error")
+    if (step.get("run") or "").rstrip("\n") != run:
+        falhas.append(f"{where}: the step no longer runs exactly {run!r}")
+    if step.get("env") != env:
+        falhas.append(f"{where}: the step env is {step.get('env')}, not {env}")
+    steps = job_steps(job)
+    before = [s.get("id") for s in steps[:steps.index(step)]]
+    read = set(re.findall(r"steps\.([\w-]+)\.", " ".join([step_if or "", *(env or {}).values()])))
+    falhas += [f"{where}: it reads steps.{i}, which is not a single earlier step of the job" for i in sorted(read)
+               if before.count(i) != 1]
+    return falhas
+
+
+def ps1_failures(flows):
+    """The step_failures of each PowerShell test of PS1_TESTS in the monta.yml, by its path."""
+    jobs = (flows.get(".github/workflows/monta.yml") or {}).get("jobs") or {}
+    return {rel: step_failures(f"{rel} (the monta.yml job {row[0]}, step \"{row[2]}\")", jobs, *row, PS1_ENV[rel])
+            for rel, row in PS1_TESTS.items()}
+
+
 def mode_failures(flows):
-    """What takes a mode of REQUIRED_MODES out of the required check: its job, its step, the command, the condition of
-    the job or the step, a continue-on-error, or the job missing from the needs and the verdict of the required job."""
+    """What takes a mode of REQUIRED_MODES out of the required check: its step_failures, or its job missing from the
+    needs and the verdict of the required job."""
     testa = flows.get(".github/workflows/testa.yml") or {}
     jobs = testa.get("jobs") or {}
     required = jobs.get(REQUIRED_JOB) or {}
     verdict = find_step(required, VERDICT_STEP) or {}
     results = set((verdict.get("env") or {}).values())
     falhas = []
-    for mode, (job_id, job_if, step_name, step_if) in REQUIRED_MODES.items():
+    for mode, (job_id, job_if, step_name, step_if, run) in REQUIRED_MODES.items():
         where = f"the testa.yml mode {mode} (job {job_id}, step \"{step_name}\")"
-        job = jobs.get(job_id)
-        if job is None:
-            falhas.append(f"{where}: the job is gone")
-            continue
-        if job.get("if") != job_if:
-            falhas.append(f"{where}: the job runs with if: {job.get('if')}, not {job_if}")
-        if job.get("continue-on-error") is not None:
-            falhas.append(f"{where}: the job has continue-on-error")
+        falhas += step_failures(where, jobs, job_id, job_if, step_name, step_if, run, REQUIRED_ENV.get(mode))
         if job_id not in (required.get("needs") or []):
             falhas.append(f"{where}: the {REQUIRED_JOB} job does not need it")
         if f"${{{{ needs.{job_id}.result }}}}" not in results:
             falhas.append(f"{where}: the {VERDICT_STEP} step does not read its result")
-        step = find_step(job, step_name)
-        if step is None:
-            falhas.append(f"{where}: no single step with that name")
-            continue
-        if step.get("if") != step_if:
-            falhas.append(f"{where}: the step runs with if: {step.get('if')}, not {step_if}")
-        if step.get("continue-on-error") is not None:
-            falhas.append(f"{where}: the step has continue-on-error")
-        command = re.compile(rf"\s*python(?:\.exe)?\s+dev/testa_tudo\.py\s+{re.escape(mode)}(?:\s.*)?")
-        if not any(command.fullmatch(line) for line in (step.get("run") or "").splitlines()):
-            falhas.append(f"{where}: the step no longer runs \"python dev/testa_tudo.py {mode}\"")
     passos = {f"--passo {n}" for n in PASSOS} | {f"--long {n}" for n in LONG_TESTS}
     falhas += [f"{m} has no row in REQUIRED_MODES" for m in sorted(passos - set(REQUIRED_MODES))]
     return falhas
@@ -224,30 +286,29 @@ def mode_failures(flows):
 
 def sem_destino(root=RAIZ, files=None, flows=None):
     """What takes a test out of the checks unnoticed: a Python test of the repo (is_test, in any folder of the git
-    ls-files) in no list here (STDLIB, COMPLETO, LONG_TESTS, MICROFONE, PASSOS, TELA), a PowerShell test that no
-    workflow step runs, either without the "manual:" line; a file with the line that runs anyway, or with the line out
+    ls-files) in no list here (STDLIB, COMPLETO, LONG_TESTS, MICROFONE, PASSOS, TELA), a PowerShell test outside
+    PS1_TESTS, either without the "manual:" line; a PS1_TESTS step out of the monta.yml (ps1_failures); a file with the line that runs anyway, or with the line out
     of format; a mode of REQUIRED_MODES out of the required check (mode_failures), and a dev/ script the testa.yml calls
     directly instead of through PASSOS. Returns the failure lines."""
     root = Path(root)
     files = tracked(root) if files is None else files
     flows = workflows(root) if flows is None else flows
-    runs = [step.get("run") or "" for flow in flows.values() for job in (flow.get("jobs") or {}).values()
-            for step in job_steps(job)]
     rodam = set(COMPLETO) | set(LONG_TESTS.values()) | set(MICROFONE) | {cmd[0] for cmd in PASSOS.values()} | set(TELA)
-    called = {f.replace("\\", "/") for run in runs for f in re.findall(r"[\w./\\-]+\.ps1", run)}
+    ps1 = ps1_failures(flows)
     falhas = []
     for rel in sorted(f for f in files if f.endswith((".py", ".ps1"))):
         if not (root / rel).is_file():
             continue
         linha = manual(root / rel)
-        runs_somewhere = rel in rodam if rel.endswith(".py") else rel in called
+        runs_somewhere = rel in rodam if rel.endswith(".py") else rel in ps1
+        falhas += ps1.get(rel, [])
         if linha and not re.match(r"#\s*manual:\s*\S.*\s+precisa de\s+\S", linha):
             falhas.append(f"{rel}: the line \"{linha}\" does not follow \"# manual: <comando> precisa de <aparelho>\"")
         elif linha and runs_somewhere:
             falhas.append(f"{rel} has the \"manual:\" line and runs in the checks: drop the line or the test")
         elif not linha and is_test(rel) and not runs_somewhere:
             falhas.append(f"{rel} runs nowhere (in no list of dev/testa_tudo.py: STDLIB, COMPLETO, LONG_TESTS, "
-                          "MICROFONE or PASSOS, or no workflow step for a .ps1) and has no "
+                          "MICROFONE or PASSOS, or PS1_TESTS for a .ps1) and has no "
                           "\"# manual: <comando> precisa de <aparelho>\" line at the top")
     falhas += mode_failures(flows)
     testa = flows.get(".github/workflows/testa.yml") or {}
