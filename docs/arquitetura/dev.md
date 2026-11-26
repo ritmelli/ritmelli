@@ -82,6 +82,15 @@ fila. O `dev/test_needs_owner.py` roda num bash com um `gh` falso o passo das et
 "Verdict" e o do `dequeue-on-label.yml`, também com a lista que muda entre o job das etiquetas e o
 veredito. A prova de um gatilho do `testa.yml` ou do nome do check exigido se faz no próprio PR
 (editar a descrição, pôr e tirar uma etiqueta e passar pela fila, com o "Testa o PR" no head).
+O PR que mexe na montagem (o `BUILD_PATHS` do `dev/testa_tudo.py`: `instalador/`, os `atualiza*.py`,
+o `migra.py`, o `pastas.py`, o `microfone/microfone.py`, o `microfone/apo/`, o `ritmelli.spec`, a
+`monta.yml` e a ação do Inno Setup) só passa no "Testa o PR" com uma execução aprovada do "Monta o
+instalador" no commit do head do PR: o `--areas` do job do filtro diz `monta=true` (na fila, contra
+o commit de antes do PR na entrada, a `queue_base` do job das etiquetas, como o `compara`), e o "Verdict"
+procura a execução pela API (na fila, no head do PR da entrada). Sem ela, o veredito diz o comando
+(`gh workflow run monta.yml --ref <branch>`); quando a execução passa, roda-se o job de novo. O
+`dev/test_ci_workflow.py` roda esse trecho com o `gh` falso e confere o caminho da resposta, do
+`--areas` ao "Verdict".
 
 `dev/shot.py` (print + erros de console pelo Chrome headless), `dev/fitcheck.py` (gate
 de "cabe em qualquer tela", de 1024x600 a 2560x1300, no celular em pé e no celular grande
