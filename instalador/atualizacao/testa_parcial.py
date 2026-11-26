@@ -226,6 +226,7 @@ RELEASES = "https://github.com/ritmelli/ritmelli-releases/releases/download"
 VERSION_FILE, VERSION_LINES = re.subn(r'^VERSAO = "[^"\r\n]*"', 'VERSAO = "<version>"',
                                       (AQUI.parents[1] / "versao.py").read_text(encoding="utf-8"), flags=re.M)
 caso("the fake versao.py is the real one with only the VERSAO line swapped", VERSION_LINES == 1)
+RECORDED_MANIFEST = '{"recorded": true}'
 RECORDER = f"""import argparse
 import json
 import runpy
@@ -255,6 +256,7 @@ def record(self, *args, **kwargs):
         lines = [line.strip() for line in path.read_text(encoding="utf-8-sig").splitlines()] if path else []
         if any(lines):
             notes[n] = [line for line in lines if line]
+    (options.saida / "manifest.json").write_text({RECORDED_MANIFEST!r}, encoding="utf-8")
     call = {{"options": {{k: effective(k, v) for k, v in vars(options).items()}}, "notes": notes}}
     Path(__file__).with_name("publica-call.json").write_text(json.dumps(call), encoding="utf-8")
     sys.exit(0)
@@ -288,6 +290,8 @@ def manifest_call(source, version="0.3.4", notas=None, notas_en=None, partial=Fa
                        errors="replace", env=env)
     record = scripts / "publica-call.json"
     call = json.loads(record.read_text(encoding="utf-8")) if record.exists() else {"options": {}, "notes": {}}
+    if record.exists():
+        laid_out["manifest.json"] = RECORDED_MANIFEST.encode()
     untouched = {f.name: f.read_bytes() for f in output.iterdir()} == laid_out
     code = p.returncode if untouched else f"the script changed {output}"
     return code, call["options"], call["notes"], output, p.stdout + p.stderr
@@ -394,7 +398,9 @@ MANIFEST_CASES = {
     "--saida is instalador/saida, where monta.ps1 writes the setups and which test_monta_contract.py ties to the "
     "Ritmelli-<version> artifact": (output_case, [
         ('"--saida", OUTPUT,', '"--saida", OUTPUT.parent,'),
-        ("*notes_options(notes_folder)]", '*notes_options(notes_folder), "--saida", APP]')]),
+        ("*notes_options(notes_folder)]", '*notes_options(notes_folder), "--saida", APP]'),
+        ("    sys.exit(result.returncode)",
+         '    (OUTPUT / "manifest.json").unlink(missing_ok=True)\n    sys.exit(result.returncode)')]),
     "--notas and --notas-en give publica.py the lines of NOTAS and NOTAS_EN, split on |, each on its own": (
         notes_case, [
             ('("NOTAS", "--notas"), ("NOTAS_EN", "--notas-en")', '("NOTAS", "--notas-en"), ("NOTAS_EN", "--notas")'),
