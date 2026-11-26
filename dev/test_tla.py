@@ -45,6 +45,9 @@ RENAME_PLAY = (("WithTheRename", "TRUE"), ("WithTheJobOnThePlatter", "FALSE"), (
 PART_CONSTANTS = ("DownloadOutcomes", "StreamReaderStartsWith", "QueueLengths")
 WHOLE = {"LocksAndSwitch": ({"Qids": 2, "RIds": 2, "GIds": 2},),
          "PassageFailure": ({"Entries": 2, "Sources": 2, "Files": 1}, {"Entries": 2, "Sources": 1, "Files": 2})}
+CLEAN_END = (("WithTheCleanEnd", "TRUE"), ("WithTheMoves", "FALSE"), ("WithTheSeek", "FALSE"),
+             ("WithTheForget", "FALSE"))
+WITNESSES = {"Races211": {"NoSwitchToAKeptDeck"}}
 TWO_FILES = (("Files", "{f1, f2}"), ("Sources", "{s1}"))
 REQUIRED = {
     "Races211": {"TypeOK", "LockOrderKept", "NoOrphanLoading", "NoStaleLoading", "SwitchEntryMatchesPlatter",
@@ -82,6 +85,14 @@ RUNS = (
         "Races211", "invariant SwapLeavesTheShelfFileOff", invariants=("SwapLeavesTheShelfFileOff",),
         constants=(("WithTheMoves", "FALSE"), ("WithTheSeek", "FALSE"), ("WithTheForget", "FALSE")),
         action="SwapPublishesTheFile"),
+    Run("Races211, the code as it is with a stream reader that reaches its end: every property", "Races211",
+        constants=CLEAN_END),
+    Run("Races211, the code as it is: a file handover after the stream's reader reached its end keeps the prepared "
+        "deck, and the mixer switches to it", "Races211", "invariant NoSwitchToAKeptDeck",
+        invariants=("NoSwitchToAKeptDeck",), constants=CLEAN_END, action="MixerSwitches"),
+    Run("mutant: a file handover after the stream's reader reached its end drops the prepared deck, and the mixer "
+        "never switches to a kept one", "Races211", invariants=("NoSwitchToAKeptDeck",),
+        constants=CLEAN_END + (("TheEndKeepsThePrepared", "FALSE"),)),
     Run("Races211, the code as it is: the download, the stream and the swap, with the record leaving the shelf",
         "Races211", constants=(("WithTheMoves", "FALSE"), ("WithTheSeek", "FALSE"), ("WithThePlay", "FALSE"))),
     Run("Races211, the code as it is: the download, the stream and a seek", "Races211",
@@ -408,7 +419,8 @@ def rename_part_failures(runs, cfg_text):
 
 def set_sizes(cfg_text):
     constants = (c.split(" = ", 1) for c in parse_cfg(cfg_text).get("CONSTANTS", []))
-    return {name: len(set(re.findall(r"[^{},\s]+", value))) for name, value in constants if value.startswith("{")}
+    return {name: len(set(re.findall(r"\w+", value))) for name, value in constants
+            if re.fullmatch(r"\{\s*(\w+\s*(,\s*\w+\s*)*)?\}", value)}
 
 
 def covers(run, cfg_text, need):
@@ -422,6 +434,9 @@ def invariant_failures(runs, cfgs):
              if r.title.startswith("known failure #294") and r.expect.startswith("invariant ")}
     for run in (r for r in runs if r.expect == "pass"):
         blocks = parse_cfg(write_cfg(cfgs[run.spec], run))
+        if run.title.startswith("mutant: ") and set(run.invariants or ()) and \
+                set(run.invariants) <= WITNESSES.get(run.spec, set()):
+            continue
         if run.specification is not None:
             fair += [run] if (run.specification, run.spec) == ("FairSpec", "LocksAndSwitch") else []
             out += [] if ("ReservationsResolve" in blocks.get("PROPERTIES", []) and "SYMMETRY" not in blocks
@@ -495,6 +510,12 @@ def main():
             ("the passing run of PassageFailure with two sources has no shelf file",
              [replace(r, constants=(("Files", "{}"),)) if r.spec == "PassageFailure" and r.expect == "pass"
               and not r.constants else r for r in RUNS]),
+            ("the passing run of PassageFailure has one quoted source of two words",
+             [replace(r, constants=(("Sources", '{"one source"}'),)) if r.spec == "PassageFailure"
+              and r.expect == "pass" and not r.constants else r for r in RUNS]),
+            ("a passing run of the code names only the witness of the kept deck",
+             [replace(r, invariants=("NoSwitchToAKeptDeck",)) if r.title.startswith(
+                 "Races211, the code as it is with a stream reader that reaches its end") else r for r in RUNS]),
             ("the passing run of PassageFailure names one source twice",
              [replace(r, constants=(("Sources", "{s1, s1}"),)) if r.spec == "PassageFailure" and r.expect == "pass"
               and not r.constants else r for r in RUNS]),

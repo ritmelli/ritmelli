@@ -1489,7 +1489,6 @@ class App:
         return x.get("youtube_id") or x.get("url"), cmd.Identity((shelf or self.shelf_item(x))[1])
 
     def fonte_de(self, x, shelf=None):
-        """The second deck's record, or None when the passage does not apply: the shelf file's builder, or a stream."""
         j, it = shelf or self.shelf_item(x)
         if it:
             return lambda: dict(it, path=str(LIB / it["file"]), **marca_auto(x))

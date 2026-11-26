@@ -9,7 +9,8 @@ CONSTANTS Qids, NoQid, StreamFailureChecksJob, AudioSwapThroughChangeQueue, Stre
           WithTheDrop, WithTheJobSwitch, DownloadEndsBeforeTheSourcePick, PrepareLooksAtTheShelf,
           PassageFileKeepsTheJob, WithTheRename, RenameReplacesTheTrack, RenameReachesThePreparedDeck,
           RecordBuiltUnderTheLock, WithTheJobOnThePlatter, TheJobIsPlayedBeforeItsDownloadEnds,
-          DownloadOutcomes, StreamReaderStartsWith, QueueLengths, WithTheOtherOnTheShelf
+          DownloadOutcomes, StreamReaderStartsWith, QueueLengths, WithTheOtherOnTheShelf, WithTheCleanEnd,
+          TheEndKeepsThePrepared
 
 VARIABLES pc, track, nextId, line, pronto, nearEnd, noReader, gen,
           jobStatus, shelf, stream, swTr, dlSaw, wrongTrack, fileWait, stGen, refusedPlaying,
@@ -30,8 +31,8 @@ Workers == {"Download", "Swap", "Stream", "Prepare", "AudioVersion", "Play", "Fo
 Procs == Workers \cup {"Mixer", "PassageWatcher"}
 
 NoTrack == [id |-> 0, job |-> FALSE, qid |-> NoQid, ver |-> "-", path |-> "none", rec |-> FALSE, name |-> 0]
-NoSwitch == [tag |-> NoQid, sai |-> 0, ver |-> "-"]
-NoPronto == [qid |-> NoQid, ver |-> "-", job |-> FALSE, path |-> "stream", rec |-> FALSE, name |-> 0]
+NoSwitch == [tag |-> NoQid, sai |-> 0, ver |-> "-", kept |-> FALSE]
+NoPronto == [qid |-> NoQid, ver |-> "-", job |-> FALSE, path |-> "stream", rec |-> FALSE, name |-> 0, kept |-> FALSE]
 
 Range(s) == {s[i] : i \in 1..Len(s)}
 Without(s, q) == SelectSeq(s, LAMBDA y : y /= q)
@@ -60,10 +61,14 @@ StopPlatter ==
     /\ noReader' = FALSE
     /\ UNCHANGED <<nextId, gen>>
 
+TheEnd == stream = "ended" /\ track.id = swTr /\ gen = stGen
+
 NewSourceWith(path, without, name) ==
     /\ track' = [track EXCEPT !.id = nextId, !.path = path, !.job = track.job /\ path /= "file", !.name = name]
     /\ nextId' = nextId + 1
-    /\ pronto' = IF path = "file" THEN NoPronto ELSE pronto
+    /\ pronto' = CASE path /= "file" -> pronto
+                   [] TheEnd /\ TheEndKeepsThePrepared /\ pronto.qid /= NoQid -> [pronto EXCEPT !.kept = TRUE]
+                   [] OTHER -> NoPronto
     /\ noReader' = without
     /\ UNCHANGED <<line, nearEnd, gen>>
 
@@ -309,7 +314,8 @@ StreamReaderStarts ==
     /\ At("StreamReader", "sr_idle")
     /\ \/ stream = "refused" /\ Goto("StreamReader", "st_refused")
        \/ /\ stream = "ok"
-          /\ \E l \in StreamReaderStartsWith \cup (IF WithTheDrop THEN {"sr_dropped"} ELSE {}) :
+          /\ \E l \in StreamReaderStartsWith \cup (IF WithTheDrop THEN {"sr_dropped"} ELSE {})
+                   \cup (IF WithTheCleanEnd THEN {"sr_ended"} ELSE {}) :
                 Goto("StreamReader", l)
        \/ stream = "gone" /\ Goto("StreamReader", "done")
     /\ UNCHANGED <<lockVars, platVars, jobVars, queueVars, localVars>>
@@ -320,6 +326,14 @@ StreamReaderEnds ==
     /\ noReader' = (noReader \/ (track.id = swTr /\ gen = stGen))
     /\ Goto("StreamReader", "done")
     /\ UNCHANGED <<track, nextId, line, pronto, nearEnd, gen, jobVars, queueVars, localVars>>
+
+StreamReaderReachesItsEnd ==
+    /\ At("StreamReader", "sr_ended")
+    /\ Section("StreamReader", "_qlock")
+    /\ stream' = IF track.id = swTr /\ gen = stGen THEN "ended" ELSE stream
+    /\ Goto("StreamReader", "done")
+    /\ UNCHANGED <<platVars, jobStatus, shelf, swTr, dlSaw, wrongTrack, fileWait, stGen, refusedPlaying, shelfName, dlName,
+                   queueVars, localVars>>
 
 StreamRefusedToday ==
     /\ ~StreamFailureChecksJob
@@ -412,7 +426,7 @@ MixerSwitches ==
     /\ pronto.qid /= NoQid
     /\ Playing
     /\ Section("Mixer", "_qlock")
-    /\ virou' = [tag |-> pronto.qid, sai |-> track.id, ver |-> pronto.ver]
+    /\ virou' = [tag |-> pronto.qid, sai |-> track.id, ver |-> pronto.ver, kept |-> pronto.kept]
     /\ Publish([id |-> nextId, job |-> pronto.job /\ (PassageFileKeepsTheJob \/ pronto.path /= "file"),
                 qid |-> pronto.qid, ver |-> pronto.ver, path |-> pronto.path, rec |-> pronto.rec, name |-> pronto.name])
     /\ UNCHANGED <<pc, jobVars, fila, ver, closing, preparando, localVars>>
@@ -458,7 +472,7 @@ PreparePublishes ==
     /\ Section("Prepare", "_qlock")
     /\ IF /\ Head0(fila) = prX /\ virou.tag = NoQid /\ line = prLine /\ track.id = prTrack /\ pronto.qid = NoQid
           /\ (PrepareChecksTheVersion => ver[prX] = prVer) /\ prPath /= "none"
-       THEN /\ pronto' = [qid |-> prX, ver |-> prVer, job |-> prJob, path |-> prPath, rec |-> prJob,
+       THEN /\ pronto' = [qid |-> prX, ver |-> prVer, job |-> prJob, path |-> prPath, rec |-> prJob, kept |-> FALSE,
                            name |-> IF prPath = "file" /\ prJob /\ RecordBuiltUnderTheLock THEN shelfName
                                     ELSE IF prPath = "file" /\ prJob THEN prName ELSE 0]
             /\ stalePrepared' = (stalePrepared \/ gen /= prGen)
@@ -618,7 +632,8 @@ Step ==
     \/ DownloadEnds \/ DownloadMarksDone \/ DownloadFailedLock \/ DownloadFailedStop
     \/ DownloadDoneRead \/ DownloadDoneSkip \/ DownloadDoneLock \/ DownloadDoneFile
     \/ SwapChooses \/ SwapFileLocks \/ SwapPublishesTheFile \/ SwapLocks \/ SwapCloses \/ SwapPublishes \/ SwapReleases
-    \/ StreamTries \/ StreamOpened \/ StreamReaderStarts \/ StreamReaderEnds \/ StreamRefusedToday \/ StreamRefusedChecksJob
+    \/ StreamTries \/ StreamOpened \/ StreamReaderStarts \/ StreamReaderEnds \/ StreamReaderReachesItsEnd
+    \/ StreamRefusedToday \/ StreamRefusedChecksJob
     \/ PlayLocks \/ PlaySwaps \/ ForgetsTheRecord \/ MoveSwaps \/ Reserves \/ Seeks
     \/ MixerTime \/ MixerSwitches
     \/ PrepareReads \/ PrepareMarks \/ PrepareSource \/ PrepareLocks \/ PreparePublishes \/ PrepareReleases
@@ -633,7 +648,7 @@ Spec == Init /\ [][Next]_vars
 TypeOK ==
     /\ track.id \in Nat /\ track.path \in {"none", "stream", "file"}
     /\ jobStatus \in {"running", "error", "done"}
-    /\ stream \in {"pending", "running", "ok", "refused", "gone", "silent"}
+    /\ stream \in {"pending", "running", "ok", "refused", "gone", "silent", "ended"}
     /\ Range(fila) \subseteq Qids
     /\ ver \in [Qids -> {"video", "audio"}]
 
@@ -652,6 +667,8 @@ NoPassageFromBeforeTheSeek == ~stalePrepared
 FinishedDownloadReachesThePlatter == Quiescent => ~(track.job /\ track.path = "stream" /\ FileReady)
 
 NameIsCurrentOutsideARename == pc["Rename"] /= "rn_platter" => (track.rec => track.name = shelfName)
+
+NoSwitchToAKeptDeck == ~virou.kept
 
 SwapLeavesTheShelfFileOff == ~(pc["Swap"] = "done" /\ track.id = swTr /\ track.id /= 0 /\ ~track.job /\ track.path = "file")
 

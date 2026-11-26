@@ -1280,25 +1280,25 @@ def shelf_record_deleted_before_the_pick(A, E, readers):
 def replacement_shelf_file_after_its_predecessor_failed(A, E, readers):
     check(play(A, E, readers, "d1"), "d1 is on the platter, read")
     x = similar_on_its_own(A, "p", 19)
-    A.lib.add(dict(shelf_record("p", 19), added="2026-11-26T00:00:00"))
+    A.lib.add(dict(shelf_record("p", 19), added="2026-11-26T00:00:00", lufs=-14.0))
     A.failed_passages.add(failed := carried_key(A, x))
     A.lib.remove("shelf19")
-    A.lib.add(replacement := dict(shelf_record("p", 19), added="2026-11-26T00:00:00"))
+    A.lib.add(replacement := dict(shelf_record("p", 19), added="2026-11-26T00:00:00", lufs=-9.0))
     launches, want = Launches(), carried_key(A, x)
     with mock.patch.object(eng, "TRANS_PREP_S", 1e6):
         watch(A, launches)
         cap = E.captura()
         with mock.patch.object(E, "preparar", return_value=True) as prepares:
             A._prepara(cap.track, x, dict(x), cap)
-    A.lib.remove("shelf19")
-    A.failed_passages.clear()
     handed = prepares.call_args.args[0]() if prepares.call_count == 1 and callable(prepares.call_args.args[0]) else None
     key = prepares.call_args.kwargs.get("key") if prepares.call_count == 1 else None
-    check(launches.qids == [x["qid"]] and (handed or {}).get("file") == "shelf19.m4a"
+    A.lib.remove("shelf19")
+    A.failed_passages.clear()
+    check(launches.qids == [x["qid"]] and (handed or {}).get("lufs") == -9.0
           and key == want != failed and want[2][1] == cmd.Identity(replacement),
           f"a shelf record downloaded again with the same id, file name and added stamp, replacing one whose prepare "
           f"failed, for the same entry, gets its own prepare, and the worker hands the new record and its own key to "
-          f"the engine (launched {launches.qids}, key {key})")
+          f"the engine (launched {launches.qids}, handed lufs {(handed or {}).get('lufs')}, key {key})")
 
 
 def engine_failure_through_the_real_prepare(A, E, readers):
