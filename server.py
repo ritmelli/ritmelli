@@ -2728,17 +2728,12 @@ def main():
     ap.add_argument("--metricas-teste", action="store_true",
                     help="with --mock: the usage data notice and choice work, but nothing is read from the installer "
                          "and nothing is sent (the events stay in memory)")
-    ap.add_argument("--stop-on-stdin-eof", action="store_true",
-                    help="with --mock: stop like the Desligar button when stdin closes (the dev/so_mock.py that started "
-                         "the server holds the other end; the phone role, which /api/shutdown refuses, stops this way)")
+    ap.add_argument("--stop-on-stdin-eof", action="store_true", help="with --mock: stop when stdin closes (dev/so_mock.py)")
     ap.add_argument("--version", action="version", version=f"Ritmelli {VERSAO}")
     a = ap.parse_args()
-    if a.metricas_teste and not a.mock:
-        sys.exit("--metricas-teste only works with --mock")
-    if a.papel_local is not None and not a.mock:
-        sys.exit("--papel-local only works with --mock")
-    if a.stop_on_stdin_eof and not a.mock:
-        sys.exit("--stop-on-stdin-eof only works with --mock")
+    mock_only = [f for f in ("metricas_teste", "papel_local", "stop_on_stdin_eof") if getattr(a, f) and not a.mock]
+    if mock_only:
+        sys.exit(f"--{mock_only[0].replace('_', '-')} only works with --mock")
     dados = Path(a.data_dir) if a.data_dir else LIB
     if a.mock:  # o download de mentira na pasta de quem usa virava disco falso na prateleira (#117)
         dados = pastas.dados_do_mock(a.data_dir)
@@ -2747,7 +2742,7 @@ def main():
                      "temporary copy")
     A = App(a.port, dados, mock=a.mock, metricas_teste=a.metricas_teste, papel_local=a.papel_local or "pc")
     if a.stop_on_stdin_eof:
-        threading.Thread(target=stop_on_stdin_eof, args=(A,), daemon=True).start()
+        pastas.call_when_stdin_ends(A.pede_desligar)
     if not a.mock:  # no --mock, o processo do YouTube so abre no primeiro pedido de quem testa (#128)
         threading.Thread(target=fora.aquece, daemon=True).start()  # o primeiro pedido ao YouTube ja acha o de reserva
     d = A.engine.active
@@ -2777,11 +2772,6 @@ def main():
     finally:
         A.pede_desligar()
         t.join(timeout=20)
-
-
-def stop_on_stdin_eof(A):
-    sys.stdin.buffer.read()
-    A.pede_desligar()
 
 
 def roda(A, a):
