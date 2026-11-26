@@ -233,7 +233,7 @@ def _projeta(efeito_id, taxa):
     try:
         e = fx.criar(efeito_id)
         return None if e is None else compila(e, taxa)
-    except Exception:  # noqa: BLE001 - NaoPortado, efeito que sumiu do catalogo, scipy: o efeito segue pelo app
+    except Exception:  # NaoPortado, efeito que sumiu do catalogo, scipy: o efeito segue pelo app
         return None
 
 

@@ -9,8 +9,8 @@ from ctypes import HRESULT, POINTER, c_float, c_uint, c_void_p, c_wchar_p
 from ctypes.wintypes import DWORD
 
 sys.coinit_flags = getattr(sys, "coinit_flags", 0)  # MTA: o engine importa na thread dona do COM
-import comtypes  # noqa: E402
-from comtypes import COMMETHOD, GUID, IUnknown  # noqa: E402
+import comtypes
+from comtypes import COMMETHOD, GUID, IUnknown
 
 E_RENDER = 0
 E_CAPTURE = 1

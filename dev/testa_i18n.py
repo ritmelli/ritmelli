@@ -29,7 +29,7 @@ from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ))
-import i18n  # noqa: E402
+import i18n
 
 # o hifen so depois do primeiro ponto: e o id do efeito (effect.radio-policia.name)
 CHAVE = r"[a-z][A-Za-z0-9]*(?:\.[A-Za-z0-9-]+)+"

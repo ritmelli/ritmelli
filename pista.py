@@ -122,7 +122,7 @@ class Pista:
                 y = self.conv.bloco(x)
                 if self.ajuste is not None:
                     y = self._mede(y)
-            except Exception as ex:  # noqa: BLE001 - a voz volta para o microfone e o app fica sabendo
+            except Exception as ex:  # a voz volta para o microfone e o app fica sabendo
                 self.erro = f"{type(ex).__name__}: {ex}"
                 self.vai = False
                 return
@@ -199,7 +199,7 @@ def main(args):
         if cfg.get("provedor", "dml") == "dml":
             conversor.tempo_real()
         conv = conversor.Conversor(cfg["engine"], cfg["voz"], tom=float(tom or 0), provedor=cfg.get("provedor", "dml"))
-    except Exception as ex:  # noqa: BLE001 - sem o motor nao ha pedal: o app fica sabendo por que
+    except Exception as ex:  # sem o motor nao ha pedal: o app fica sabendo por que
         diz(f"erro: the voice engine didn't start ({type(ex).__name__}: {ex})")
         m.fecha()
         return 2

@@ -361,7 +361,7 @@ class Efeito:
     def _etapa(f):
         if isinstance(f, (list, tuple)):
             placa = pb.Pedalboard(list(f))
-            etapa = lambda x: placa(x.reshape(1, -1), SR, reset=False)[0]  # noqa: E731
+            etapa = lambda x: placa(x.reshape(1, -1), SR, reset=False)[0]
             etapa.placa = placa  # o preset do filtro (microfone/preset.py) le os plugins daqui
             return etapa
         return f
@@ -736,7 +736,7 @@ def _carrega_pistavoz():
         return None
     try:
         import pistavoz as mod
-    except Exception as ex:  # noqa: BLE001 - o modulo e de fora: o erro dele (uma dependencia dele que falta, inclusive) nao derruba o servidor
+    except Exception as ex:  # o modulo e de fora: o erro dele (uma dependencia dele que falta, inclusive) nao derruba o servidor
         print(f"pedal_voz: import failed ({type(ex).__name__}: {str(ex)[:160]})", file=sys.stderr, flush=True)
         return None
     vozes = getattr(mod, "VOZES", None)
@@ -750,7 +750,7 @@ def _carrega_pistavoz():
     if callable(getattr(mod, "impedimento", None)):  # sem placa de video, sem as vozes baixadas
         try:
             motivo = mod.impedimento()
-        except Exception as ex:  # noqa: BLE001 - idem
+        except Exception as ex:  # idem
             motivo = f"impedimento() failed ({type(ex).__name__}: {str(ex)[:160]})"
         if motivo:
             print(f"pedal_voz: {motivo}; pedal off", file=sys.stderr, flush=True)
