@@ -81,6 +81,9 @@ class MotorFalso:
     def voz_pelo_app(self):
         return False
 
+    def set_error(self, message):
+        self.error = message
+
     def totais_saude(self):  # a janela do evento "audio" (metricas.SaudeAudio)
         return 0, 0.0
 

@@ -1,7 +1,7 @@
 """O Automatico: com ele ligado, a fila nunca acaba. O ultimo disco que o usuario escolheu e a semente, e as parecidas
 dela (o radio do YouTube Music, pelo mix_do do App) ficam no fim do A seguir, em ordem de andamento (andamento.py). O
-vigia das parecidas (_vigia_auto, uma _volta_auto a cada 0,5 s) busca o Mix e monta a fila; o do andamento
-(_vigia_andamento) mede cada disco uma vez so e troca a parecida que veio como video pela versao so de audio.
+vigia das parecidas (run_auto_watcher, uma auto_round a cada 0,5 s) busca o Mix e monta a fila; o do andamento
+(run_tempo_watcher) mede cada disco uma vez so e troca a parecida que veio como video pela versao so de audio.
 
 O estado do Automatico mora no App (auto, semente, mix, mix_base, ponte, mix_buscando, mix_falhou, mix_seq, fora,
 fora_musica, andamentos, andamentos_versao, versoes), porque a leitura do estado, o save_cfg e o _recusar o leem: o
@@ -48,7 +48,7 @@ class Automatico:
                 for x in [x for x in A.fila if x.get("auto")]:
                     A.remove_from_queue(x)
 
-    def _busca_mix(self, base):
+    def fetch_mix(self, base):
         A = self.app
         try:
             lista = self.mix_do(base)
@@ -162,19 +162,19 @@ class Automatico:
         A.change_queue(replace_auto_tail)
         return entrou
 
-    def _vigia_auto(self):
+    def run_auto_watcher(self):
         """Com o Automatico ligado, a fila nunca acaba (como no YouTube Music): o ultimo disco que
         o usuario escolheu (qualquer um que o Automatico nao pos) e a semente, e o radio dela (mix_do)
         mantem AUTO_FILA parecidas no fim do A seguir. Semente nova troca as parecidas; o que ja
         tocou nesta sessao nao volta; quando o Mix da semente acaba, segue do Mix da ultima
-        parecida que tocou. As parecidas vao em ordem de andamento (_ordena_auto). Cada volta e o _volta_auto."""
+        parecida que tocou. As parecidas vao em ordem de andamento (_ordena_auto). Cada volta e o auto_round."""
         visto, sinal = None, None
         while True:
             time.sleep(0.5)
-            visto, sinal = self._volta_auto(visto, sinal)
+            visto, sinal = self.auto_round(visto, sinal)
 
-    def _volta_auto(self, visto=None, sinal=None):
-        """Uma volta do _vigia_auto. visto: o youtube_id do prato na volta de antes; sinal: o que a ordem por
+    def auto_round(self, visto=None, sinal=None):
+        """Uma volta do run_auto_watcher. visto: o youtube_id do prato na volta de antes; sinal: o que a ordem por
         andamento viu da ultima vez que ordenou. Volta os dois da proxima volta."""
         A = self.app
         e = A.engine
@@ -210,7 +210,7 @@ class Automatico:
                 sinal = (id(tr), tuple(x["qid"] for x in A.fila), A.andamentos_versao, A.mix_seq,
                          self._presa())
         if base:
-            threading.Thread(target=self._busca_mix, args=(base,), daemon=True).start()
+            threading.Thread(target=self.fetch_mix, args=(base,), daemon=True).start()
         # o disco acabou antes de chegar parecida (o Mix ainda vinha): a primeira toca agora; e tambem a que ja estava
         # la quando a volta de antes cedeu a outro avanco que nao a tocou
         if (entrou or A.fila) and tr is not None and tr is A.parado_sem_fila:
@@ -294,12 +294,12 @@ class Automatico:
             raise RuntimeError(r["erro"])
         return {"ini": r.get("ini"), "fim": r.get("fim")} if r else None
 
-    def _vigia_andamento(self):
+    def run_tempo_watcher(self):
         """Com o Automatico ligado, mede o andamento (_a_medir, _mede_andamento) um disco de cada vez, uma vez so
         por disco (fica no andamentos.json). So depois de o disco do prato ficar ANDAMENTO_APOS_S tocando (pular
         de disco em disco nao le nada; buscar nao mede nunca) e nunca com a passagem sendo planejada (a rede do
         motor e a da medida juntas). Antes da medida, a parecida que veio como video troca pela versao so de
-        audio, quando ha (versao_audio). A medida que chega faz o _vigia_auto ordenar de novo."""
+        audio, quando ha (versao_audio). A medida que chega faz o run_auto_watcher ordenar de novo."""
         A = self.app
         prato, desde = None, 0.0
         while True:

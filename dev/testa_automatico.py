@@ -3,7 +3,7 @@ numa pasta temporaria com um andamentos.json conhecido, sem as threads dos vigia
 mix_do do App (a busca de parecidas na rede, que no --mock ja volta vazia) vira um falso com seis parecidas de
 andamento conhecido, e o prato recebe uma faixa com youtube_id e sem path (sem path, o motor nao abre leitor): ela e a
 semente. O teste faz o papel do vigia, sempre pelo App: liga o Automatico (ligar_auto), chama a primeira volta
-(_volta_auto), que pede a busca da semente, faz a busca ele mesmo (_busca_mix, sem thread e sem esperar) e chama a
+(auto_round), que pede a busca da semente, faz a busca ele mesmo (fetch_mix, sem thread e sem esperar) e chama a
 segunda volta, que monta a fila na ordem por andamento. Depois, uma medida nova com a primeira da fila presa (a
 passagem para ela ja sendo preparada) e sem ela, e o Automatico desligado. Nada vai a rede nem abre aparelho, e a
 prateleira e a pasta de quem usa nao sao lidas.
@@ -65,7 +65,7 @@ def automatico(A, E):
     pedidos = []
 
     def mix_falso(yid):
-        """As parecidas da semente, novas a cada busca (o _busca_mix numera cada uma na ordem do Mix)."""
+        """As parecidas da semente, novas a cada busca (o fetch_mix numera cada uma na ordem do Mix)."""
         pedidos.append(yid)
         return [{"youtube_id": v, "title": t, "duration": 200.0, "channel": f"Artista {t.split()[-1]}",
                  "thumb": server.thumb(v)} for v, t in PARECIDAS]
@@ -81,23 +81,23 @@ def automatico(A, E):
     # a primeira volta: o disco do prato vira a semente e a busca do Mix dela e pedida (a thread dela fica so pedida:
     # quem busca e o teste, com a semente que a volta passou a ela)
     with mock.patch.object(threading, "Thread") as thread:
-        visto, sinal = A._volta_auto(None, None)
+        visto, sinal = A.automatico.auto_round(None, None)
     pedida = [(getattr(c.kwargs.get("target"), "__name__", None), c.kwargs.get("args")) for c in thread.call_args_list]
     base = pedida[0][1][0] if pedida and pedida[0][1] else None
     confere(visto == "sssssssssss" and A.semente == {"youtube_id": "sssssssssss", "title": "Semente Primeira"}
-            and pedida == [("_busca_mix", ("sssssssssss",))] and thread.return_value.start.call_count == 1
+            and pedida == [("fetch_mix", ("sssssssssss",))] and thread.return_value.start.call_count == 1
             and A.mix_base == base and A.mix is None and A.mix_buscando and "sssssssssss" in A.fora and auto() == [],
             f"a primeira volta: a semente e o disco do prato, e a busca do Mix dela fica pedida ({A.semente}, {pedida})")
 
     # a busca, pelo mix_do do App (o falso)
-    A._busca_mix(base)
+    A.automatico.fetch_mix(base)
     confere(pedidos == ["sssssssssss"] and not A.mix_buscando
             and [m["youtube_id"] for m in A.mix] == [v for v, _ in PARECIDAS]
             and [m["ordem"] for m in A.mix] == [1, 2, 3, 4, 5, 6],
             f"a busca: as parecidas da semente, pelo mix_do do App, numeradas na ordem do Mix ({pedidos})")
 
     # a segunda volta monta a fila na ordem por andamento
-    visto, sinal = A._volta_auto(visto, sinal)
+    visto, sinal = A.automatico.auto_round(visto, sinal)
     esperado = ["aaaaaaaaaa3", "aaaaaaaaaa6", "aaaaaaaaaa2", "aaaaaaaaaa4", "aaaaaaaaaa1"]
     confere(auto() == esperado and len(A.fila) == auto_mod.AUTO_FILA,
             f"a segunda volta: cinco parecidas na fila, na ordem por andamento ({auto()})")
@@ -105,7 +105,7 @@ def automatico(A, E):
             "cada parecida da fila diz de que semente veio e ganhou o seu qid")
     confere([m["youtube_id"] for m in A.mix] == ["aaaaaaaaaa5"], f"a que nao entrou fica no Mix ({A.mix})")
     antes = [x["qid"] for x in A.fila]
-    visto, sinal = A._volta_auto(visto, sinal)
+    visto, sinal = A.automatico.auto_round(visto, sinal)
     confere([x["qid"] for x in A.fila] == antes and pedidos == ["sssssssssss"],
             "a volta seguinte, sem nada mudar, deixa a fila como esta e nao busca de novo")
 
@@ -115,13 +115,13 @@ def automatico(A, E):
         A.andamentos["aaaaaaaaaa1"] = {"ini": 120.0, "fim": 131.0}
         A.andamentos_versao += 1
     A.preparando = (E.track, A.fila[0]["qid"])
-    visto, sinal = A._volta_auto(visto, sinal)
+    visto, sinal = A.automatico.auto_round(visto, sinal)
     confere(auto() == esperado and A.fila[0]["qid"] == antes[0],
             f"com a primeira presa, a medida nova nao a troca ({auto()})")
 
     # sem a presa, a medida nova vale
     A.preparando = None
-    visto, sinal = A._volta_auto(visto, sinal)
+    visto, sinal = A.automatico.auto_round(visto, sinal)
     confere(auto() == ["aaaaaaaaaa1", "aaaaaaaaaa6", "aaaaaaaaaa2", "aaaaaaaaaa4", "aaaaaaaaaa3"],
             f"sem a presa, a medida nova reordena a fila ({auto()})")
     confere([m["youtube_id"] for m in A.mix] == ["aaaaaaaaaa5"] and pedidos == ["sssssssssss"],
@@ -130,7 +130,7 @@ def automatico(A, E):
     # desligar tira as parecidas da fila
     A.ligar_auto(False)
     confere(not A.auto and A.fila == [], f"desligado, as parecidas saem da fila ({auto()})")
-    visto, sinal = A._volta_auto(visto, sinal)
+    visto, sinal = A.automatico.auto_round(visto, sinal)
     confere(A.fila == [] and pedidos == ["sssssssssss"], "e a volta com o Automatico desligado nao poe nada")
 
 

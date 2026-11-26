@@ -5,7 +5,7 @@ mesmo comando. Cada funcao recebe o App do server.py (A); a fila, o historico e 
 
 O avanco da fila e uma operacao so (avanca): o Proxima (/api/next), o fim do disco (_volta_fila), a virada da
 passagem (_volta_passagem), o stream da parecida que nao abriu (_abre_stream), a parecida que chegou com o prato
-parado (_volta_auto) e o enfileirar com o prato parado passam por ela, com uma reserva so por deck e linha do prato
+parado (auto_round) e o enfileirar com o prato parado passam por ela, com uma reserva so por deck e linha do prato
 (Reserva).
 
 Lock order, always this way and never the other: the App's fila_lock, then the engine's _lock (an RLock), then the
@@ -232,7 +232,7 @@ def concilia(A, under, closed=None):
     one, and the state read (App.leitura) sees the switch and its entry together, or neither."""
     E = A.engine
     while True:
-        with E._qlock:
+        with E.state_section():
             v = E.virou
             r = under(v)
             if r is not FECHA or v is None:
@@ -285,7 +285,7 @@ def avanca(A, virada=None, historico=True, na_tela=False, visto=None, entrada=No
     if not cede:
         # a reserva de outro ja em curso nesta linha (o vigia trocando o disco, com a fila_lock na mao): quem chega
         # espera o resultado dela, sem disputar a fila_lock e reservar a seguinte depois
-        with E._qlock:
+        with E.state_section():
             if grupo is not None and grupo.r is not None:
                 r0, vivo = grupo.r, True  # o avanco que ja e deste grupo (mesmo resolvido): ele nao troca de avanco
             else:
@@ -348,8 +348,8 @@ def avanca(A, virada=None, historico=True, na_tela=False, visto=None, entrada=No
             A.release_reservation(r, None)
         if not na_tela:
             raise
-        E.error = i18n.msg("server.queue.playFailed", "Couldn't play \"{title}\" from the queue ({reason}).",
-                           title=r.x.get("title") or "?", reason=i18n.motivo(ex, 120))
+        E.set_error(i18n.msg("server.queue.playFailed", "Couldn't play \"{title}\" from the queue ({reason}).",
+                             title=r.x.get("title") or "?", reason=i18n.motivo(ex, 120)))
         return r.x
     if not tocou:  # a reserva foi invalidada no meio (o prato trocou, ou a entrada saiu da fila)
         with A.fila_lock:
@@ -368,7 +368,7 @@ def pular(A):
     seek) o Proximo segue. Volta a entrada, ou None com a fila vazia (ou o avanco que nao tocou)."""
     E = A.engine
     v = vx = faixa = None
-    with A.proximo_lock, E._qlock:
+    with A.proximo_lock, E.state_section():
         p = A.proximo
         junta = p is not None and p.junta(E)
         if not junta:  # o primeiro desta linha (o de outra linha, de antes de um Parar, segue sozinho)
@@ -392,7 +392,7 @@ def pular(A):
         else:
             x = avanca(A, pular=True, grupo=p, visto=p)  # o prato que mudou de linha no meio (o Parar) fica
             if x is CEDEU:
-                with A.proximo_lock, E._qlock:  # o mesmo disco no mesmo deck numa linha nova (um seek): o Proximo
+                with A.proximo_lock, E.state_section():  # o mesmo disco no mesmo deck numa linha nova (um seek): o Proximo
                     agora = E.line()
                     de_novo = faixa is not None and E.track is faixa and agora.deck is p.deck  # ainda vale
                     if de_novo:
@@ -402,7 +402,7 @@ def pular(A):
                     x = None
         return x
     finally:
-        with A.proximo_lock, E._qlock:
+        with A.proximo_lock, E.state_section():
             if A.proximo is p:
                 A.proximo = None
             p.resolve(x)

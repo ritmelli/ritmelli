@@ -434,7 +434,7 @@ def _regular(bt):
     return ibi, bool(np.mean(np.abs(ibi / m - 1) <= 0.08) >= REDE_REGULAR)
 
 
-def _grade_rede(x):
+def grade_rede(x):
     """A Grade do trecho x pela rede, para quando o batida.py nao firma (None sem o modelo ou com as batidas
     irregulares): o andamento pelo ajuste de reta nas batidas (o numero de cada uma pela soma dos intervalos: pela
     distancia ao comeco dividida pela mediana, que vem presa nos quadros de 20 ms dela, a 40a virava a 41a), na
@@ -1181,11 +1181,9 @@ class Injetor:
                             self.motor._mixa(BLOCK)  # noqa: SLF001 - o fone e o relogio da musica seguem
                             prox += BLOCK / SR
                 except Exception as ex:  # noqa: BLE001 - a thread nao morre calada: o erro vai pra tela
-                    self.motor.error = i18n.msg("server.mic.outputFailed", "Couldn't send audio to the microphone "
-                                                                           "({reason}). If the music doesn't come "
-                                                                           "back through the microphone, close and "
-                                                                           "reopen Ritmelli.",
-                                                reason=str(ex)[:160])
+                    self.motor.set_error(i18n.msg("server.mic.outputFailed", "Couldn't send audio to the microphone "
+                                                  "({reason}). If the music doesn't come back through the "
+                                                  "microphone, close and reopen Ritmelli.", reason=str(ex)[:160]))
                     # o anel que falhou fecha (o mapa e o handle nao ficam abertos ate o app sair) e o _abre tenta um
                     # novo; o estado do efeito zera mesmo se o fechamento falhar
                     falhou, self.m = self.m, None
@@ -1260,7 +1258,7 @@ class Engine:
         self.paused = False
         self.ended = False
         self.pos = 0.0
-        self.error = None
+        self._error = None
         self._espera_arquivo = None  # o _gen do stream que falhou com o download a caminho (esperando_arquivo)
         # o primeiro som do disco que entrou no prato (09/11, a latencia do pedido falado): espera e load marcam
         # (id, hora do relogio), o _mixa troca pelo (titulo, stream?, entrou, soou) no primeiro bloco dele, e o
@@ -1297,7 +1295,7 @@ class Engine:
         self.reserva_quadros = 0  # os quadros da voz que vieram do microfone de reserva (o _mic_cb), idem
         self._virou_em = -1e9    # monotonic da ultima virada (a seca logo depois dela e da passagem)
         self.periodo_saida = None  # a batida do que sai na saida (s), pelo plano no tempo: a regua dos testes (dev/)
-        self.pronto_falhou = None  # a tag da proxima que nao decodificou: o servidor nao prepara de novo
+        self._pronto_falhou = None
         # o servidor religa a parecida do Automatico cujo stream caiu: religar_stream(disco, onde parou, desistir), na
         # thread do leitor; sem ele (ou desistindo), o disco acaba e a fila segue, como antes
         self.religar_stream = None
@@ -1440,9 +1438,9 @@ class Engine:
         self._stack = st
         self._injetor = inj
         if faltou:
-            self._aviso = self.error = _aviso_reserva(faltou)
-        elif self._aviso is not None and self.error == self._aviso:
-            self.error = None  # o aparelho escolhido voltou: sai so o aviso, nunca um erro de tocar
+            self._aviso = self._error = _aviso_reserva(faltou)
+        elif self._aviso is not None and self._error == self._aviso:
+            self._error = None  # o aparelho escolhido voltou: sai so o aviso, nunca um erro de tocar
         threading.Thread(target=self._confere_filtro, args=(self.active["mic"],), daemon=True).start()
 
     def _confere_filtro(self, mic):
@@ -1457,9 +1455,9 @@ class Engine:
             if self.active.get("mic") == mic:
                 self._alvo = injeta.hash_microfone(st["guid"])
                 with self._lock:  # o dos mudos fica: ele acabou de sair desta pilha e sai quando o audio reabre
-                    if (self._aviso is not None and self.error == self._aviso
+                    if (self._aviso is not None and self._error == self._aviso
                             and self._aviso.get("key") != "server.devices.silent"):
-                        self.error = None
+                        self._error = None
             with self._lock:  # uma vez, so os que o instalador ou a tarefa acharam mudos: abrir todos a cada partida
                 ver = not self._mudos_vistos  # incomodaria
                 self._mudos_vistos = True
@@ -1471,7 +1469,7 @@ class Engine:
             return
         if mic in self._preparados:
             if self.active.get("mic") == mic:
-                self._aviso = self.error = i18n.msg("server.mic.notReadyReinstall", "Couldn't prepare the microphone "
+                self._aviso = self._error = i18n.msg("server.mic.notReadyReinstall", "Couldn't prepare the microphone "
                                                                                     "\"{name}\" for Ritmelli, so the "
                                                                                     "music can't reach it. Try "
                                                                                     "reinstalling Ritmelli.", name=mic)
@@ -1480,17 +1478,17 @@ class Engine:
         from microfone import microfone as filtro  # noqa: PLC0415
         self.preparando = mic
         # o som do PC some enquanto o Windows reinicia o audio: a tela diz por que
-        prep = self._aviso = self.error = i18n.msg("server.mic.preparing", "Preparing the microphone \"{name}\" for "
+        prep = self._aviso = self._error = i18n.msg("server.mic.preparing", "Preparing the microphone \"{name}\" for "
                                                    "Ritmelli: the computer's sound will cut out for a few seconds.", name=mic)
         try:
             r = filtro.pede_tarefa(mic)
         finally:
             self.preparando = None
         if not r.get("ok"):
-            self._aviso = self.error = _erro_da_tarefa(r, mic)
+            self._aviso = self._error = _erro_da_tarefa(r, mic)
             return
-        if self.error == prep:
-            self._aviso = self.error = None
+        if self._error == prep:
+            self._aviso = self._error = None
         with self._lock:  # o audio do Windows reiniciou: os streams daqui morreram
             if self._fechado:
                 return
@@ -1521,7 +1519,7 @@ class Engine:
             if self._stack is None:  # o audio caiu durante a conferencia: os do registro, para quando ele voltar
                 self._mudos_vistos = False
             elif mudos and not self._fechado and self._stack is pilha:
-                self._aviso = self.error = _aviso_mudos(mudos)
+                self._aviso = self._error = _aviso_mudos(mudos)
 
     def liga(self):
         """A partida do servidor. Se o audio nao abre (sem microfone, aparelho que recusa), o servidor sobe mesmo
@@ -1646,7 +1644,7 @@ class Engine:
         """O audio nao abriu: o erro fica na tela e o vigia pode tentar de novo. A mesma frase na partida e na
         reabertura: a partida que falha tambem passa pelo vigia logo depois."""
         self._caiu_no_vigia = True
-        self._aviso = self.error = i18n.msg("server.audio.openFailed", "Couldn't start the audio ({reason}). Make "
+        self._aviso = self._error = i18n.msg("server.audio.openFailed", "Couldn't start the audio ({reason}). Make "
                                                                        "sure the microphone and headphones are "
                                                                        "connected. If the problem continues, close "
                                                                        "and reopen Ritmelli.",
@@ -1682,7 +1680,7 @@ class Engine:
                     ep = winvol.volume_do(nome)
                 if ep is None:
                     if v is not None:
-                        self.error = i18n.msg("server.devices.micVolumeMissing", "Couldn't find the Windows volume "
+                        self._error = i18n.msg("server.devices.micVolumeMissing", "Couldn't find the Windows volume "
                                                                                  "control for the microphone "
                                                                                  "\"{name}\".", name=nome)
                     continue
@@ -1743,12 +1741,12 @@ class Engine:
                 x = f(x)  # o motor do filtro (voz.h) pelo voz.dll, a 48 kHz
             except Exception as ex:  # noqa: BLE001 - efeito quebrado nao pode calar a voz
                 self._fx_id, self._fx, self.effect = None, None, "nenhum"
-                self.error = i18n.msg("server.effect.failed", "The voice effect failed ({reason}). You're back to "
+                self._error = i18n.msg("server.effect.failed", "The voice effect failed ({reason}). You're back to "
                                                               "your natural voice.", reason=str(ex)[:120])
         elif self._fx_id is not None and not self._fx_pendente and not self._fx_falta_dito:
             # o efeito sairia daqui e o voz.dll nao carregou: a voz segue crua, e o aviso sai uma vez por efeito
             self._fx_falta_dito = True
-            self.error = i18n.msg("server.effect.noVozDll", "Ritmelli's voz.dll file is missing, so voice effects "
+            self._error = i18n.msg("server.effect.noVozDll", "Ritmelli's voz.dll file is missing, so voice effects "
                                                             "won't work on this microphone. Your voice still reaches "
                                                             "the game as usual. Reinstall Ritmelli.")
         self._mic.append(x)
@@ -1848,7 +1846,7 @@ class Engine:
         try:
             self._mina.liga()
         except ValueError as ex:  # sem a chave: o pedal fica aceso e o aviso sai na interface
-            self.error = self._mina_sem_chave(ex)
+            self._error = self._mina_sem_chave(ex)
 
     def _mina_sem_chave(self, ex):
         """O aviso da mina que nao liga por falta da chave, na lingua de quem olha. O mina.py (do ritmelli-server) so
@@ -2221,6 +2219,37 @@ class Engine:
         and linha); None never is."""
         return token is not None and self._deck is token.deck and self._deck.linha == token.linha
 
+    @property
+    def error(self):
+        return self._error
+
+    def set_error(self, message):
+        self._error = message
+
+    def take_prepare_failure(self):
+        with self._qlock:
+            tag, self._pronto_falhou = self._pronto_falhou, None
+            return tag
+
+    def state_section(self):
+        return self._qlock
+
+    def with_lock(self, outer, f):
+        after = []
+        try:
+            while True:
+                with outer:
+                    if self._lock.acquire(blocking=False):
+                        try:
+                            return f(after)
+                        finally:
+                            self._lock.release()
+                with self._lock:
+                    pass
+        finally:
+            for g in after:
+                g()
+
     def take_switch(self, switch):
         """With _qlock: the switch the engine already made on its own (virou, the DJ transition) leaves the engine and
         comes back, only if the pending one is still switch; None otherwise. Whoever takes it reconciles it with the
@@ -2435,11 +2464,11 @@ class Engine:
         nome = track.get("title") or "?"
         quando = f"{int(t // 60)}:{int(t % 60):02d}"
         if track.get("stream"):
-            self.error = i18n.msg("server.player.streamStopped", "YouTube stopped sending the audio of \"{title}\" "
+            self._error = i18n.msg("server.player.streamStopped", "YouTube stopped sending the audio of \"{title}\" "
                                                                  "at {time}. Play it again, or wait for the download "
                                                                  "to the shelf to finish.", title=nome, time=quando)
         else:
-            self.error = i18n.msg("server.player.readFailedAt", "Couldn't read the audio of \"{title}\" from {time} "
+            self._error = i18n.msg("server.player.readFailedAt", "Couldn't read the audio of \"{title}\" from {time} "
                                                                 "on. The file may be corrupted. Delete the record "
                                                                 "and download it again.", title=nome,
                                   time=quando)
@@ -2477,7 +2506,7 @@ class Engine:
             else:
                 self._sobre_cache.move_to_end(chave)
         except Exception:  # noqa: BLE001 - som por cima quebrado nao derruba o resto
-            self.error = i18n.msg("server.player.readFailed", "Couldn't read the audio of \"{title}\". The file may "
+            self._error = i18n.msg("server.player.readFailed", "Couldn't read the audio of \"{title}\". The file may "
                                                               "be corrupted. Delete the record and download it "
                                                               "again.", title=track.get("title") or "?")
             return
@@ -2526,7 +2555,7 @@ class Engine:
             self._limitador_zera = True
             self.pos = start
             self.ended = False
-            self.error = None
+            self._error = None
             if nova_linha:
                 self._solta_pausa()
         if not tr.get("path"):  # sem caminho, o disco ainda espera o stream abrir: sem leitor
@@ -2654,7 +2683,7 @@ class Engine:
         if not cabeca:  # a proxima nao decodificou: o servidor toca ela no fim, como antes
             with self._qlock:
                 if self._pronto is prox:
-                    self.pronto_falhou = self.pronto_tag
+                    self._pronto_falhou = self.pronto_tag
                     self._cancela_passagem()
             return
         fim, queda, baixo = medir_fim(cauda)
@@ -2790,11 +2819,11 @@ class Engine:
             # Despacito media 90,0 em vez de 89,0, e 1% em 14 s de sobreposicao e mais de 100 ms)
             antes = queda if fade else fim
             t_r, xr = _junta(blocos_a, antes - BATIDA_S, antes)
-            g = _grade_rede(xr) if xr is not None and len(xr) >= BATIDA_MIN_S * SR else None
+            g = grade_rede(xr) if xr is not None and len(xr) >= BATIDA_MIN_S * SR else None
             if g is not None:
                 ga, t_a = g, t_r
         if not gb.firme:
-            g = _grade_rede(xb)
+            g = grade_rede(xb)
             if g is not None:
                 gb = g
         if not ga.firme:
@@ -3531,7 +3560,7 @@ class Engine:
                 self.loop = False  # o Repetir vale para o disco do prato, e ele saiu
                 self.paused = False
                 self.ended = False
-                self.error = None
+                self._error = None
                 self.pos = 0.0
                 self._solta_pausa()
         self.calar_sobre()  # parar cala os sons por cima tambem
@@ -3617,7 +3646,7 @@ class Engine:
             # o microfone que o Windows esta preparando agora (null fora disso)
             "microfone": dict(self._injetor.estado() if self._injetor is not None and self._stack is not None
                               else {"anel": False, "leitores": 0}, preparando=self.preparando),
-            "error": self.error,
+            "error": self._error,
             "mina": self._mina.estado if self._mina is not None else "desligada",
             "visor": {"ondas": self._ondas_versao,
                       "passagens": [p for p in (self._visor_feita, self._visor_pas) if p is not None]},
@@ -3738,7 +3767,7 @@ class MockEngine(Engine):
             if self._pronto is not prox or self._deck is not atual:
                 return
             if not prox.q or not dur:
-                self.pronto_falhou = self.pronto_tag
+                self._pronto_falhou = self.pronto_tag
                 self._cancela_passagem()
                 return
             ini = prox.q[0][0]

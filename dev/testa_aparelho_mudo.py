@@ -507,7 +507,7 @@ class TestaApp(unittest.TestCase):
             self.assertIn(motivo, out.getvalue(), "o log diz por que")
 
     def _motor(self, **kw):
-        m = types.SimpleNamespace(_aviso=None, error=None, _mudos_vistos=False, active={"mic": MIC}, _stack=object(),
+        m = types.SimpleNamespace(_aviso=None, _error=None, _mudos_vistos=False, active={"mic": MIC}, _stack=object(),
                                   _preparados=set(), preparando=None, _alvo=0, _fechado=False,
                                   _lock=threading.RLock(), _reabre=mock.Mock(), _confere_mudos=mock.Mock())
         m.__dict__.update(kw)
@@ -518,29 +518,29 @@ class TestaApp(unittest.TestCase):
         for r in (None, {"conferidos": [MIC], "mudos": [], "falhas": []}):
             with mock.patch.object(eng, "_confere_fora", lambda n, r=r: r):
                 eng.Engine._confere_mudos(m)
-            self.assertIsNone(m.error)
+            self.assertIsNone(m._error)
         with mock.patch.object(eng, "_confere_fora", lambda n: {"mudos": [UMC_IN]}), \
                 redirect_stdout(io.StringIO()):
             eng.Engine._confere_mudos(m, [UMC_IN])
-        self.assertEqual(m.error["key"], "server.devices.silent")
-        self.assertIs(m._aviso, m.error, "e um aviso dos aparelhos: sai quando o audio reabre")
+        self.assertEqual(m._error["key"], "server.devices.silent")
+        self.assertIs(m._aviso, m._error, "e um aviso dos aparelhos: sai quando o audio reabre")
         # o audio que reabriu, caiu ou fechou durante a conferencia: o resultado e de antes, e fica de fora
         for muda in ({"_stack": object()}, {"_stack": None}, {"_fechado": True}):
             m = self._motor(_mudos_vistos=True)
-            m.error = m._aviso = "o de antes"
+            m._error = m._aviso = "o de antes"
 
             def confere(n, m=m, muda=muda):
                 m.__dict__.update(muda)
                 return {"mudos": [UMC_IN]}
             with mock.patch.object(eng, "_confere_fora", confere), redirect_stdout(io.StringIO()):
                 eng.Engine._confere_mudos(m, [UMC_IN])
-            self.assertEqual(m.error, "o de antes", muda)
+            self.assertEqual(m._error, "o de antes", muda)
             # o audio que caiu durante a conferencia: os do registro ficam para quando ele voltar
             self.assertEqual(m._mudos_vistos, muda.get("_stack", 0) is not None, muda)
         m = self._motor(_stack=None, _mudos_vistos=True)  # o audio fechado (a reabertura que falhou tem o aviso dela)
         with mock.patch.object(eng, "_confere_fora", side_effect=AssertionError("abriu os aparelhos sem audio")):
             eng.Engine._confere_mudos(m)
-        self.assertIsNone(m.error)
+        self.assertIsNone(m._error)
         self.assertFalse(m._mudos_vistos, "os do registro ficam para quando o audio abrir")
 
     def test_ao_abrir_so_os_do_registro(self):
@@ -559,12 +559,12 @@ class TestaApp(unittest.TestCase):
             m._confere_mudos.assert_not_called()  # nenhum no registro: nenhum processo
             # o _confere_filtro tira o aviso dos aparelhos (o de preparar o microfone), mas nao o dos mudos: ele
             # acabou de sair desta pilha (a conferencia depois da tarefa) e sai quando o audio reabre (o start)
-            m.error = m._aviso = {"key": "server.mic.preparing", "params": {}, "text": "x"}
+            m._error = m._aviso = {"key": "server.mic.preparing", "params": {}, "text": "x"}
             eng.Engine._confere_filtro(m, MIC)
-            self.assertIsNone(m.error)
-            m.error = m._aviso = eng._aviso_mudos([UMC_IN])
+            self.assertIsNone(m._error)
+            m._error = m._aviso = eng._aviso_mudos([UMC_IN])
             eng.Engine._confere_filtro(m, MIC)
-            self.assertEqual(m.error["key"], "server.devices.silent")
+            self.assertEqual(m._error["key"], "server.devices.silent")
 
     def test_depois_de_preparar_confere_todos(self):
         sem = {"filtro": False, "melhorias": True, "guid": "{a}"}

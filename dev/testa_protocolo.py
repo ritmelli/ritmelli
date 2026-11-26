@@ -693,7 +693,7 @@ def _motor(atual, pronto=None, pos=0.0):
     e.pos, e.paused, e.ended, e.loop = pos, False, False, False
     e._virar_em = e._eco_plano = e._visor_pas = e._visor_feita = None
     e._saindo = e._entrando = e._eco = None
-    e.pronto_falhou = None
+    e._pronto_falhou = None
     e._bloco = e._pausa = None  # o bloco em curso e a pausa pendente (o _captura_atual e o _restart os leem)
     e._registra_fim = lambda *a, **k: None  # o registro do fim grava em logs/: fora daqui
     return e
@@ -1070,7 +1070,7 @@ def _patches_seco(golpe, esticar):
     ela, a 2% (esticada no andamento deste). So a medida das batidas fica fixa."""
     g = [types.SimpleNamespace(periodo=0.5, fase=0.1, bpm=120.0, firme=True, motivo=""),
          types.SimpleNamespace(periodo=0.51, fase=0.1, bpm=117.6, firme=esticar, motivo="fixo no teste")]
-    return [mock.patch.object(eng.batida, "medir", side_effect=g), mock.patch.object(eng, "_grade_rede", return_value=None),
+    return [mock.patch.object(eng.batida, "medir", side_effect=g), mock.patch.object(eng, "grade_rede", return_value=None),
             mock.patch.object(eng.batida, "fase", return_value=(0.0, 10.0)),
             mock.patch.object(eng, "_golpe_final", return_value=golpe),
             mock.patch.object(eng, "_batida_tocada", return_value=0.5),

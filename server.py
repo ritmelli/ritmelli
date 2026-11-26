@@ -510,7 +510,7 @@ class Library:
         self.items = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
         self.version = 0
 
-    def _save(self):
+    def save(self):
         save_json(self.path, self.items)
         self.version += 1
 
@@ -523,14 +523,14 @@ class Library:
     def add(self, item):
         with self.lock:
             self.items = [x for x in self.items if x["id"] != item["id"]] + [item]
-            self._save()
+            self.save()
 
     def update(self, iid, **kw):
         with self.lock:
             it = self.get(iid)
             if it:
                 it.update(kw)
-                self._save()
+                self.save()
             return it
 
     def remove(self, iid):
@@ -540,7 +540,7 @@ class Library:
             if not it:
                 return None
             self.items.remove(it)
-            self._save()
+            self.save()
         return it
 
     def public(self):
@@ -550,7 +550,7 @@ class Library:
 class App:
     def __init__(self, port, data_dir, mock=False, metricas_teste=False, vigias=True, relogio=True, papel_local="pc"):
         """vigias=False e relogio=False sao dos testes (dev/testa_comandos.py): sem as threads dos vigias (quem testa
-        chama cada volta, _volta_fila, _volta_passagem e _volta_auto, a mao) e, no --mock, sem o relogio de 10 ms do
+        chama cada volta, _volta_fila, _volta_passagem e auto_round, a mao) e, no --mock, sem o relogio de 10 ms do
         MockEngine (quem testa chama o engine._mixa). papel_local="celular" e o --papel-local celular, so no --mock:
         o Host 127.0.0.1:<porta> passa pelo pareamento como o celular da rede de casa (o guard do build)."""
         if papel_local != "pc" and not mock:
@@ -662,9 +662,9 @@ class App:
         threading.Thread(target=self.metricas.vigia, args=(self.engine,), daemon=True, name="metricas").start()
         threading.Thread(target=self._vigia_fila, daemon=True).start()
         threading.Thread(target=self._conta_escuta, daemon=True).start()
-        threading.Thread(target=self.automatico._vigia_auto, daemon=True).start()
+        threading.Thread(target=self.automatico.run_auto_watcher, daemon=True).start()
         threading.Thread(target=self._vigia_passagem, daemon=True).start()
-        threading.Thread(target=self.automatico._vigia_andamento, daemon=True).start()
+        threading.Thread(target=self.automatico.run_tempo_watcher, daemon=True).start()
         # (#128) no --mock nada vai a rede sozinho: as capas do YouTube Music, as parecidas do Automatico (mix_do, e com
         # elas a versao de audio e o andamento pelo stream), o aquecimento do processo do YouTube (main, /api/aquece) e
         # a versao nova ficam de fora. A prateleira de quem testa nao vira busca no YouTube Music, e o dev/compara.py
@@ -955,11 +955,11 @@ class App:
             it = self.lib.get(tr["id"])
             if it is None:
                 return
-            with e._qlock:
+            with e.state_section():
                 if pausa is not None and not e.pausa_vale(pausa):
                     return
                 it["last_pos"] = round(pos, 1)
-            self.lib._save()
+            self.lib.save()
 
     def play_item(self, item, start, loop=None, historico=True, extra=None, entrada=None, reserva=None,
                   anterior=False):
@@ -989,14 +989,14 @@ class App:
         def troca(depois):
             # a reserva e a entrada que ja nao valem nao chegam a tirar a passagem preparada de quem vale
             if reserva is not None:
-                with e._qlock:
+                with e.state_section():
                     if self.reserva is not reserva or not reserva.vale(e):
                         return None
             if not na_fila():
                 return None
             if anterior:
                 linha0, x0 = anterior
-                with e._qlock:
+                with e.state_section():
                     if not (self.historico and self.historico[-1] is x0 and e.on_line(linha0)):
                         return None  # o prato ou o historico mudou depois da escolha do Anterior
             self.close_switches()
@@ -1012,7 +1012,7 @@ class App:
             if cap is None:
                 return None
             if reserva is not None:
-                with e._qlock:  # com o _lock na mao, a linha do prato nao muda desde o load
+                with e.state_section():  # com o _lock na mao, a linha do prato nao muda desde o load
                     reserva.publicada = e.line()
             if entrada is not None:
                 self.remove_from_queue(entrada)
@@ -1041,26 +1041,7 @@ class App:
         return True
 
     def with_engine(self, f):
-        """f(depois) com a fila_lock e o _lock do motor na mao, nessa ordem, sem esperar o _lock com a fila_lock segura:
-        a leitura do estado (o /api/state, no laco do servidor) pega a fila_lock, e o _lock pode ficar segundos com
-        outro (a troca de aparelho). Ocupado, solta a fila_lock, espera o _lock sozinho e tenta de novo; f roda uma vez
-        so e confere de novo o que precisa. O que o motor deixa em depois (o leitor que comeca, a onda, a medida) roda
-        com as duas travas soltas. Volta o que f volta."""
-        e = self.engine
-        depois = []
-        try:
-            while True:
-                with self.fila_lock:
-                    if e._lock.acquire(blocking=False):
-                        try:
-                            return f(depois)
-                        finally:
-                            e._lock.release()
-                with e._lock:
-                    pass
-        finally:
-            for g in depois:
-                g()
+        return self.engine.with_lock(self.fila_lock, f)
 
     def tocar_remoto(self, j, target, meta, historico=True, entrada=None, reserva=None, anterior=False):
         """Toca na hora pelo stream do YouTube enquanto o download do job segue por tras;
@@ -1173,10 +1154,9 @@ class App:
                     if e.stop(pode=para_se) is not None:
                         return
                 return
-            self.engine.error = i18n.msg("server.player.streamRefused", "YouTube didn't allow the audio to play "
-                                                                        "right away ({reason}). It will play as soon "
-                                                                        "as the download finishes.",
-                                         reason=motivo)
+            self.engine.set_error(i18n.msg("server.player.streamRefused", "YouTube didn't allow the audio to play "
+                                           "right away ({reason}). It will play as soon as the download finishes.",
+                                           reason=motivo))
             return
         yid = tr["youtube_id"] or info.get("id")
         novo = dict(tr, path=info["url"], headers=hdr, youtube_id=yid,
@@ -1283,7 +1263,7 @@ class App:
         Proximos ligados a ela. Uma vez so: a resolvida fica como esta."""
         if r.feita.is_set():
             return
-        with self.engine._qlock:  # o mesmo trecho em que um Proximo se liga a ela (Proximo.liga): nenhum fica de fora
+        with self.engine.state_section():  # o mesmo trecho em que um Proximo se liga a ela (Proximo.liga): nenhum fica de fora
             if self.reserva is r:
                 self.reserva = None
             r.entrada = entrada
@@ -1305,7 +1285,7 @@ class App:
         """With fila_lock: change() changes the queue (and the order the user built) under the engine's _qlock, and the
         prepared passage is checked in that same stretch (_confere_preparo_sob), so the engine never switches to an
         entry that is no longer first. Every queue change goes through here. Returns what change returns."""
-        with self.engine._qlock:
+        with self.engine.state_section():
             r = change()
             self._confere_preparo_sob()
             return r
@@ -1616,8 +1596,9 @@ class App:
         tr = cap.track
         with self.fila_lock:
             x = self.fila[0] if self.fila else None
-        if e.pronto_falhou is not None:
-            self.passagem_falhou, e.pronto_falhou = (id(tr), e.pronto_falhou), None
+        failed = e.take_prepare_failure()
+        if failed is not None:
+            self.passagem_falhou = (id(tr), failed)
         dur = tr.get("duration") if tr else None
         pode = (x is not None and dur and tr.get("path") and not e.loop
                 and cap.status in ("playing", "paused", "buffering"))
@@ -1680,12 +1661,6 @@ class App:
 
     def ligar_auto(self, on):
         return self.automatico.ligar_auto(on)
-
-    def _busca_mix(self, base):
-        return self.automatico._busca_mix(base)
-
-    def _volta_auto(self, visto=None, sinal=None):
-        return self.automatico._volta_auto(visto, sinal)
 
     @staticmethod
     def chave_andamento(x):

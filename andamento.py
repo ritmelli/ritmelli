@@ -51,7 +51,7 @@ def bpm(x):
         return None
     g = batida.medir(x, eng.SR)
     if not g.firme:
-        g = eng._grade_rede(x)
+        g = eng.grade_rede(x)
     return round(float(g.bpm), 2) if g is not None and g.firme else None
 
 
