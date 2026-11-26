@@ -325,7 +325,7 @@ if __name__ == "__main__":
                       f"{k32.GetTickCount64() - l.batida} ms ago")
     elif sys.argv[1] == "toca":
         sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        from microfone import microfone as filtro  # noqa: PLC0415
+        from microfone import microfone as filtro
         m = Microfone()
         m.alvo(hash_microfone(filtro.acha(sys.argv[3])[0]))
         m.toca(le_wav(sys.argv[2]))

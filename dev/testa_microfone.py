@@ -38,10 +38,10 @@ import numpy as np
 
 os.environ["MICFX_MAPA"] = f"Local\\RitmelliTesteMicFx-{os.getpid()}"  # nunca o anel do filtro de verdade
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import engine as eng  # noqa: E402
-import fx  # noqa: E402
-from microfone import injeta, preset, voz  # noqa: E402
-from testa_voz import fala_sintetica  # noqa: E402
+import engine as eng
+import fx
+from microfone import injeta, preset, voz
+from testa_voz import fala_sintetica
 
 # a voz pelo fx.py (numpy e pedalboard) quebra o teste: no app ela so passa pelo voz.dll
 SEM_FX_PY = mock.patch.object(fx.Efeito, "__call__", side_effect=AssertionError("a voz passou pelo fx.py"))

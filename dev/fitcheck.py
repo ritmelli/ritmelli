@@ -47,8 +47,8 @@ import urllib.request
 import websockets
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import so_mock  # noqa: E402
-from so_mock import free_port  # noqa: E402,F401 - o compara, o perfcheck e o texturas pegam daqui
+import so_mock
+from so_mock import free_port  # o compara, o perfcheck e o texturas pegam daqui
 
 CHROME = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 SIZES = ("1024x600,1280x650,1280x720,1366x657,1366x768,1436x765,1440x900,1536x730,"
@@ -147,7 +147,7 @@ async def le_cdp(ws, pend, evento):
                     f.set_result(m)
             else:
                 evento(m)
-    except Exception as ex:  # noqa: BLE001 - the connection closed, or a message that broke the reading
+    except Exception as ex:  # the connection closed, or a message that broke the reading
         motivo = str(ex) or type(ex).__name__
     for f in pend.values():
         if not f.done():
@@ -288,7 +288,7 @@ async def run(a):
                 tabs = json.load(urllib.request.urlopen(f"http://127.0.0.1:{port}/json"))
                 ws_url = next(t["webSocketDebuggerUrl"] for t in tabs if t["type"] == "page")
                 break
-            except Exception:  # noqa: BLE001 - subindo
+            except Exception:  # subindo
                 time.sleep(0.1)
         async with conecta_cdp(ws_url) as ws:
             seq, pend, barrados, erros = [0], {}, [], []
@@ -434,7 +434,7 @@ async def aviso_no_chrome(base, botao):
                 tabs = json.load(urllib.request.urlopen(f"http://127.0.0.1:{port}/json"))
                 ws_url = next(t["webSocketDebuggerUrl"] for t in tabs if t["type"] == "page")
                 break
-            except Exception:  # noqa: BLE001 - subindo
+            except Exception:  # subindo
                 time.sleep(0.1)
         async with conecta_cdp(ws_url) as ws:
             seq, pend, barrados = [0], {}, []

@@ -125,7 +125,7 @@ def main():
             info, hdr = stream_yt(p["yt"], p["opts"])
             fonte, dur = info["url"], dur or info.get("duration")
         print(json.dumps(mede(fonte, float(dur), hdr) if dur else None))
-    except Exception as ex:  # noqa: BLE001 - o servidor poe o motivo no log
+    except Exception as ex:  # o servidor poe o motivo no log
         print(json.dumps({"erro": str(ex) or type(ex).__name__}))
     finally:
         import compasso

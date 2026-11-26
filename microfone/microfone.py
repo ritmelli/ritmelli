@@ -84,7 +84,7 @@ def _system32():
     """A System32: os programas do Windows vao pelo caminho completo. Pelo nome solto, o CreateProcess procura antes na
     pasta do executavel, que e justamente a que a regra da pasta protegida confere (o mesmo do pastas.do_windows, que
     este arquivo nao importa ao carregar: rodando sozinho, a raiz do app ainda nao esta no caminho)."""
-    import ctypes  # noqa: PLC0415
+    import ctypes
     b = ctypes.create_unicode_buffer(260)
     n = ctypes.windll.kernel32.GetSystemDirectoryW(b, 260)
     if not 0 < n < 260:
@@ -193,11 +193,11 @@ def nomes_windows():
 
     def le():  # numa thread so dela, em MTA: o comtypes quebra numa thread STA (a principal, depois do sounddevice)
         try:
-            import ctypes  # noqa: PLC0415
+            import ctypes
             ctypes.windll.ole32.CoInitializeEx(None, 0)
-            import winvol  # noqa: PLC0415 - o modulo do app, ao lado do microfone/
+            import winvol  # o modulo do app, ao lado do microfone/
             saida.update({d.GetId().rsplit(".", 1)[-1].lower(): n for n, d in winvol.microfones()})
-        except Exception:  # noqa: BLE001, S110 - sem o Core Audio, fica o nome do registro
+        except Exception:  # sem o Core Audio, fica o nome do registro
             pass
 
     th = threading.Thread(target=le, daemon=True)
@@ -314,7 +314,7 @@ def aparelhos_de(nomes):
 def _fecha(s):
     try:
         s.close()
-    except Exception:  # noqa: BLE001, S110 - fechando
+    except Exception:  # fechando
         pass
 
 
@@ -337,7 +337,7 @@ def _mede(sd, alvos, espera_s):
                 extra_settings=sd.WasapiSettings(auto_convert=True), callback=conta)
             s.start()
             abertos.append((chave, d["name"], s))
-        except Exception:  # noqa: BLE001 - em uso exclusivo por outro programa, por exemplo: nao e mudo
+        except Exception:  # em uso exclusivo por outro programa, por exemplo: nao e mudo
             falhas.append(d["name"])
             if s is not None:  # abriu e nao comecou: fecha ja, ou ficaria aberto ate o fim do processo
                 _fecha(s)
@@ -358,8 +358,8 @@ def confere_aparelhos(nomes=None, espera_s=CONFERE_S, sd=None):
     lista que o PortAudio leu ao subir: o app confere num processo a parte (engine._confere_fora), que le a de agora."""
     if sd is None:
         try:
-            import sounddevice as sd  # noqa: PLC0415
-        except Exception:  # noqa: BLE001 - sem as bibliotecas do app
+            import sounddevice as sd
+        except Exception:  # sem as bibliotecas do app
             return None
     w = next((i for i, h in enumerate(sd.query_hostapis()) if "WASAPI" in h["name"]), None)
     alvos = []
@@ -422,7 +422,7 @@ def _depois_do_reinicio(assenta_s=ASSENTA_S):
     def roda():
         try:
             caixa.append(confere_aparelhos())
-        except Exception as ex:  # noqa: BLE001 - qualquer erro de um driver: sem conferencia
+        except Exception as ex:  # qualquer erro de um driver: sem conferencia
             caixa.append(f"{type(ex).__name__}: {ex}")
     th = threading.Thread(target=roda, daemon=True)
     th.start()
@@ -476,7 +476,7 @@ def atualiza_salvo_velho(fx, salvo):
 def _protegida():
     """A pasta do app (a de cima da PASTA) na regra da pasta protegida (pastas.pasta_protegida): no executavel, a pasta
     dele; pelo codigo, a %ProgramW6432%\\Ritmelli, e nao a do Python. True, ou a Reprovada com o motivo."""
-    import pastas  # noqa: PLC0415 - o modulo do app, ao lado do microfone/ (o main poe a raiz no caminho)
+    import pastas  # o modulo do app, ao lado do microfone/ (o main poe a raiz no caminho)
     return pastas.pasta_protegida(os.path.dirname(PASTA))
 
 
@@ -814,7 +814,7 @@ def dll_padrao():
     """A micfx.dll que vem com o app: no executavel, a da _internal\\microfone (ritmelli.spec); no fonte, a que o
     apo\\compila.bat gera."""
     if getattr(sys, "frozen", False):
-        return os.path.join(sys._MEIPASS, "microfone", "micfx.dll")  # noqa: SLF001 - o PyInstaller poe aqui
+        return os.path.join(sys._MEIPASS, "microfone", "micfx.dll")  # o PyInstaller poe aqui
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), "apo", "saida", "micfx.dll")
 
 
@@ -890,7 +890,7 @@ def tarefa_cria():
         tarefa_apaga()
         _log(f"the task {TAREFA} wasn't created, the app folder isn't protected: {protegida}")
         return
-    import pastas  # noqa: PLC0415 - the app module (always there in the executable)
+    import pastas  # the app module (always there in the executable)
     r = pastas.create_task(TAREFA, TAREFA_XML, sys.executable)
     if r.returncode:
         sys.exit(f"couldn't create the task ({r.returncode}): {r.stdout.strip()} {r.stderr.strip()}")
@@ -906,10 +906,10 @@ def _desarma(motivo):
     folder rule: both tasks are removed (pastas.disarm), the update one first (with /end, which stops a run in the
     middle) and this one last, and it exits with an error without writing anything to the folder. Only the full setup
     creates them again."""
-    import pastas  # noqa: PLC0415 - the app module (always there in the executable)
+    import pastas  # the app module (always there in the executable)
 
     def update_task():
-        import atualizador  # noqa: PLC0415 - the app module (always there in the executable)
+        import atualizador  # the app module (always there in the executable)
         return atualizador.TAREFA, atualizador.tarefa_apaga, atualizador.tarefa_existe
 
     errors = pastas.disarm(("update task", update_task), (TAREFA, tarefa_apaga, tarefa_existe))
@@ -1028,7 +1028,7 @@ def main(argv=None):
     except SystemExit as ex:
         if ex.code not in (None, 0):
             res = {"ok": False, "erro": str(ex.code)}
-    except Exception as ex:  # noqa: BLE001 - quem chamou ve o motivo em vez de ficar sem resposta
+    except Exception as ex:  # quem chamou ve o motivo em vez de ficar sem resposta
         res = {"ok": False, "erro": f"{type(ex).__name__}: {ex}"}
     rc = 1
     try:
