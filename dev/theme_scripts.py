@@ -73,6 +73,16 @@ FEATURE_HANDLERS = (
     ("options.js", "options.js", "#menu", "pointerup"), ("options.js", "options.js", "#menu", "pointercancel"),
     ("options.js", "options.js", "#menu", "touchmove"), ("options.js", "options.js", "#menu", "click:capture"),
     ("options.js", "options.js", "document", "pointerdown"), ("options.js", "options.js", "window", "resize"),
+    ("connection.js", "connection.js", "window", "online"), ("connection.js", "connection.js", "window", "offline"),
+    ("pairing.js", "pairing.js", "#form-parear", "submit"),
+    ("welcome.js", "welcome.js", "#dlg-boas", "close"), ("welcome.js", "welcome.js", "#db-trocar", "click"),
+    ("welcome.js", "welcome.js", "#dlg-disp", "close"), ("welcome.js", "welcome.js", "#db-cel", "click"),
+    ("desk-buttons.js", "start.js", "#tocar-d", "click"), ("desk-buttons.js", "start.js", "#prox-d", "click"),
+    ("desk-buttons.js", "start.js", "#m-aleatorio", "click"), ("desk-buttons.js", "start.js", "#m-repetir", "click"),
+    ("desk-buttons.js", "start.js", "#m-parecidas", "click"), ("desk-buttons.js", "start.js", "#pads-grade", "click"),
+    ("desk-buttons.js", "start.js", "#pads-grade", "contextmenu"),
+    ("desk-buttons.js", "start.js", "#prat-esq", "click"), ("desk-buttons.js", "start.js", "#prat-dir", "click"),
+    ("start.js", "start.js", "document", "DOMContentLoaded"),
 )
 SHARED_TARGETS = ("window", "document")
 RAN_BEFORE = {"queue.js": "fecharMenu", "ui-events.js": "abrirDispositivos"}
@@ -80,6 +90,8 @@ STILL_ON = (("#b-disp", "click"), ("#b-cortar", "click"), ("#f-vol", "input"), (
             ("#seek", "input"), ("#estante", "click"), ("#mini-abrir", "click"), ("#b-pagina", "click"))
 STILL_OFF = (("#b-ouvir", "click"), ("#gaveta", "click"), ("#q", "input"), ("#resultados", "click"))
 FORM_INERT = ("the search form stays inert", "document.getElementById('form-busca')?.inert === true")
+NO_STARTUP = ("the startup does not run", "document.getElementById('mini-cortar')?.innerHTML === ''")
+DESK_ON = (("#tocar-d", "click"), ("#pads-grade", "click"), ("#prat-dir", "click"))
 EARLIER_FAILURES = (
     ("gerado/pecas.js", (), (), (FORM_INERT,)),
     ("dj-visor.js", (("#b-disp", "click"),), STILL_OFF, (FORM_INERT,)),
@@ -88,6 +100,8 @@ EARLIER_FAILURES = (
     ("turntable.js", (("#estante", "click"), ("#mini-tocar", "click"), ("#mini-cortar", "click"), ("#b-pagina", "click")),
      (("#mini-abrir", "click"), ("#b-disp", "click")), (FORM_INERT,)),
     ("voice-effects.js", STILL_ON, STILL_OFF, (FORM_INERT,)),
+    ("disc-page.js", DESK_ON, (), (NO_STARTUP,)),
+    ("dj-desk.js", DESK_ON, (), (NO_STARTUP,)),
     ("search.js", STILL_ON + (("#rolo-busca", "scroll"),), STILL_OFF,
      (("the mesa builds the effects drawer", "!!document.querySelector('#banco .aviso-gav:not([data-i18n])')"), FORM_INERT)),
 )
