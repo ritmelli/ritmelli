@@ -11,6 +11,7 @@ import ntpath
 import os
 import re
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -75,6 +76,14 @@ def migra():
         return False
     DADOS, LIB, LOGS = DADOS_NOVA, DADOS_NOVA / "library", DADOS_NOVA / "logs"
     return True
+
+
+def call_when_stdin_ends(fn):
+    def wait():
+        while os.read(0, 65536):
+            pass
+        fn()
+    threading.Thread(target=wait, daemon=True).start()
 
 
 def dados_do_mock(pedida=None):
