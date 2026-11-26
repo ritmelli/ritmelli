@@ -12,7 +12,6 @@ import tempfile
 import threading
 import urllib.parse
 import urllib.request
-from html.parser import HTMLParser
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -23,6 +22,7 @@ fitcheck = importlib.import_module("fitcheck")
 RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ))
 i18n = importlib.import_module("i18n")
+theme_page = importlib.import_module("theme_page")
 
 THEME = "/t/ritmelli/"
 LANGUAGES = ("en", "pt_BR")
@@ -49,51 +49,38 @@ PAGE_READY_S = 15.0
 CARD_SHOWS_S = 10.0
 
 
-class FileTags(HTMLParser):
-    def __init__(self):
-        super().__init__(convert_charrefs=False)
-        self.files, self.bodies, self.open = [], [], None
-
-    def handle_starttag(self, tag, attrs):
-        a = {}
-        for name, value in attrs:
-            a.setdefault(name, value)
-        if tag == "script" and "src" in a:
-            self.files.append(("script", a["src"]))
-        elif tag == "link" and "stylesheet" in (a.get("rel") or "").lower().split():
-            self.files.append(("style", a.get("href")))
-        elif tag in ("script", "style"):
-            self.open = [tag, ""]
-            self.bodies.append(self.open)
-
-    def handle_data(self, data):
-        if self.open is not None:
-            self.open[1] += data
-
-    def handle_endtag(self, tag):
-        if self.open is not None and tag == self.open[0]:
-            self.open = None
-
-
-def file_tags(html):
-    tags = FileTags()
-    tags.feed(html)
-    tags.close()
-    return tags
+def read_page(html, where):
+    read, error = theme_page.strict(html)
+    return read, error and f"{where}:{error[0]}:{error[1]}: {error[2]}"
 
 
 def page_files(raiz, path):
     folder = raiz / ("gallery" if path.startswith("/?") else "themes/ritmelli")
-    found = []
-    for kind, name in file_tags((folder / "index.html").read_text(encoding="utf-8")).files:
-        source = raiz / "themes" / name.removeprefix("/t/") if name.startswith("/t/") else folder / name
-        found.append((kind, name, "\n" + source.read_text(encoding="utf-8-sig")))
-    return found
+    read, error = read_page((folder / "index.html").read_text(encoding="utf-8"), f"{folder.name}/index.html")
+    if error:
+        return None, error
+    return [(kind, name, "\n" + (raiz / "themes" / name.removeprefix("/t/") if name.startswith("/t/") else
+                                 folder / name).read_text(encoding="utf-8-sig"))
+            for _, _, kind, name in read.found], None
 
 
-def first_lost(expected, bodies):
-    left = iter(bodies)
-    return next((name for kind, name, text in expected if [kind, text] not in left), None)
+def first_lost(expected, texts):
+    left = iter(texts)
+    return next((name for kind, name, text in expected if (kind, text) not in left), None)
+
+
+def reads_as_the_build():
+    with tempfile.TemporaryDirectory(prefix="ritmelli-missing-reader-") as folder:
+        theme = Path(folder) / "themes" / "ritmelli"
+        theme.mkdir(parents=True)
+        (theme / "index.html").write_text('<script>/*</ script><a title="*/</script><script src="first.js"></script>">'
+                                          '<script src="second.js"></script>', encoding="utf-8")
+        for name in ("first.js", "second.js"):
+            (theme / name).write_text(f"const {name[:-3]} = 1;\n", encoding="utf-8")
+        expected, error = page_files(Path(folder), THEME)
+    names = [name for _, name, _ in expected or []]
+    return [(names == ["first.js", "second.js"], f"the file tags of a template are the ones the build reads, past a "
+                                                 f"</ script that ends nothing ({error or names})")]
 
 
 class Tab:
@@ -228,13 +215,18 @@ def served_pages(srv, role, raiz):
             [f"/?lang={lang}" for lang in LANGUAGES]:
         so_mock.confere(srv.base + path)
         with urllib.request.urlopen(srv.base + path, timeout=10) as r:
-            tags = file_tags(r.read().decode("utf-8"))
-        expected = page_files(raiz, path)
-        lost = first_lost(expected, tags.bodies)
-        results.append((not tags.files and expected and not lost,
-                        f"{role}: {path} has no <script src> and no stylesheet <link> "
-                        f"({[f'{k} {n}' for k, n in tags.files] or 'none'}), and the text of its {len(expected)} files "
-                        f"inside it, in order ({f'not from {lost} on' if lost else 'all of them'})"))
+            served, served_error = read_page(r.read().decode("utf-8"), path)
+        expected, error = page_files(raiz, path)
+        if error or served_error:
+            results.append((False, f"{role}: {path} and its template are read by the build's grammar "
+                                   f"({error or served_error})"))
+            continue
+        left = [f"{kind} {name}" for _, _, kind, name in served.found]
+        lost = first_lost(expected, served.texts)
+        results.append((not left and expected and not lost,
+                        f"{role}: {path} has no <script src> and no stylesheet <link> ({left or 'none'}), and the "
+                        f"text of its {len(expected)} files inside it, in order "
+                        f"({f'not from {lost} on' if lost else 'all of them'})"))
     return results
 
 
@@ -312,7 +304,7 @@ async def disconnected_without_network(tab):
 
 
 def scenarios(raiz):
-    results = []
+    results = reads_as_the_build()
     for role, extras in (("pc", []), ("phone", ["--papel-local", "celular"])):
         runs = [the_server_drops(raiz, role, language) for language in LANGUAGES]
         if role == "phone":

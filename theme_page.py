@@ -19,9 +19,9 @@ CSS_ESCAPE = re.compile(r"\\(?:([0-9a-fA-F]{1,6})(?:\r\n|[ \t\r\n\f])?|(.))", re
 URL_START = re.compile(r"url\([ \t\r\n\f]*['\"]?", re.IGNORECASE)
 NOT_PLAIN_OUTSIDE = re.compile(r"\\|image-set\(", re.IGNORECASE)
 NOT_RELATIVE = re.compile(r"[ \t\r\n\f]*(?:https?://|(?!https?:)[a-z][a-z0-9+.-]*:|/|#)", re.IGNORECASE | re.ASCII)
-HTML_ELEMENTS = ("a", "b", "body", "button", "canvas", "dialog", "div", "form", "h1", "h2", "h3", "head", "header", "html",
-                 "iframe", "input", "kbd", "label", "li", "link", "main", "meta", "ol", "output", "p", "script",
-                 "section", "select", "small", "span", "style", "svg", "title", "ul")
+HTML_ELEMENTS = ("a", "b", "body", "button", "canvas", "dialog", "div", "form", "h1", "h2", "h3", "head",
+                 "header", "html", "iframe", "input", "kbd", "label", "li", "link", "main", "meta", "ol", "output", "p",
+                 "script", "section", "select", "small", "span", "style", "svg", "title", "ul")
 SVG_ELEMENTS = ("circle", "g", "mask", "path", "rect")
 TEXT_ONLY = ("title", "iframe")
 SCRIPT_TYPES = ("", "text/javascript", "application/json")
@@ -57,8 +57,8 @@ def sheet_problem(text, outside_page_folder):
     if not outside_page_folder:
         return None
     if found := NOT_PLAIN_OUTSIDE.search(text):
-        return (f"{found.group(0)!r} outside the page's folder, where only a plain url() can be read for certain: the page "
-                f"resolves its addresses from its own folder")
+        return (f"{found.group(0)!r} outside the page's folder, where only a plain url() can be read for certain: the "
+                f"page resolves its addresses from its own folder")
     if any(not NOT_RELATIVE.match(text, m.end()) for m in URL_START.finditer(text)):
         return "a relative url(), even in a comment or a string, which the page would resolve from its own folder"
     return None
@@ -76,7 +76,7 @@ def place(html, i):
 
 class Template:
     def __init__(self, html):
-        self.html, self.found, self.elements, self.svg, self.select = html, [], [], False, False
+        self.html, self.found, self.elements, self.texts, self.svg, self.select = html, [], [], [], False, False
         i = 0
         while i < len(html):
             i = self.token(i)
@@ -134,10 +134,12 @@ class Template:
         if not (text := BODY[tag].match(self.html, body)):
             holds = "<!-- or " if tag == "script" else "a < or " if tag in TEXT_ONLY else ""
             self.refuse(i, f"the <{tag}> holds {holds}does not end in </{tag}>, which the browser can read differently")
-        if tag == "style" and (problem := sheet_problem(text.group(0)[:-8], False)):
+        inside = text.group(0)[:-len(tag) - 3]
+        if tag == "style" and (problem := sheet_problem(inside, False)):
             self.refuse(i, f"the <style> has {problem}")
         if tag in ("script", "style"):
             self.record(tag, attrs)
+            self.texts.append((tag, inside))
         return text.end()
 
     def listed(self, i, written, tag):

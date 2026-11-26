@@ -1495,6 +1495,7 @@ def sem_rede():
         confere(not t.exists(), f"the test folder is removed at the first try, right after the server stops ({t})")
 
 
+sys.stdout.reconfigure(encoding="utf-8")
 tabela()
 check_track_field_routes()
 try:

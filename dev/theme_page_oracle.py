@@ -69,7 +69,10 @@ def main(argv=None):
                                              "styles and links the build reads (src, href, rel and type) are the ones "
                                              "Chrome's DOM has, in order. Exit 1 if one differs.")
     ap.parse_args(argv)
-    accepted = [(what, html, view) for what, html in pages(RAIZ) if (view := built_view(html)) is not None]
+    texts = {}
+    for what, html in pages(RAIZ):
+        texts.setdefault(html, what)
+    accepted = [(what, html, view) for html, what in texts.items() if (view := built_view(html)) is not None]
     server = http.server.ThreadingHTTPServer(("127.0.0.1", so_mock.free_port()), Pages)
     server.pages = [html for _, html, _ in accepted]
     threading.Thread(target=server.serve_forever, daemon=True).start()

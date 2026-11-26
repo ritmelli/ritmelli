@@ -6,7 +6,8 @@ REFUSED = {
                                          "first.js has </SCRIPT,"),
     "a script that opens a comment": ('<script src="first.js"></script>', {"first.js": "x('<!--');\n"},
                                       "first.js has <!--"),
-    "a sheet that closes its element": ('<link rel="stylesheet" href="a.css">', {"a.css": "a { content: '</style>'; }\n"},
+    "a sheet that closes its element": ('<link rel="stylesheet" href="a.css">',
+                                        {"a.css": "a { content: '</style>'; }\n"},
                                         "a.css has </style"),
     "a script tag with another attribute": ('<script defer src="first.js"></script>', {}, "is not <script src="),
     "a script tag in capitals": ('<SCRIPT SRC="first.js"></SCRIPT>', {}, "is not <script src="),
@@ -80,20 +81,37 @@ REFUSED = {
                                                                    "has '&', which is not a whole"),
     "a script name with an unknown named reference": ('<script src="a&ampx;b.js"></script>', {},
                                                       "'&ampx;', which is not a whole"),
-    "a file tag in a textarea": ('<textarea><script src="first.js"></script></textarea>', {}, "is not one of the elements the build reads"),
+    "a file tag in a textarea": (
+        '<textarea><script src="first.js"></script></textarea>', {},
+        "is not one of the elements the build reads"),
     "a file tag in the title": ('<title><script src="first.js"></script></title>', {}, "holds a <"),
-    "a file tag in a noscript": ('<noscript><script src="first.js"></script></noscript>', {}, "is not one of the elements the build reads"),
+    "a file tag in an iframe": ('<iframe><script src="first.js"></script></iframe>', {}, "the <iframe> holds a <"),
+    "an end tag outside the list": ('<p></table></p>', {}, "the </table> is not one of the elements the build reads"),
+    "an end tag outside the list in an svg": (
+        '<svg></p></svg>', {}, "the </p> is not one of the elements the build reads inside <svg>"),
+    "a file tag in a noscript": (
+        '<noscript><script src="first.js"></script></noscript>', {},
+        "is not one of the elements the build reads"),
     "a title the browser ends at </title x>": (
         '<title>a</title x><script src="first.js"></script><title></title>', {}, "holds a <"),
     "a noscript the browser ends at </noscript data-x>": (
-        '<noscript>b</noscript data-x><script src="first.js"></script></noscript>', {}, "is not one of the elements the build reads"),
-    "a file tag in an svg title": ('<svg><title><script src="first.js"></script></title></svg>', {}, "is not one of the elements the build reads inside <svg>"),
-    "an svg script with an href": ('<svg><script href="first.js"/></svg>', {}, "is not one of the elements the build reads inside <svg>"),
-    "a file tag inside an svg": ('<svg><script src="first.js"></script></svg>', {}, "is not one of the elements the build reads inside <svg>"),
+        '<noscript>b</noscript data-x><script src="first.js"></script></noscript>', {},
+        "is not one of the elements the build reads"),
+    "a file tag in an svg title": (
+        '<svg><title><script src="first.js"></script></title></svg>', {},
+        "is not one of the elements the build reads inside <svg>"),
+    "an svg script with an href": (
+        '<svg><script href="first.js"/></svg>', {},
+        "is not one of the elements the build reads inside <svg>"),
+    "a file tag inside an svg": (
+        '<svg><script src="first.js"></script></svg>', {},
+        "is not one of the elements the build reads inside <svg>"),
     "a file tag after a breakout in an svg style": (
-        '<svg><style><p><script src="first.js"></script></style></svg>', {}, "is not one of the elements the build reads inside <svg>"),
+        '<svg><style><p><script src="first.js"></script></style></svg>', {},
+        "is not one of the elements the build reads inside <svg>"),
     "a file tag after a breakout in an svg script": (
-        '<svg><script><p><script src="first.js"></script></script></svg>', {}, "is not one of the elements the build reads inside <svg>"),
+        '<svg><script><p><script src="first.js"></script></script></svg>', {},
+        "is not one of the elements the build reads inside <svg>"),
     "an svg script in an svg style": ('<svg><style><script href="first.js"></script></style></svg>', {},
                                       "is not one of the elements the build reads inside <svg>"),
     "a style the browser ends at </style data-x>": (
@@ -103,9 +121,15 @@ REFUSED = {
     "an inline script with <!--": ('<script><!--<script>1</script><script src="first.js"></script></script>', {},
                                    "holds <!--"),
     "an @import in a style of the template": ('<style>@import "first.css";</style>', {}, "has @import"),
-    "an @import in an svg style": ('<svg><style>@import "first.css";</style></svg>', {}, "is not one of the elements the build reads inside <svg>"),
-    "an svg icon with its own style": ("<svg><style>.a { fill: red; }</style></svg>", {}, "is not one of the elements the build reads inside <svg>"),
-    "a reference in an svg style": ('<svg><style>&#64;import "first.css";</style></svg>', {}, "is not one of the elements the build reads inside <svg>"),
+    "an @import in an svg style": (
+        '<svg><style>@import "first.css";</style></svg>', {},
+        "is not one of the elements the build reads inside <svg>"),
+    "an svg icon with its own style": (
+        "<svg><style>.a { fill: red; }</style></svg>", {},
+        "is not one of the elements the build reads inside <svg>"),
+    "a reference in an svg style": (
+        '<svg><style>&#64;import "first.css";</style></svg>', {},
+        "is not one of the elements the build reads inside <svg>"),
     "an svg closed by a </math>": ('<svg></math><script src="first.js"></script></svg>', {},
                                     "is not one of the elements the build reads inside <svg>"),
     "a math closed by a </svg>": ('<math></svg><style><p><script src="first.js"></script></style></math>', {},
@@ -115,7 +139,9 @@ REFUSED = {
         "is not one of the elements the build reads inside <svg>"),
     "a math kept open by an mi": ('<math><mi><span></math></span></mi><script src="first.js"></script></math>', {},
                                   "is not one of the elements the build reads"),
-    "a module in an svg": ('<svg><script type="module">import "./first.js";</script></svg>', {}, "is not one of the elements the build reads inside <svg>"),
+    "a module in an svg": (
+        '<svg><script type="module">import "./first.js";</script></svg>', {},
+        "is not one of the elements the build reads inside <svg>"),
     "a module in an svg foreignObject": (
         '<svg><foreignObject><script type="module">import "./first.js";</script></foreignObject></svg>', {},
         "is not one of the elements the build reads inside <svg>"),
@@ -124,8 +150,12 @@ REFUSED = {
     "a preload of a script": ('<link rel="preload" as="script" href="first.js">', {}, "preloads or prefetches"),
     "a preload of a style sheet": ('<link rel="preload" as="style" href="a.css">', {}, "preloads or prefetches"),
     "a module preload": ('<link rel="modulepreload" href="first.js">', {}, "preloads or prefetches"),
-    "an unknown marked section": ('<![foo]><script src="first.js"></script>', {}, "is outside the forms the build reads"),
-    "a CDATA section that never ends": ('<![CDATA[ a > <script src="first.js"></script>', {}, "is outside the forms the build reads"),
+    "an unknown marked section": (
+        '<![foo]><script src="first.js"></script>', {},
+        "is outside the forms the build reads"),
+    "a CDATA section that never ends": (
+        '<![CDATA[ a > <script src="first.js"></script>', {},
+        "is outside the forms the build reads"),
     "a script that is not UTF-8": ('<script src="latin.js"></script>', {"latin.js": b'let s = "caf\xe9";\n'},
                                    "latin.js is not UTF-8 text"),
     "a prefetch of a script": ('<link rel="prefetch" as="script" href="first.js">', {}, "preloads or prefetches"),
@@ -135,9 +165,11 @@ REFUSED = {
     "an svg end tag with a space": ('<svg></ svg><style><b><script src="first.js"></script></b></style>', {},
                                     "is outside the forms the build reads"),
     "an svg end tag with a no-break space": (
-        '<svg></svg\u00a0><style><b><script src="first.js"></script></b></style>', {}, "is outside the forms the build reads"),
+        '<svg></svg\u00a0><style><b><script src="first.js"></script></b></style>', {},
+        "is outside the forms the build reads"),
     "an end tag with an attribute": (
-        '</div title="> <div title=\'"> <script src="first.js"></script> <!-- \'> -->', {}, "is outside the forms the build reads"),
+        '</div title="> <div title=\'"> <script src="first.js"></script> <!-- \'> -->', {},
+        "is outside the forms the build reads"),
     "an attribute with ==": ('<a b=="x><script src="first.js"></script>">', {}, "is outside the forms the build reads"),
     "an attribute with a no-break space before the value": (
         '<a b=\u00a0"x><script src="first.js"></script>">', {}, "is outside the forms the build reads"),
@@ -146,7 +178,8 @@ REFUSED = {
     "a tag with a NUL in it": ('<a b="c"\x00 <script><script src="first.js"></script>', {},
                                "is outside the forms the build reads"),
     "a comment ended by -- >": (
-        '<!-- a -- > <div title=\' --> <script src="first.js"></script> <!-- \'> -->', {}, "is outside the forms the build reads"),
+        '<!-- a -- > <div title=\' --> <script src="first.js"></script> <!-- \'> -->', {},
+        "is outside the forms the build reads"),
     "a comment that never ends": ('<!-- > <div title=\' <script src="first.js"></script> \'>', {},
                                   "is outside the forms the build reads"),
     "a script file that starts with #!": ('<script src="first.js"></script>',
@@ -155,9 +188,15 @@ REFUSED = {
     "a processing instruction, a bogus comment in the browser": ('<?x <script src="first.js"></script> ?>', {},
                                                                   "is outside the forms the build reads"),
     "a plaintext": ('<plaintext><script src="first.js"></script>', {}, "is not one of the elements the build reads"),
-    "a base": ('<base href="other/"><link rel="stylesheet" href="a.css">', {}, "is not one of the elements the build reads"),
-    "a template": ('<template><script src="first.js"></script></template>', {}, "is not one of the elements the build reads"),
-    "an inline module": ('<script type=" Module ">import x from "./first.js";</script>', {}, "has a type the build does not read"),
+    "a base": (
+        '<base href="other/"><link rel="stylesheet" href="a.css">', {},
+        "is not one of the elements the build reads"),
+    "a template": (
+        '<template><script src="first.js"></script></template>', {},
+        "is not one of the elements the build reads"),
+    "an inline module": (
+        '<script type=" Module ">import x from "./first.js";</script>', {},
+        "has a type the build does not read"),
     "a script name with a numeric reference": ('<script src="a&#xFDD0;b.js"></script>', {"ab.js": "1;\n"},
                                                "has '&', which is not a whole"),
     "a sheet in a subfolder with an http: url() without a host": (
@@ -194,7 +233,8 @@ REFUSED = {
         '<svg><p><noscript><a title="</noscript><script src=first.js></script>"></a></svg>', {},
         "is not one of the elements the build reads inside <svg>"),
     "a table that moves its links before it": (
-        '<table><tr><td><link rel="stylesheet" href="a.css"></td></tr><link rel="stylesheet" href="sub/c.css"></table>', {},
+        '<table><tr><td><link rel="stylesheet" href="a.css"></td></tr>'
+        '<link rel="stylesheet" href="sub/c.css"></table>', {},
         "is not one of the elements the build reads"),
     "a frameset that drops its sheet": (
         '<frameset><link rel="stylesheet" href="a.css"></frameset>', {},
