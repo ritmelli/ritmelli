@@ -21,7 +21,8 @@ INPUTS = ("notas", "notas_en")
 REQUIRED_JOBS = ("testa", "testa-atualizador", "testa-migracao", "testa-parcial")
 SETUP, EXE = f"Ritmelli-{MARK}", f"ritmelli-exe-{MARK}"
 NOTES = {"NOTAS": ("${{ inputs.notas }}", "--notas"), "NOTAS_EN": ("${{ inputs.notas_en }}", "--notas-en")}
-STEP_OUTPUTS = {"anterior": r"steps\.([\w-]+)\.outputs\.(\w+) != ''", "parcial": r"steps\.([\w-]+)\.outputs\.(parcial)"}
+STEP_OUTPUTS = {"anterior": r"steps\.([\w-]+)\.outputs\.([\w-]+) != ''",
+                "parcial": r"steps\.([\w-]+)\.outputs\.(parcial)"}
 OTHER_VERSION = re.compile(r"Ritmelli-(?:[0-9]|<version>|\$\{\{.*?\}\})(?:[0-9.]|<version>|\$\{\{.*?\}\})*")
 
 failures = []
@@ -92,6 +93,8 @@ def step_output_problem(job, name):
     step = source and step_by_id(job, source.group(1))
     if not step or not writes_output(step.get("run", ""), source.group(2)):
         return f"the {name} output of the monta job does not come from a step that writes it to its GITHUB_OUTPUT"
+    if "if" in step:
+        return f"the step behind the {name} output of the monta job runs only under an if:"
     return None
 
 
@@ -283,6 +286,10 @@ def main():
         "the anterior output written as a constant": lambda d: d["jobs"]["monta"]["outputs"].update(anterior="false"),
         "the anterior output inverted": lambda d: d["jobs"]["monta"]["outputs"].update(
             anterior=d["jobs"]["monta"]["outputs"]["anterior"].replace("!=", "==")),
+        "the step behind the anterior output under a condition": lambda d: step_by_id(
+            d["jobs"]["monta"], "anterior").update({"if": "github.event_name == 'push'"}),
+        "the parcial output with a longer key": lambda d: d["jobs"]["monta"]["outputs"].update(
+            parcial="${{ steps.monta.outputs.parcial-exe }}"),
         "the parcial output from another key": lambda d: d["jobs"]["monta"]["outputs"].update(
             parcial="${{ steps.congela.outputs.versao }}"),
         "the id of the step behind the anterior output": lambda d: step_by_id(d["jobs"]["monta"], "anterior").update(
