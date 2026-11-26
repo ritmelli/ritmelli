@@ -146,7 +146,7 @@ BUSCA_MUSICA_S = 4.0  # a busca do YouTube Music (/api/musica) que passa disso f
 RESERVAS = 2
 FORA_LIMITE_S = 120.0  # pedido ao YouTube (fora o download) que nao volta nisso morre: o disco nao fica esperando
 # o processo vivo dos enderecos (Fora._pede_vivo): quantos ele atende e por quanto tempo, antes de sair e o
-# seguinte abrir outro. VIVO_MAX = 0 desliga: todo endereco num processo novo, como antes de 09/11
+# seguinte abrir outro. VIVO_MAX = 0 desliga: todo endereco num processo novo
 VIVO_MAX = 40
 VIVO_MAX_S = 3600.0
 # quantos vivos (cada um com o seu YoutubeDL quente): com um so, o endereco adiantado pelo palpite torto da mina
@@ -596,7 +596,7 @@ class App:
         self._son_lock = threading.Lock()
         self.parado_sem_fila = None  # disco que acabou com a fila vazia: a parecida que chegar toca
         self.preparando = None  # (disco, qid) da passagem sendo preparada (o stream leva 1 a 3 s)
-        self.passagem_falhou = None  # (disco, qid) que nao deu para preparar: toca no fim, como antes
+        self.passagem_falhou = None  # (disco, qid) que nao deu para preparar: fica para o avanco normal da fila
         self.closing = False
         # a janela propria (janela.py), quando ha: fechar ela desliga o servidor (pede_desligar), e o servidor que
         # para sozinho fecha ela (main). O loop e o desliga sao do servir e do build
@@ -1052,7 +1052,7 @@ class App:
         info, hdr = fut.result()
         try:
             self.engine.preabre(info.get("url"), hdr)
-        except Exception as ex:  # sem o aberto antes, o leitor abre o dele como antes
+        except Exception as ex:  # sem o aberto antes, o leitor abre o dele
             print(f"stream: the ffmpeg opened earlier failed ({str(ex)[:120]})", file=sys.stderr, flush=True)
 
     def adianta_da_busca(self, res, n):
@@ -1156,7 +1156,7 @@ class App:
               file=sys.stderr, flush=True)
         try:
             info, hdr = self.stream_info(tr.get("youtube_id") or tr.get("alvo"))
-        except Exception as ex:  # sem endereco, o disco acaba como antes
+        except Exception as ex:  # sem endereco, o disco acaba
             print(f"stream: the new address of {nome!r} failed ({yt_msg(ex)}): moving on to the next one",
                   file=sys.stderr, flush=True)
             desistir()
@@ -1530,7 +1530,7 @@ class App:
                 if self.fila and self.fila[0] is x:
                     e.preparar(novo, x["qid"], pode=pode, ganho=ganho, depois=depois)
             self.with_engine(publica)
-        except Exception as ex:  # sem a proxima pronta, ela toca no fim como antes
+        except Exception as ex:  # sem a proxima pronta, ela fica para o avanco normal da fila no fim do disco
             self.passagem_falhou = chave
             print(f"transition: couldn't prepare {x.get('title')!r}: {yt_msg(ex)}", file=sys.stderr, flush=True)
         finally:

@@ -984,7 +984,7 @@ class TestaPedeTarefa(unittest.TestCase):
         r, ordem = self._pede(lambda p: next(respostas, None), relogio=lambda: next(t))
         self.assertEqual(r, {"ok": False, "motivo": "tarefa_falhou", "detalhe": "the task is still running"})
         self.assertNotIn("sc.exe", ordem)
-        # sem nunca ver a tarefa rodando, a consulta sem resposta segue pelo servico, como antes
+        # sem nunca ver a tarefa rodando, a consulta sem resposta segue pelo servico
         r, ordem = self._pede(lambda p: None)
         self.assertEqual((r, ordem), ({"ok": True}, ["schtasks.exe", "sc.exe"]))
 
