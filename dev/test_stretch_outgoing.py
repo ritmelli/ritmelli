@@ -4,7 +4,9 @@ tracks stretched, on its own, through the real Rubber Band:
   - position: under a strong steady tone (as in the tone pair of dev/testa_passagem.py, #197), every attack in the
     output sits where the returned position (phi) says it came from in the input, to within POSITION_TOLERANCE_MS;
   - level: on broadband noise, no POSITION_WINDOW_MS window at the start of the output drops more than
-    LEVEL_DROP_DB below the input, so the switch from what already played into the stretched audio has no gap.
+    LEVEL_DROP_DB below the input, so the switch from what already played into the stretched audio has no gap;
+  - short: an input shorter than the warm-up and the crossfade (SHORT_MS) comes back whole, one output frame per
+    position.
 
 Each runs at a speed below and one above 1 (A slowed down and sped up, as in the dois and dois-106 pairs).
 
@@ -34,6 +36,8 @@ SEARCH_MS = 120.0
 POSITION_WINDOW_MS = 5.0
 LEVEL_CHECKED_S = 0.3
 LEVEL_DROP_DB = 3.0
+SHORT_MS = (30.0, 75.0)
+SHORT_SPEED = 1.01
 
 failures = []
 
@@ -102,10 +106,23 @@ def level(speed, rng):
           f"input (at least -{LEVEL_DROP_DB} dB)")
 
 
+def short(ms, rng):
+    x = stereo(0.1 * rng.standard_normal(int(ms / 1000 * SR)))
+    try:
+        z, phi = engine.esticar_saida(x, SHORT_SPEED, len(x) // 2)
+    except ValueError as ex:
+        check(False, f"short input of {ms:.0f} ms: {ex}")
+        return
+    check(z.shape == (len(phi), 2) and bool(np.isfinite(z).all()),
+          f"short input of {ms:.0f} ms: output {z.shape} for {len(phi)} positions")
+
+
 def main():
     for speed in SPEEDS:
         position(speed, np.random.default_rng(7))
         level(speed, np.random.default_rng(11))
+    for ms in SHORT_MS:
+        short(ms, np.random.default_rng(13))
     print(f"{len(failures)} failure(s)" if failures else "all passed")
     return 1 if failures else 0
 

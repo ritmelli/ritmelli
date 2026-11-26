@@ -340,7 +340,7 @@ def _catmull(x, phi):
 # comecaram, o tempo com alguma em curso e as secas do anel no meio delas (o metricas.SaudeAudio)
 RUBBER_BAND = metricas.EmCurso()
 RUBBER_BAND_WARMUP = int(0.06 * SR)
-CROSSFADE = int(0.02 * SR)
+RUBBER_BAND_CROSSFADE = int(0.02 * SR)
 PASSAGEM_DEPOIS_S = 5.0  # a seca ate isso depois da virada ainda conta como da passagem (secas_passagem)
 
 
@@ -384,9 +384,9 @@ def esticar(x, s, n_sob, n_rampa, alvo):
 def esticar_saida(x, s, n_rampa):
     """The outgoing track going to speed s before the overlap: x (n x 2) from 1 to s over n_rampa (half cosine) and
     at s to the end of x, as in esticar (vinyl, and the pitch back through the Rubber Band). The Rubber Band output
-    is aligned with its input and only starts sounding after RUBBER_BAND_WARMUP, so its first samples are x itself,
-    crossfading into it over CROSSFADE, which joins what already played without a step. Returns (output, the position
-    in x of each output sample)."""
+    is aligned with its input but silent for its first tens of ms: the first RUBBER_BAND_WARMUP samples are x itself,
+    resampled, crossfading into the Rubber Band output over RUBBER_BAND_CROSSFADE, which joins what already played
+    without a step. Returns (output, the position in x of each output sample)."""
     c = 0.5 * (1 - np.cos(np.linspace(0.0, np.pi, n_rampa, endpoint=False)))
     resto = len(x) - 2 - (n_rampa + (s - 1) * c.sum())
     vel = np.concatenate([1 + (s - 1) * c, np.full(max(0, int(resto / s)), s)])
@@ -396,8 +396,9 @@ def esticar_saida(x, s, n_rampa):
     z = _rubber_band(y, vel)[:m]
     if len(z) < m:
         z = np.concatenate([z, y[len(z):]])
-    a, b = RUBBER_BAND_WARMUP, RUBBER_BAND_WARMUP + CROSSFADE
-    g = np.linspace(0.0, 1.0, CROSSFADE, dtype=np.float32)[:, None]
+    a = min(m, RUBBER_BAND_WARMUP)
+    b = min(m, a + RUBBER_BAND_CROSSFADE)
+    g = np.linspace(0.0, 1.0, RUBBER_BAND_CROSSFADE, dtype=np.float32)[:b - a, None]
     z[:a] = y[:a]
     z[a:b] = y[a:b] * (1 - g) + z[a:b] * g
     return np.ascontiguousarray(z, np.float32), phi
@@ -2999,8 +3000,8 @@ class Engine:
         """O fade-out no tempo com os andamentos a mais de TEMPO_MAX: a que sai vai devagar (RAMPA_TAXA) para a
         velocidade sa antes da sobreposicao, e a proxima entra esticada em TEMPO_MAX no andamento a que ela
         chegou. Os blocos deste a partir da rampa sao trocados pelos reamostrados, com a posicao do disco no
-        rotulo (a tela e a virada leem a posicao); a batida deste na sobreposicao sai do audio ja mudado (pega o
-        atraso da Rubber Band), e a virada e a troca de grave se contam em amostras da saida dele."""
+        rotulo (a tela e a virada leem a posicao); a batida deste na sobreposicao sai do audio ja mudado (pega a
+        deriva da Rubber Band na rampa), e a virada e a troca de grave se contam em amostras da saida dele."""
         pa, pb = ga.periodo, gb.periodo
         sb = s * sa  # a velocidade da proxima: a grade dela cai na deste ja mudada
         # a rampa acaba antes do trecho onde a fase deste e medida: ali a velocidade ja e constante

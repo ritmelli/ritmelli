@@ -554,7 +554,8 @@ The description at the top of each file (in Portuguese) says exactly what it che
   `logs/passagens/`), `dev/testa_passagem.py` (synthetic pairs through the real engine, one per kind of transition;
   `--codigo <folder>` runs the same pairs against the engine of another checkout, such as the base of your PR),
   `dev/testa_transicao.py` (the transition math, `transicao.py`, on the engine's calls recorded from those pairs;
-  `--grava` records them again) and `dev/testa_anel.py`.
+  `--grava` records them again), `dev/test_stretch_outgoing.py` (`esticar_saida` through the real Rubber Band: where
+  the outgoing track plays and no gap at its start) and `dev/testa_anel.py`.
 - The server and YouTube access (`server.py`, `comandos.py`, `automatico.py`, `yt_fora.py`, `yt_erros.py`):
   `dev/testa_comandos.py`, `dev/testa_automatico.py`, `dev/testa_adianta.py`, `dev/testa_rapido.py`,
   `dev/testa_vivo.py` and `dev/testa_musica.py`.
