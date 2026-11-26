@@ -12,7 +12,8 @@ e os casos novos saem do motor de verdade, nunca escritos a mao.
 
 The JSON keeps a fingerprint of the bench (its tokens, without comments and docstrings: unlike ast.dump, the same on
 Python 3.12 and 3.13), and the check fails when the bench changed since the recording: a pair that changed has to be
-recorded again.
+recorded again. The fingerprint itself is checked on a small source (FINGERPRINT_CASES): docstring and comment edits
+keep it, and code edits, a statement on a docstring's line among them, change it.
 
 O nivel dos blocos (a lista (t0, quadros, rms) do leitor do motor) vai uma vez so, no "niveis", e cada chamada aponta
 para ele; as colunas dele (no "colunas", tambem uma vez cada) e os arrays vao em base64 dos bytes (zlib), para a volta
@@ -117,7 +118,7 @@ class Gravador:
 
 
 def _docstring_starts(source):
-    lines = source.splitlines()
+    lines = source.split("\n")
     return {(v.lineno, len(lines[v.lineno - 1].encode()[:v.col_offset].decode())) for n in ast.walk(ast.parse(source))
             if isinstance(n, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and n.body
             and isinstance(n.body[0], ast.Expr) and isinstance(v := n.body[0].value, ast.Constant)
@@ -125,7 +126,10 @@ def _docstring_starts(source):
 
 
 def bench_fingerprint(path=BANCA):
-    source = path.read_text(encoding="utf-8")
+    return source_fingerprint(path.read_text(encoding="utf-8"))
+
+
+def source_fingerprint(source):
     docstrings = _docstring_starts(source)
     skip = {tokenize.COMMENT, tokenize.NL, tokenize.ENCODING, tokenize.ENDMARKER}
     kept, in_docstring = [], False
@@ -208,6 +212,26 @@ def _igual(a, b):
     return a == b
 
 
+FINGERPRINT_BASE = 'r"""Module."""\n\n\ndef f(rms):\n    """Doc."""\n    return rms\n'
+FINGERPRINT_CASES = (
+    ("a docstring edited", True, ('"""Doc."""', '"""Other doc."""')),
+    ("a function's docstring removed", True, ('    """Doc."""\n', "")),
+    ("a comment added", True, ("return rms\n", "return rms  # note\n")),
+    ("two U+2028 in the module docstring", True, ("Module.", "Mod  ule.")),
+    ("a statement on the docstring's line", False, ('"""Doc."""', '"""Doc."""; rms *= 0.5')),
+    ("a code edit", False, ("return rms", "return rms * 2")),
+)
+
+
+def fingerprint_ignores_only_docstrings_and_comments():
+    base = source_fingerprint(FINGERPRINT_BASE)
+    failures = []
+    for what, same, (old, new) in FINGERPRINT_CASES:
+        if (source_fingerprint(FINGERPRINT_BASE.replace(old, new)) == base) != same:
+            failures.append(f"the bench fingerprint {'changed' if same else 'stayed the same'} with {what}")
+    return failures
+
+
 def engine_takes_the_excerpt_from_transicao():
     tree = ast.parse((RAIZ / "engine.py").read_text(encoding="utf-8"))
     plan = next((n for c in tree.body if isinstance(c, ast.ClassDef) and c.name == "Engine" for n in c.body
@@ -283,7 +307,8 @@ def confere():
     if dados.get("bench") != bench_fingerprint():
         falhas.append(f"the bench ({BANCA.name}) changed since {CASOS.name} was recorded: python dev/testa_transicao.py "
                       "--grava")
-    falhas += phase_excerpt_stays_after_the_outgoing_ramp() + engine_takes_the_excerpt_from_transicao()
+    falhas += (phase_excerpt_stays_after_the_outgoing_ramp() + engine_takes_the_excerpt_from_transicao()
+               + fingerprint_ignores_only_docstrings_and_comments())
     for f in falhas:
         print(f"FALHA {f}")
     print("ok" if not falhas else f"{len(falhas)} falha(s)")
