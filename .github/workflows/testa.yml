@@ -54,7 +54,7 @@ jobs:
     outputs:
       resumo: ${{ steps.resumo.outputs.resumo }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -105,7 +105,7 @@ jobs:
     outputs:
       resumo: ${{ steps.resumo.outputs.resumo }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - uses: ./.github/actions/python
@@ -132,7 +132,7 @@ jobs:
     outputs:
       resumo: ${{ steps.resumo.outputs.resumo }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
       - uses: ./.github/actions/python
@@ -162,12 +162,12 @@ jobs:
     outputs:
       resumo: ${{ steps.resumo.outputs.resumo }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           persist-credentials: false
       # the area filter needs only the standard library: the libraries come after it, when the area applies
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
           python-version: '3.12.10'
       - name: O PR mexe no filtro?
@@ -181,20 +181,12 @@ jobs:
         if: steps.areas.outputs.microfone == 'true'
         shell: cmd
         run: microfone\apo\compila.bat teste
-      # o mesmo da monta.yml, na pasta do usuário: o dev/testa_aparelho_mudo.py monta e roda em silêncio um setup que
-      # não instala nada, com o instalador/mudos.iss (sem o ISCC, no GitHub, ele reprova em vez de pular)
-      - name: Inno Setup 6.7.3
+      - name: Version resource of the DLLs
         if: steps.areas.outputs.microfone == 'true'
         shell: powershell
-        run: |
-          $ProgressPreference = 'SilentlyContinue'
-          $exe = Join-Path $env:RUNNER_TEMP 'innosetup-6.7.3.exe'
-          Invoke-WebRequest 'https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe' -OutFile $exe -UseBasicParsing
-          $h = (Get-FileHash $exe -Algorithm SHA256).Hash
-          if ($h -ne '9C73C3BAE7ED48D44112A0F48E66742C00090BDB5BEF71D9D3C056C66E97B732') { throw "o Inno Setup veio com hash $h" }
-          $p = Start-Process $exe -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CURRENTUSER', '/SP-' -Wait -PassThru
-          if ($p.ExitCode -ne 0) { throw "o instalador do Inno Setup saiu com $($p.ExitCode)" }
-          if (-not (Test-Path "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe")) { throw 'o ISCC.exe nao ficou na pasta do usuario' }
+        run: microfone\apo\check_version.ps1 -Folder microfone\apo\saida
+      - uses: ./.github/actions/inno-setup
+        if: steps.areas.outputs.microfone == 'true'
       - name: Testes do filtro
         if: steps.areas.outputs.microfone == 'true'
         run: python dev/testa_tudo.py --microfone --resumo "$env:RUNNER_TEMP\resumo.md"
@@ -261,11 +253,11 @@ jobs:
     outputs:
       resumo: ${{ steps.resumo.outputs.resumo }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
           python-version: '3.12.10'
       # the labels of the etiquetas job, the same in the tela and the compara
@@ -297,7 +289,7 @@ jobs:
         run: python dev/testa_tudo.py --passo metricas
       - name: Logs
         if: always() && steps.tela.outcome == 'failure'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: tela
           path: ${{ runner.temp }}/tela/
@@ -335,11 +327,11 @@ jobs:
     env:
       COMPARA_BASE: ${{ github.event_name == 'merge_group' && needs.etiquetas.outputs.queue_base || github.event.pull_request.base.sha || github.event.before }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
           python-version: '3.12.10'
       # (the labels of the etiquetas job, as in the tela)
@@ -377,7 +369,7 @@ jobs:
             if ($LASTEXITCODE -ne 0) { "::error::the compara base $env:COMPARA_BASE is not a commit here"; exit 1 }
           }
           Add-Content -Path $env:GITHUB_OUTPUT -Value "chave=$env:ImageOS-$env:ImageVersion-chrome$chrome`nbase=$base" -Encoding utf8
-      - uses: actions/cache/restore@v6
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         id: ref
         if: steps.areas.outputs.roda == 'true' && github.event_name != 'push'
         with:
@@ -403,7 +395,7 @@ jobs:
             exit 0
           }
           exit $cod
-      - uses: actions/cache/save@v6
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         if: always() && steps.compara.outputs.ref_cache == 'true'
         with:
           path: ${{ runner.temp }}\compara-ref
@@ -414,14 +406,14 @@ jobs:
         run: |
           Remove-Item -Recurse -Force "$env:RUNNER_TEMP\compara-ref" -ErrorAction SilentlyContinue
           Move-Item "$env:RUNNER_TEMP\compara-head" "$env:RUNNER_TEMP\compara-ref"
-      - uses: actions/cache/save@v6
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         if: always() && steps.compara.outputs.head_cache == 'true'
         with:
           path: ${{ runner.temp }}\compara-ref
           key: compara-${{ github.sha }}-${{ steps.chave.outputs.chave }}-${{ hashFiles('dev/compara.py', 'dev/fitcheck.py', 'dev/so_mock.py', 'requirements.txt', 'requirements-dev.txt', 'instalador/travas.txt') }}
       - name: Prints
         if: always() && (steps.compara.outcome == 'failure' || steps.compara.outputs.mudou == 'true')
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: compara
           path: ${{ runner.temp }}/tela/

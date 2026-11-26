@@ -33,26 +33,34 @@ do toca-discos), o `turntable.js` (o prato e a faixa, com os botões de tocar e 
 `dj-visor.js`, o `receiver.js` (o receptor: os volumes, o Cortar e o Nivelar). Depois do `voice-effects.js` vêm o
 `stage.js` (o palco do celular e a barra de baixo) e o `disc-page.js` (a página do disco no computador), e depois do
 `dj-desk.js`, o `shelf.js` (a prateleira, com o arrastar de um disco até um toca-discos na mesa) e o `commands.js` (o
-`tocar()`, o `cmd()`, o `alternar()` e o `ajustar()`). Inline ficam o `I18N` do `<head>` e a
+`tocar()`, o `cmd()`, o `alternar()` e o `ajustar()`). Depois do `search.js` vem o `options.js` (as opções de um
+disco ou de um resultado), e depois do `queue.js`, o `dialogs.js` (o confirmar, o apagar, o renomear e o Sons rápidos
+de um disco), o `metrics.js` (a linha dos dados de uso e erros no Microfone e fone e o aviso deles), o `devices.js` (o
+Microfone e fone e o desligar), o `phone.js` (o QR, o código e os celulares conectados) e o `update.js` (a versão
+nova). Inline ficam o `I18N` do `<head>` e a
 linha que aplica os textos e mostra a página (o `i18n-ok`): num arquivo que não carregasse, a página, com o aviso de
 fora do ar, ficaria escondida.
 
 Cada ouvinte mora no arquivo da parte que ele serve: os da busca (o campo, o formulário, os botões dela, o toque fora
 da gaveta da busca na mesa e os resultados) no `search.js`, os dos efeitos de voz (a gaveta, o Ouvir e o botão de
 desligar o efeito da barra de baixo) no `voice-effects.js`, os do toca-discos no `turntable.js` e os do receptor no
-`receiver.js`, os do palco e da barra de baixo no `stage.js`, o da página do disco no `disc-page.js` e os da
-prateleira no `shelf.js`. O arquivo da parte guarda os ouvintes em funções, uma por trecho seguido de registros (o
+`receiver.js`, os do palco e da barra de baixo no `stage.js`, o da página do disco no `disc-page.js`, os da
+prateleira no `shelf.js`, o do botão do celular no `phone.js` e os do Microfone e fone, da dica de ouvir e do desligar
+no `devices.js`. O arquivo da parte guarda os ouvintes em funções, uma por trecho seguido de registros (o
 `bindSearch()`, o `bindSearchResults()`, o `bindVoiceEffects()`, o `bindTurntable()`, o `bindReceiver()`, o
 `bindMiniBar()`, o `bindStageButtons()` e o `bindStageGestures()` do palco, o `bindDiscPage()`, o `bindShelfClick()` e
-o `bindShelf()`), e quem liga é o lugar em que cada trecho era registrado antes: o `ui-events.js` chama os da busca,
-dos efeitos, do toca-discos, do receptor, do palco, da página do disco e da prateleira, e o `queue.js` chama o
+o `bindShelf()`, o `bindPhoneButton()` e o `bindDeviceButtons()`), e quem liga é o lugar em que cada trecho era registrado antes: o `ui-events.js` chama os da busca,
+dos efeitos, do toca-discos, do receptor, do palco, da página do disco, da prateleira, do celular e dos
+dispositivos, e o `queue.js` chama o
 `bindSearchResults()`. Com um arquivo da base faltando, o `ui-events.js` para no mesmo ponto em que parava, com os
-mesmos ouvintes já registrados.
+mesmos ouvintes já registrados. Sem o `shared.js` (sem o `$`), o script inline que segue os arquivos depois do
+`queue.js` não registra os ouvintes da rede nem tira o `?parear` do endereço: na base, o bloco inteiro parava antes
+deles.
 Assim os controles só respondem quando os arquivos de que eles dependem já carregaram (o formulário da busca segue
 `inert` até o `ui-events.js`), e cada ouvinte continua na mesma ordem dos outros no mesmo alvo (o toque fora da busca
 para o evento depois de o ouvinte do `queue.js` na `window` ver o toque). A busca, os resultados e os efeitos de voz
 só ligam sem nenhum arquivo faltando (`scriptsMissing()`), como antes; o toca-discos, o receptor, o palco, a página
-do disco e a prateleira, cujos ouvintes o `ui-events.js` registrava sempre, ligam se o próprio arquivo carregou (`scriptLoaded()`, do `script-failed.js`). Nos
+do disco, a prateleira, o celular e os dispositivos, cujos ouvintes o `ui-events.js` registrava sempre, ligam se o próprio arquivo carregou (`scriptLoaded()`, do `script-failed.js`). Nos
 dois casos o resto do arquivo que chama segue registrando os seus ouvintes até a página ir para o aviso de fora do ar. Os ajudantes de mais de uma parte (o `fmt()`, o
 `mudar()` e o `ligarChave()`) moram no `shared.js`.
 
