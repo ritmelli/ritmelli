@@ -298,7 +298,7 @@ class TestVoicePedalStart(unittest.TestCase):
             dry.read_ring(lambda: 0)
             now[0] = 0.756
             pedal.track(True, stamp(up_at))
-            dry.ran_dry(0.656, 1)
+            dry.ran_dry(0.656, 1, 0.0)
             dryouts.LOG.written()
         return dry.while_pedal_starting, log.getvalue()
 
@@ -348,7 +348,7 @@ class TestVoicePedalStart(unittest.TestCase):
                     now[0] = 0.5
                     for held in reads:
                         dry.read_ring(lambda: held)
-                    dry.ran_dry(0.5, 1)
+                    dry.ran_dry(0.5, 1, 0.0)
                     dryouts.LOG.written()
                 self.assertEqual(dry.while_pedal_starting, 1)
                 self.assertIn(said, log.getvalue())
@@ -363,7 +363,7 @@ class TestVoicePedalStart(unittest.TestCase):
             dry.read_ring(lambda: 1)
             now[0] = 0.56
             dry.read_ring(lambda: 0)
-            dry.ran_dry(0.27, 1)
+            dry.ran_dry(0.27, 1, 0.0)
             dryouts.LOG.written()
         self.assertIn("it ran dry between 0.29 and 0.56 s after the pedal turned on;", log.getvalue())
 
@@ -402,7 +402,7 @@ class TestVoicePedalStart(unittest.TestCase):
             pedal.track(True, stamp(6.3))
             now[0] = 6.35
             dry.read_ring(lambda: 0)
-            dry.ran_dry(0.35, 1)
+            dry.ran_dry(0.35, 1, 0.0)
             dryouts.LOG.written()
         self.assertEqual(dry.while_pedal_starting, 0, "the first start's track came up 5.9 s before the ring was seen")
         self.assertIn("the microphone ring ran dry (", log.getvalue())
@@ -420,7 +420,7 @@ class TestVoicePedalStart(unittest.TestCase):
             now[0] = 1.656
             dry.read_ring(lambda: 0)
             pedal.track(True, stamp(now[0] - up_s_ago))
-            dry.ran_dry(0.656, 1)
+            dry.ran_dry(0.656, 1, 0.0)
             dryouts.LOG.written()
         return dry.while_pedal_starting, log.getvalue()
 
@@ -456,7 +456,7 @@ class TestVoicePedalStart(unittest.TestCase):
                 now[0] = at
                 step()
             now[0] = 1.7
-            dry.ran_dry(0.5, 1)
+            dry.ran_dry(0.5, 1, 0.0)
             dryouts.LOG.written()
         return dry.while_pedal_starting, log.getvalue()
 
@@ -633,9 +633,9 @@ class TestVoicePedalDryOut(unittest.TestCase):
         self.dry_done = threading.Event()
         ran_dry = self.inj.dry_outs.ran_dry
 
-        def told(back_s, count):
+        def told(back_s, count, longest):
             self.live_at_dry = self.motor._pista_viva
-            ran_dry(back_s, count)
+            ran_dry(back_s, count, longest)
             self.dry_done.set()
 
         self.inj.dry_outs.ran_dry = told
@@ -1028,6 +1028,31 @@ class TestVoicePedalDryOut(unittest.TestCase):
         self.assertEqual((state["secas"], state["secas_pedal"]), (1, 1),
                          "a dry-out already classified waited for the ring to be filled again")
         self.assertGreater(state["volta_max_ms"], 300, "its return waited for the ring to be filled again")
+
+    def test_a_dry_out_after_the_longest_return_was_zeroed_publishes_its_own(self):
+        self.pedal_on(1.0)
+        self.wait_filled()
+        self.held.clear()
+        self.gate.clear()
+        self.assertTrue(self.held.wait(3), "the injector never got to the ring")
+        since = time.perf_counter()
+        self.assertTrue(espera(lambda: time.perf_counter() - since > 0.3))
+        self.drain_next = True
+        self.gate.set()
+        self.assertTrue(espera(lambda: self.inj.estado()["volta_max_ms"] > 300), "the long return was never published")
+        self.wait_filled()
+        self.held.clear()
+        self.gate.clear()
+        self.assertTrue(self.held.wait(3), "the injector never got back to the ring")
+        self.inj.volta_max = 0.0
+        self.write_held.clear()
+        self.write_gate.clear()
+        self.drain.set()
+        self.gate.set()
+        self.assertTrue(self.write_held.wait(3), "the ring was never filled again after it ran dry")
+        state = self.inj.estado()
+        self.assertEqual(state["secas"], self.inj.secas, "the second dry-out was not published before the refill")
+        self.assertLess(state["volta_max_ms"], 300, "the dry-out published the longest return from before it was zeroed")
 
     def test_the_longest_return_is_published_with_the_counts(self):
         self.pedal_on(1.0)

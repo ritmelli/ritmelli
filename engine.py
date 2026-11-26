@@ -970,7 +970,7 @@ class Injetor:
         if seca:
             self.secas += 1
             self.motor.voice_pedal.track(m.pista_viva(), m.pista_ligou())
-            self.dry_outs.ran_dry(volta, self.secas)
+            self.dry_outs.ran_dry(volta, self.secas, self.volta_max)
 
     def para(self):
         self._vai = False
