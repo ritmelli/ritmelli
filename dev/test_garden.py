@@ -293,6 +293,11 @@ CASES = {
                    "while ($true) { if ((attempt) -eq $null) { break }; Start-Sleep 1 }\n"},
          {"a.ps1": "function attempt { try { f } catch { $null } }\n"
                    "while ($true) { if (attempt) { break }; Start-Sleep 1 }\n"}),
+        ("a PowerShell comparison of the flag",
+         {"a.ps1": "function attempt { try { f } catch { $null } }\n"
+                   "while ($true) { $s = attempt; if ($s -eq $null) { break }; Start-Sleep 1 }\n"},
+         {"a.ps1": "function attempt { try { f } catch { $null } }\n"
+                   "while ($true) { $s = attempt; if ($s) { break }; Start-Sleep 1 }\n"}),
         ("the helper's result passed to another call",
          {"a.py": "import time\ndef attempt():\n    try:\n        return f()\n    except OSError:\n        return None\n"
                   "while True:\n    if check(attempt()):\n        break\n    time.sleep(1)\n"},
