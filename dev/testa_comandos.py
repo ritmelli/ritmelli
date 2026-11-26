@@ -415,10 +415,10 @@ def voltas(A, E):
     fonte, preso, libera = A.fonte_de, threading.Event(), threading.Event()
     onda, na_onda, libera_onda = E._onda_pede, threading.Event(), threading.Event()
 
-    def fonte_presa(q):
+    def fonte_presa(q, shelf=None):
         preso.set()
         libera.wait(5)
-        return fonte(q)
+        return fonte(q, shelf)
 
     def onda_presa(tr):
         na_onda.set()
@@ -1305,10 +1305,10 @@ def avanco(A, E):
         preso, libera = threading.Event(), threading.Event()
         prepara = E.preparar
 
-        def fonte_presa(q):
+        def fonte_presa(q, shelf=None):
             preso.set()
             libera.wait(5)
-            return fonte(q)
+            return fonte(q, shelf)
 
         def preparar_preso(*a, **kw):
             preso.set()
@@ -1542,7 +1542,7 @@ def avanco(A, E):
             tp, _ = em_thread(cmd.parar, A)
             no_stop.wait(5)
             cap = E.captura()
-            tq, _ = em_thread(A._prepara, cap.track, x, dict(x), (id(cap.track), x["qid"]), cap)
+            tq, res_q = em_thread(A._prepara, cap.track, x, dict(x), cap)
             tq.join(0.3)
             publicou = E._pronto is not None
             libera.set()
@@ -1551,8 +1551,8 @@ def avanco(A, E):
     finally:
         libera.set()
         del E.stop
-    confere(not publicou and E._pronto is None and E.pronto_tag is None and E.track is None,
-            f"a preparacao que chega com o Parar no meio nao publica, nem antes nem depois do stop ({publicou})")
+    confere(res_q == [None] and not publicou and E._pronto is None and E.pronto_tag is None and E.track is None,
+            f"a preparacao que chega com o Parar no meio nao publica, nem antes nem depois do stop ({publicou}, {res_q})")
 
     # o Proximo esperando o _lock do motor (na mao de outra thread, como na troca de aparelho) nao segura a fila_lock:
     # o /api/state responde, e o Proximo toca quando o _lock sai
@@ -2749,8 +2749,8 @@ def engine_seams(A, E):
     cmd.tocar(A, "d1")
     confere(ate(lambda: E.status() == "playing"), f"the record plays ({E.status()})")
     x, _, _ = cmd.enfileirar(A, {"id": "d2"})
-    A.passagem_falhou = None
-    engine_class, uses, reads = type(E), [], []
+    A.failed_passages.clear()
+    engine_class, uses, reads, drops = type(E), [], [], []
 
     class Counted:
         def __init__(self, lock):
@@ -2787,6 +2787,10 @@ def engine_seams(A, E):
         @pronto_tag.setter
         def pronto_tag(self, value):
             self.__dict__["pronto_tag"] = value
+
+        def drop_prepared(self):
+            drops.append((self._qlock.taken, self._qlock.locked()))
+            return super().drop_prepared()
     with mock.patch.object(eng, "TRANS_PREP_S", 1e6), mock.patch.object(A, "_prepara") as prepara:
         A._volta_passagem()
         confere(ate(lambda: prepara.called) and prepara.call_args.args[1] is x,
@@ -2795,7 +2799,7 @@ def engine_seams(A, E):
         prepara.reset_mock()
         failed_key = (id(E.track), x["qid"], A.passage_source(x))
         with E.state_section():
-            E._prepare_failure = failed_key
+            E._prepare_failure, E.pronto_tag = failed_key, "a deck prepared for another entry"
         qlock, E.__class__ = E._qlock, Watched
         E._qlock = Counted(qlock)
         try:
@@ -2805,9 +2809,12 @@ def engine_seams(A, E):
             E.__class__, E._qlock = engine_class, qlock
         A._volta_passagem()
     pairs = [(a, b) for a, b in zip(reads, reads[1:]) if a[0] == "failure"]
-    confere(A.passagem_falhou == failed_key and again is None,
-            f"the passage watcher takes the prepare failure out of the engine, once ({A.passagem_falhou})")
+    confere(failed_key in A.failed_passages and again is None,
+            f"the passage watcher takes the prepare failure out of the engine, once ({A.failed_passages})")
     confere(uses and all(uses), f"and reads and clears it under the engine's _qlock ({uses})")
+    confere(drops == [reads[0][1:]] and reads[0][0] == "failure",
+            f"and drops a deck prepared for another entry in the same hold of the _qlock as the failure ({drops}, "
+            f"{reads[:1]})")
     confere(len(pairs) == 2 and all(b[0] == "pronto" and a[1:] == b[1:] == (a[1], True) for a, b in pairs),
             f"and reads the prepared deck's tag in the same hold of the _qlock as the failure ({pairs})")
     confere(not prepara.called and A.preparando is None,

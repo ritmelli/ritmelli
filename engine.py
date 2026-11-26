@@ -2147,10 +2147,10 @@ class Engine:
     def on_silent_stream(self, f):
         self._stream_silent = f
 
-    def take_prepare_failure(self):
+    def take_prepare_failure(self, keep=False):
         with self._qlock:
             key, self._prepare_failure = self._prepare_failure, None
-            return key, self.pronto_tag
+            return key, (self.pronto_tag if keep is False or self.pronto_tag in (None, keep) else self.drop_prepared())
 
     @contextlib.contextmanager
     def state_section(self):

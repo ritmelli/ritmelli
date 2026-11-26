@@ -215,10 +215,15 @@ posição do disco viram escolha não determinística, e os `qid` são simétric
   `fonte_de`) e o motor que falha o deck preparado, com duas entradas, a cabeça que muda, a versão de áudio e o arquivo
   que chega à prateleira a qualquer hora. A falha leva a chave do preparo que a gerou (o disco, a entrada, a fonte e o
   arquivo que ele escolheu: o `_prepara` a passa ao `Engine.preparar`, e o motor a devolve pelo `take_prepare_failure`),
-  e o vigia só guarda essa chave, sem rotular a falha pelo que viu. Confere que uma falha só bloqueia o preparo que a
-  gerou (`FailureBlocksOnlyItsPrepare`) e que a fonte que falhou não começa de novo (`NoRetryOfTheFailedSource`), com
-  três mutantes: a falha só com a entrada, a falha com a chave da cabeça da fila e o preparo com a chave que o vigia
-  pediu em vez da fonte que ele escolheu.
+  e o vigia guarda essas chaves num conjunto, as do disco que toca, sem rotular a falha pelo que viu; ele lê a falha e
+  tira o deck preparado para outra entrada no mesmo trecho do `_qlock` (`take_prepare_failure(keep=)`), e o preparo
+  confere a fonte que escolheu contra o conjunto antes de abrir o stream ou o arquivo (o `fonte_de` recebe a mesma
+  leitura da prateleira). A prateleira ganha e perde o arquivo a qualquer hora. Confere que uma falha só bloqueia o
+  preparo que a gerou (`FailureBlocksOnlyItsPrepare`) e que a fonte que falhou não começa de novo
+  (`NoRetryOfTheFailedSource`), com seis mutantes: a falha só com a entrada, a falha com a chave da cabeça da fila, o
+  preparo com a chave que o vigia pediu em vez da fonte que ele escolheu, uma falha só guardada (a segunda apaga a
+  primeira), o preparo que não confere a fonte que escolheu e o deck de outra entrada tirado num segundo trecho do
+  `_qlock`, depois de ler a falha.
 
 O `dev/test_tla.py` roda o TLC (o `tla2tools.jar` da versão fixada, conferido pelo sha256) nas três, cada execução em
 menos de 60 s (a que passa disso é parada ali e falha; a `Races211` em cinco com todas as propriedades, além das onze

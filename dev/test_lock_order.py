@@ -1417,15 +1417,15 @@ def main():
     check(locked != sources["server.py"] and any("lib_lock" in b for b in bad),
           f"with the passage's builder, which fonte_de returns and the preparar runs under the _qlock, taking the "
           f"shelf's lock, the order check fails ({[b for b in bad if 'lib_lock' in b][:1]})")
-    fallback = locked.replace("novo = self.fonte_de(seen)\n", "novo = self.fonte_de(seen) or None\n", 1)
+    fallback = locked.replace("novo = self.fonte_de(seen, shelf)\n", "novo = self.fonte_de(seen, shelf) or None\n", 1)
     bad = refusals(dict(sources, **{"server.py": fallback}), order, before)
     check(fallback != locked and refuses(bad),
-          f"and so it does with the builder reached through a fallback, fonte_de(seen) or None "
+          f"and so it does with the builder reached through a fallback, fonte_de(seen, shelf) or None "
           f"({[b for b in bad if 'form the check' in b][:1]})")
-    chained = locked.replace("novo = self.fonte_de(seen)\n", "loaded = self.fonte_de(seen)\n            novo = loaded\n", 1)
+    chained = locked.replace("novo = self.fonte_de(seen, shelf)\n", "loaded = self.fonte_de(seen, shelf)\n            novo = loaded\n", 1)
     bad = refusals(dict(sources, **{"server.py": chained}), order, before)
     check(chained != locked and refuses(bad),
-          f"and through a local name the builder passes on its way, loaded = self.fonte_de(seen); novo = loaded "
+          f"and through a local name the builder passes on its way, loaded = self.fonte_de(seen, shelf); novo = loaded "
           f"({[b for b in bad if 'form the check' in b][:1]})")
     inline = sources["server.py"].replace(
         'self.engine.trocar_fonte(tr, lambda: dict(item, path=str(LIB / item["file"])))',
@@ -1434,21 +1434,21 @@ def main():
     check(inline != sources["server.py"] and refuses(bad),
           f"and with the download's builder passed inline behind a fallback, (lambda: ...) or None "
           f"({[b for b in bad if 'form the check' in b][:1]})")
-    direct = locked.replace("e.preparar(novo, ", "e.preparar(self.fonte_de(seen), ", 1)
+    direct = locked.replace("e.preparar(novo, ", "e.preparar(self.fonte_de(seen, shelf), ", 1)
     bad = refusals(dict(sources, **{"server.py": direct}), order, before)
     check(direct != locked and refuses(bad),
-          f"and with the factory's call passed directly, e.preparar(self.fonte_de(seen), ...) "
+          f"and with the factory's call passed directly, e.preparar(self.fonte_de(seen, shelf), ...) "
           f"({[b for b in bad if 'form the check' in b][:1]})")
-    inner = locked.replace("            novo = self.fonte_de(seen)\n", "", 1).replace(
-        "            def publica(depois):\n", "            def publica(depois):\n                novo = self.fonte_de(seen)\n", 1)
+    inner = locked.replace("            novo = self.fonte_de(seen, shelf)\n", "", 1).replace(
+        "            def publica(depois):\n", "            def publica(depois):\n                novo = self.fonte_de(seen, shelf)\n", 1)
     bad, *_ = scan(dict(sources, **{"server.py": inner}), order, before)
     check(inner != locked and any("calls Library.update" in b for b in bad),
           f"and with the factory called inside the nested function that hands its builder on "
           f"({[b for b in bad if 'lib_lock' in b][:1]})")
-    ternary = locked.replace("novo = self.fonte_de(seen)\n", "novo = self.fonte_de(seen) if seen else None\n", 1)
+    ternary = locked.replace("novo = self.fonte_de(seen, shelf)\n", "novo = self.fonte_de(seen, shelf) if seen else None\n", 1)
     bad = refusals(dict(sources, **{"server.py": ternary}), order, before)
     check(ternary != locked and refuses(bad),
-          f"and through either branch of a conditional, fonte_de(seen) if seen else None "
+          f"and through either branch of a conditional, fonte_de(seen, shelf) if seen else None "
           f"({[b for b in bad if 'form the check' in b][:1]})")
     named = sources["server.py"].replace(
         '            return lambda: dict(it, path=str(LIB / it["file"]), **marca_auto(x))\n',

@@ -250,6 +250,13 @@ RUNS = (
         "invariant FailureBlocksOnlyItsPrepare", constants=(("FailureLabelledByTheHead", "TRUE"),)),
     Run("mutant: the prepare carries the key the watcher asked for, not the source it picked", "PassageFailure",
         "invariant NoRetryOfTheFailedSource", constants=(("PrepareKeysItsPick", "FALSE"),)),
+    Run("mutant: the watcher keeps one failure, and a second failure on the record lets the first start again",
+        "PassageFailure", "invariant NoRetryOfTheFailedSource", constants=(("FailuresKeptTogether", "FALSE"),)),
+    Run("mutant: the prepare does not check the source it picked, which the shelf may have changed since the poll",
+        "PassageFailure", "invariant NoRetryOfTheFailedSource", constants=(("PickChecksTheFailures", "FALSE"),)),
+    Run("mutant: the watcher drops the stale deck in a second hold of the _qlock, after it took the failure, and a "
+        "failure in between is lost", "PassageFailure", "invariant NoRetryOfTheFailedSource",
+        constants=(("TakeDropsTheStaleDeck", "FALSE"),)),
 )
 
 failures = []

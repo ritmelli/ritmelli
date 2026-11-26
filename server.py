@@ -593,7 +593,7 @@ class App:
         self.sonoridade_falhou = set()  # os discos da prateleira que o ffmpeg nao mediu: nao tenta de novo
         self._son_lock = threading.Lock()
         self.parado_sem_fila = None  # disco que acabou com a fila vazia: a parecida que chegar toca
-        self.preparando = self.passagem_falhou = None
+        self.preparando, self.failed_passages = None, set()
         self.closing = False
         # a janela propria (janela.py), quando ha: fechar ela desliga o servidor (pede_desligar), e o servidor que
         # para sozinho fecha ela (main). O loop e o desliga sao do servir e do build
@@ -1485,17 +1485,15 @@ class App:
         return j, self.lib.get(x.get("id")) or (self.lib.by_youtube(x["youtube_id"]) if x.get("youtube_id") else None) \
             or (self.lib.get(j.get("item_id")) if j else None)
 
-    def passage_source(self, x):
-        return x.get("youtube_id") or x.get("url"), (self.shelf_item(x)[1] or {}).get("file")
+    def passage_source(self, x, shelf=None):
+        return x.get("youtube_id") or x.get("url"), ((shelf or self.shelf_item(x))[1] or {}).get("file")
 
-    def fonte_de(self, x):
-        """The second deck's record, or None when the passage does not apply (the _vigia_fila plays it at the end):
-        from the shelf, a builder of the file's record; else the Automatico's stream or the running download's."""
-        j, it = self.shelf_item(x)
+    def fonte_de(self, x, shelf=None):
+        """The second deck's record, or None when the passage does not apply: the shelf file's builder, or a stream."""
+        j, it = shelf or self.shelf_item(x)
         if it:
             return lambda: dict(it, path=str(LIB / it["file"]), **marca_auto(x))
-        alvo = x.get("youtube_id") or x.get("url")
-        auto = x.get("auto") and x.get("youtube_id")
+        alvo, auto = x.get("youtube_id") or x.get("url"), x.get("auto") and x.get("youtube_id")
         if not alvo or not (auto or (j and j["status"] == "running")):
             return None
         info, hdr = self.stream_info(alvo)
@@ -1509,15 +1507,17 @@ class App:
         return d
 
     def _prepara(self, tr, x, seen, cap):
-        chave = (id(tr), x["qid"], (src := seen.get("youtube_id") or seen.get("url"), None))
+        chave = (id(tr), x["qid"], (seen.get("youtube_id") or seen.get("url"), None))
         try:
-            novo = self.fonte_de(seen)
+            chave = (id(tr), x["qid"], self.passage_source(seen, shelf := self.shelf_item(seen)))
+            if chave in self.failed_passages:
+                return
+            novo = self.fonte_de(seen, shelf)
             if novo is None:
-                self.passagem_falhou = chave
+                self.failed_passages.add(chave)
                 return
             e = self.engine
-            ganho = e.gain_for(rec := novo() if callable(novo) else novo)
-            chave = (id(tr), x["qid"], (src, rec["file"] if callable(novo) else None))
+            ganho = e.gain_for(novo() if callable(novo) else novo)
 
             def pode():  # sob o _qlock do motor: so le campos em memoria
                 r = self.reserva
@@ -1529,7 +1529,7 @@ class App:
                     e.preparar(novo, x["qid"], pode=pode, ganho=ganho, depois=depois, key=chave)
             self.with_engine(publica)
         except Exception as ex:  # sem a proxima pronta, ela fica para o avanco normal da fila no fim do disco
-            self.passagem_falhou = chave
+            self.failed_passages.add(chave)
             print(f"transition: couldn't prepare {x.get('title')!r}: {yt_msg(ex)}", file=sys.stderr, flush=True)
         finally:
             self.preparando = None
@@ -1553,16 +1553,14 @@ class App:
         with self.fila_lock:
             x = self.fila[0] if self.fila else None
             seen = dict(x or {})
-            busy, (failed, pronto) = self.preparando, e.take_prepare_failure()
             pode = (x is not None and dur and tr.get("path") and not e.loop
                     and cap.status in ("playing", "paused", "buffering"))
-            if pronto is not None and (not pode or x["qid"] != pronto):
-                e.cancelar_pronto()
-        if failed is not None:
-            self.passagem_falhou = failed
+            busy, (failed, pronto) = self.preparando, e.take_prepare_failure(x["qid"] if pode else None)
+        self.failed_passages.update([failed] if failed is not None else [])
+        self.failed_passages.difference_update([k for k in list(self.failed_passages) if k[0] != id(tr)])
         if not pode or (pronto is not None and x["qid"] == pronto) or dur - cap.pos > eng.TRANS_PREP_S:
             return
-        if busy is not None or (chave := (id(tr), x["qid"], self.passage_source(seen))) == self.passagem_falhou:
+        if busy is not None or (chave := (id(tr), x["qid"], self.passage_source(seen))) in self.failed_passages:
             return
         self.preparando = chave
         threading.Thread(target=self._prepara, args=(tr, x, seen, cap), daemon=True).start()

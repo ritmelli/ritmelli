@@ -917,15 +917,15 @@ def audio_version_while_the_passage_reads_the_source(A, E, readers):
         A.change_queue(lambda: A.fila.extend([x, y]))
     read, go, source = threading.Event(), threading.Event(), A.fonte_de
 
-    def reads(entry):
-        found = source(entry)
+    def reads(entry, shelf=None):
+        found = source(entry, shelf)
         read.set()
         go.wait(WAIT_S)
         return found
     cap = E.captura()
     v = {"youtube_id": "fffffffffff", "duration": 200, "title": "similar", "channel": "c"}
     with mock.patch.object(A, "fonte_de", reads), contextlib.redirect_stderr(io.StringIO()):
-        t = threading.Thread(target=A._prepara, args=(cap.track, x, dict(x), (id(cap.track), x["qid"]), cap))
+        t = threading.Thread(target=A._prepara, args=(cap.track, x, dict(x), cap))
         t.start()
         read.wait(WAIT_S)
         cmd.mover_na_fila(A, y["qid"], 0)
@@ -934,7 +934,8 @@ def audio_version_while_the_passage_reads_the_source(A, E, readers):
         cmd.mover_na_fila(A, y["qid"], 1)
         go.set()
         t.join(WAIT_S)
-    check(A.fila[0] is x and x["youtube_id"] == "fffffffffff" and "fixa" not in x and E.pronto_tag is None,
+    check(read.is_set() and A.fila[0] is x and x["youtube_id"] == "fffffffffff" and "fixa" not in x
+          and E.pronto_tag is None,
           f"an entry that left the head, took the audio version and came back while the passage read its source is "
           f"not prepared with the source of before ({x['youtube_id']} in the queue, prepared {E.pronto_tag})")
 
@@ -949,7 +950,7 @@ def failed_source_before_the_audio_version(A, E, readers):
         A.change_queue(lambda: A.fila.extend([x, y]))
     read, go, tried = threading.Event(), threading.Event(), threading.Event()
 
-    def fails(entry):
+    def fails(entry, shelf=None):
         read.set()
         go.wait(WAIT_S)
         raise RuntimeError("the source of before is gone")
@@ -970,7 +971,7 @@ def failed_source_before_the_audio_version(A, E, readers):
         A.preparando = None
     check(tried.is_set() and prepara.call_args.args[1] is x and x["youtube_id"] == "fffffffffff",
           f"a source of before that failed while the entry took the audio version does not keep the new version from "
-          f"its passage ({A.passagem_falhou}, prepared again: {tried.is_set()})")
+          f"its passage ({A.failed_passages}, prepared again: {tried.is_set()})")
 
 
 def engine_prepare_failure_before_the_audio_version(A, E, readers):
@@ -1001,7 +1002,7 @@ def engine_prepare_failure_before_the_audio_version(A, E, readers):
         A.preparando = None
     check(tried.is_set() and prepara.call_args.args[1] is x and x["youtube_id"] == "fffffffffff",
           f"an engine prepare that failed before the entry took the audio version keys the source it prepared, and "
-          f"the new version gets its passage ({A.passagem_falhou}, prepared again: {tried.is_set()})")
+          f"the new version gets its passage ({A.failed_passages}, prepared again: {tried.is_set()})")
 
 
 class Launches:
@@ -1052,7 +1053,7 @@ def engine_prepare_failure_read_with_another_head(A, E, readers):
     check(launches.qids == [x["qid"], y["qid"]],
           f"an engine prepare failure read while another entry is at the head stays with the entry that failed: the "
           f"other head is prepared, and the one that failed is not prepared again when it comes back unchanged "
-          f"({A.passagem_falhou}, launched {launches.qids})")
+          f"({A.failed_passages}, launched {launches.qids})")
 
 
 def engine_prepare_failure_right_after_the_poll(A, E, readers):
@@ -1060,8 +1061,8 @@ def engine_prepare_failure_right_after_the_poll(A, E, readers):
     x, _ = two_entries(A, 8)
     launches, take = Launches(), E.take_prepare_failure
 
-    def fails_after_the_take():
-        found, key = take(), carried_key(A, x)
+    def fails_after_the_take(*a):
+        found, key = take(*a), carried_key(A, x)
         with E.state_section():
             E._prepare_failure, E.pronto_tag = key, None
         return found
@@ -1074,7 +1075,7 @@ def engine_prepare_failure_right_after_the_poll(A, E, readers):
         watch(A, launches)
     check(launches.qids == [x["qid"]],
           f"a prepare that fails right after the watcher reads the engine is not started again, then or on the next "
-          f"pass ({A.passagem_falhou}, launched {launches.qids})")
+          f"pass ({A.failed_passages}, launched {launches.qids})")
 
 
 def prepare_published_right_after_the_poll(A, E, readers):
@@ -1082,8 +1083,8 @@ def prepare_published_right_after_the_poll(A, E, readers):
     x, _ = two_entries(A, 9)
     launches, take = Launches(), E.take_prepare_failure
 
-    def publishes_after_the_take():
-        found = take()
+    def publishes_after_the_take(*a):
+        found = take(*a)
         with E.state_section():
             E.pronto_tag = x["qid"]
         A.preparando = None
@@ -1110,7 +1111,7 @@ def stream_prepare_failed_then_the_file_reached_the_shelf(A, E, readers):
     launches = Launches()
     with mock.patch.object(eng, "TRANS_PREP_S", 1e6):
         watch(A, launches)
-        A.passagem_falhou = carried_key(A, x)
+        A.failed_passages.add(carried_key(A, x))
         watch(A, launches)
         A.lib.add({"id": "shelf11", "title": "similar", "file": "shelf11.m4a", "duration": 600.0, "lufs": -14.0,
                    "youtube_id": "kkkkkkkkkkk"})
@@ -1128,15 +1129,10 @@ def file_reached_the_shelf_while_the_prepare_picked_its_source(A, E, readers):
          "job": None, "qid": "similar12", "auto": True}
     with A.fila_lock:
         A.change_queue(lambda: A.fila.append(x))
-    picking, go, pick = threading.Event(), threading.Event(), A.fonte_de
-
-    def picks_after_the_file_came(entry):
-        picking.set()
-        go.wait(WAIT_S)
-        return pick(entry)
+    picking, go = threading.Event(), threading.Event()
     launches = Launches()
     with mock.patch.object(eng, "TRANS_PREP_S", 1e6), contextlib.redirect_stderr(io.StringIO()):
-        with mock.patch.object(A, "fonte_de", picks_after_the_file_came), \
+        with mock.patch.object(A, "shelf_item", worker_pauses(A, picking, go)), \
                 mock.patch.object(E, "preparar", side_effect=RuntimeError("the file would not open")):
             A._volta_passagem()
             picking.wait(WAIT_S)
@@ -1148,7 +1144,109 @@ def file_reached_the_shelf_while_the_prepare_picked_its_source(A, E, readers):
     A.lib.remove("shelf12")
     check(launches.qids == [],
           f"a file that reaches the shelf while the prepare picks its source, and then fails, is keyed by that file: "
-          f"the next poll does not start it again ({A.passagem_falhou}, launched {launches.qids})")
+          f"the next poll does not start it again ({A.failed_passages}, launched {launches.qids})")
+
+
+def worker_pauses(A, pausing, go):
+    lookup = A.shelf_item
+
+    def looks(entry):
+        if threading.current_thread() is not threading.main_thread():
+            pausing.set()
+            go.wait(WAIT_S)
+        return lookup(entry)
+    return looks
+
+
+def similar_on_its_own(A, letter, n):
+    cmd.limpar_fila(A)
+    x = {"id": None, "youtube_id": letter * 11, "url": None, "title": "similar", "channel": "c", "duration": 600.0,
+         "job": None, "qid": f"similar{n}", "auto": True}
+    with A.fila_lock:
+        A.change_queue(lambda: A.fila.append(x))
+    return x
+
+
+def shelf_record(letter, n):
+    return {"id": f"shelf{n}", "title": "similar", "file": f"shelf{n}.m4a", "duration": 600.0, "lufs": -14.0,
+            "youtube_id": letter * 11}
+
+
+def gain_failure_of_a_shelf_file(A, E, readers):
+    check(play(A, E, readers, "d1"), "d1 is on the platter, read")
+    x = similar_on_its_own(A, "m", 13)
+    A.lib.add(shelf_record("m", 13))
+    launches = Launches()
+    with mock.patch.object(eng, "TRANS_PREP_S", 1e6), contextlib.redirect_stderr(io.StringIO()), \
+            mock.patch.object(E, "gain_for", side_effect=ValueError("a stored lufs that is not a number")):
+        A._volta_passagem()
+        harness.ate(lambda: A.preparando is None)
+        watch(A, launches)
+    key = carried_key(A, x)
+    A.lib.remove("shelf13")
+    check(launches.qids == [] and key[2] == ("m" * 11, "shelf13.m4a") and key in A.failed_passages,
+          f"a shelf file whose gain fails is keyed by that file, before the gain, and the next poll does not start it "
+          f"again ({A.failed_passages}, launched {launches.qids})")
+
+
+def two_failures_on_one_record(A, E, readers):
+    check(play(A, E, readers, "d1"), "d1 is on the platter, read")
+    x, y = two_entries(A, 14)
+    launches = Launches()
+    with mock.patch.object(eng, "TRANS_PREP_S", 1e6):
+        watch(A, launches)
+        key = carried_key(A, x)
+        with E.state_section():
+            E._prepare_failure = key
+        cmd.mover_na_fila(A, y["qid"], 0)
+        watch(A, launches)
+        key = carried_key(A, y)
+        with E.state_section():
+            E._prepare_failure = key
+        cmd.mover_na_fila(A, x["qid"], 0)
+        watch(A, launches)
+    check(launches.qids == [x["qid"], y["qid"]],
+          f"two prepares that fail on the same record both stay failed: the first is not started again when it "
+          f"comes back to the head after the second failed ({A.failed_passages}, launched {launches.qids})")
+
+
+def shelf_record_deleted_before_the_pick(A, E, readers):
+    check(play(A, E, readers, "d1"), "d1 is on the platter, read")
+    x = similar_on_its_own(A, "n", 15)
+    A.failed_passages.add(carried_key(A, x))
+    A.lib.add(shelf_record("n", 15))
+    picking, go = threading.Event(), threading.Event()
+    with mock.patch.object(eng, "TRANS_PREP_S", 1e6), contextlib.redirect_stderr(io.StringIO()), \
+            mock.patch.object(A, "shelf_item", worker_pauses(A, picking, go)), \
+            mock.patch.object(A, "stream_info", side_effect=RuntimeError("the stream that failed")) as opens:
+        A._volta_passagem()
+        paused = picking.wait(WAIT_S)
+        A.lib.remove("shelf15")
+        go.set()
+        harness.ate(lambda: A.preparando is None)
+    check(paused and not opens.called,
+          f"a shelf record deleted between the poll and the pick leaves the stream that failed before: the prepare "
+          f"checks the source it picked and does not open it again (opened {opens.call_count})")
+
+
+def engine_failure_through_the_real_prepare(A, E, readers):
+    check(play(A, E, readers, "d1"), "d1 is on the platter, read")
+    x, _ = two_entries(A, 16)
+
+    def decodes_nothing(gen, track, start, deck):
+        with E._qlock:
+            deck.eof_gen = gen
+    launches = Launches()
+    with mock.patch.object(eng, "TRANS_PREP_S", 1e6), contextlib.redirect_stderr(io.StringIO()), \
+            mock.patch.object(E, "_reader", decodes_nothing):
+        A._volta_passagem()
+        prepared = harness.ate(lambda: A.preparando is None) and harness.ate(lambda: E._prepare_failure is not None)
+        watch(A, launches)
+    recorded = carried_key(A, x) in A.failed_passages
+    A.failed_passages.clear()
+    check(prepared and launches.qids == [] and recorded and E.pronto_tag is None,
+          f"the real prepare hands its key to the engine, the deck that decodes nothing fails with it, and the watcher "
+          f"does not start that prepare again (launched {launches.qids})")
 
 
 def prepared_head_moved_back_during_the_poll(A, E, readers):
@@ -1180,10 +1278,10 @@ def prepared_head_moved_back_during_the_poll(A, E, readers):
         def locked(self):
             return inner.locked()
 
-    def moves_back_and_publishes():
+    def moves_back_and_publishes(*a):
         if not inner.locked():
             gap()
-        return take()
+        return take(*a)
 
     def moves_back_and_cancels():
         if not inner.locked():
@@ -1303,6 +1401,10 @@ def main():
                 prepared_head_moved_back_during_the_poll(A, E, readers)
                 stream_prepare_failed_then_the_file_reached_the_shelf(A, E, readers)
                 file_reached_the_shelf_while_the_prepare_picked_its_source(A, E, readers)
+                gain_failure_of_a_shelf_file(A, E, readers)
+                two_failures_on_one_record(A, E, readers)
+                shelf_record_deleted_before_the_pick(A, E, readers)
+                engine_failure_through_the_real_prepare(A, E, readers)
                 audio_version_entries(A, E)
                 audio_version_while_an_entry_plays_from_the_queue(A)
                 file_wait_after_a_passage_switch(A, E, readers)
