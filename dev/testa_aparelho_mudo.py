@@ -266,9 +266,9 @@ class TestaReinicio(unittest.TestCase):
         self.assertEqual(self.c.nomes(), [], "nada novo: nem reinicia nem confere")
         self.assertIsNone(r)
 
-    def _install_with(self, mics, pendura, parou=False):
+    def _install_with(self, mics, pendura, dll_changed=False):
         self.c.lista.clear()
-        with mock.patch.object(filtro, "_prepara_dll", lambda dll: parou), \
+        with mock.patch.object(filtro, "_prepara_dll", lambda dll: dll_changed), \
                 mock.patch.object(filtro, "microfones", lambda todos=False: mics), \
                 mock.patch.object(filtro, "_pendura", pendura), \
                 mock.patch.object(filtro, "reinicia_audio", self.c("reinicia")), redirect_stderr(io.StringIO()):
@@ -291,6 +291,13 @@ class TestaReinicio(unittest.TestCase):
         with mock.patch.object(filtro.winreg, "OpenKey", side_effect=FileNotFoundError(2, "not found")), \
                 self.assertRaises(filtro.MissingEndpointProperties):
             filtro._pendura("{old}")
+        with mock.patch.object(filtro.winreg, "OpenKey", return_value=mock.MagicMock()), \
+                mock.patch.object(filtro, "le", lambda k, n: None), \
+                mock.patch.object(filtro.winreg, "CreateKeyEx", side_effect=FileNotFoundError(2, "gone")), \
+                self.assertRaises(FileNotFoundError) as caught:
+            filtro._pendura("{a}")
+        self.assertNotIsInstance(caught.exception, filtro.MissingEndpointProperties,
+                                 "only the Properties key is skipped")
 
     def test_instala_todos_device_error_fails_after_the_others(self):
         mics = [("{old}", "IN 0", "Old"), ("{a}", "IN 1", "X"), ("{b}", "IN 2", "Y")]
@@ -320,7 +327,7 @@ class TestaReinicio(unittest.TestCase):
         self.assertEqual(self.c.nomes(), [], "a device that keeps refusing doesn't restart the audio on every run")
         self.assertIsNone(caught.exception.check)
         with self.assertRaises(filtro.FilterNotInstalled) as caught:
-            self._install_with([("{a}", "IN 1", "X")], denied, parou=True)
+            self._install_with([("{a}", "IN 1", "X")], denied, dll_changed=True)
         self.assertEqual(self.c.lista[0], ("reinicia", (), {"so_servico": True}), "only the DLL changed")
         self.assertEqual(caught.exception.check, {"mudos": [UMC_IN]})
 
@@ -723,13 +730,26 @@ class TestaApp(unittest.TestCase):
                 eng.Engine._confere_filtro(m, MIC)
             self.assertEqual(ordem, [("reabre", True), ("confere", ())] if quer else [], r)
             self.assertEqual(m._mudos_vistos, quer, "os do registro entram na de todos; sem ela, ficam para depois")
-            self.assertEqual(m.error is None, r["ok"], r)
+            self.assertEqual(m.error is None, quer, f"{r}: after a reopen, the message comes from the reopen")
         m = self._motor(_fechado=True)  # o motor fechou enquanto a tarefa rodava: nem reabre nem confere
         with mock.patch.object(eng, "_do_microfone", lambda mic: sem), \
                 mock.patch.object(filtro, "pede_tarefa", lambda mic: {"ok": True}):
             eng.Engine._confere_filtro(m, MIC)
         m._reabre.assert_not_called()
         m._confere_mudos.assert_not_called()
+
+    def test_refused_microphone_message_after_the_reopen(self):
+        sem = {"filtro": False, "melhorias": True, "guid": "{a}"}
+        refused = {"ok": False, "motivo": "nao_pronto", "reopen": True}
+        m = self._motor()
+        with mock.patch.object(eng, "_do_microfone", lambda mic: sem), \
+                mock.patch.object(filtro, "pede_tarefa", lambda mic: refused):
+            eng.Engine._confere_filtro(m, MIC)
+            m._reabre.assert_called_once_with()
+            self.assertIsNone(m.error, "the preparing message is gone, and the reopen decides what stays")
+            eng.Engine._confere_filtro(m, MIC)
+        self.assertEqual(m.error["key"], "server.mic.notReadyReinstall",
+                         "the check the reopen starts for the refused microphone, still the active one")
 
     def test_registro_depois_de_preparar_que_falhou(self):
         """A preparacao que falhou nao gasta a conferencia dos mudos do registro: ela vem na proxima vez com filtro."""
@@ -777,9 +797,12 @@ class TestaPedeTarefa(unittest.TestCase):
         def run(cmd, **kw):
             ordem.append(os.path.basename(cmd[0]).lower())
             return types.SimpleNamespace(returncode=0, stdout=sc, stderr="")
+
+        def mic(n):
+            return {"filtro": ready() if callable(ready) else ready, "melhorias": True}
         with mock.patch.object(filtro, "tarefa_existe", lambda: True), \
                 mock.patch.object(filtro.subprocess, "run", run), \
-                mock.patch.object(filtro, "do_microfone", lambda n: {"filtro": ready, "melhorias": True}), \
+                mock.patch.object(filtro, "do_microfone", mic), \
                 mock.patch.object(filtro, "tarefa_rodando", rodando), mock.patch.object(filtro.time, "sleep"), \
                 mock.patch.object(filtro.time, "monotonic", relogio or time.monotonic):
             return filtro.pede_tarefa("IN 1"), ordem
@@ -812,12 +835,20 @@ class TestaPedeTarefa(unittest.TestCase):
         self.assertEqual(r, {"ok": False, "motivo": "audio"})
 
     def test_refused_microphone_waits_for_the_task_and_asks_to_reopen(self):
-        rodando = iter([True, False])
+        running = iter([True, False])
         t = iter(range(0, 10000, 10))
-        r, ordem = self._pede(lambda p: next(rodando), relogio=lambda: next(t), ready=False)
+        r, order = self._pede(lambda p: next(running), relogio=lambda: next(t), ready=False)
         self.assertEqual(r, {"ok": False, "motivo": "nao_pronto", "reopen": True})
-        self.assertEqual(ordem, ["schtasks.exe", "sc.exe"], "the task may have restarted the audio: wait for it")
-        self.assertEqual(next(rodando, "drained"), "drained")
+        self.assertEqual(order, ["schtasks.exe", "sc.exe"], "the task may have restarted the audio: wait for it")
+        self.assertEqual(next(running, "drained"), "drained")
+
+    def test_microphone_ready_only_after_the_audio_came_back(self):
+        reads = iter([False] * 5 + [True])
+        t = iter(range(0, 10000, 10))
+        r, ordem = self._pede(lambda p: False, relogio=lambda: next(t), ready=lambda: next(reads))
+        self.assertEqual(r, {"ok": True}, "the microphone is read again once the audio service is back")
+        self.assertEqual(ordem, ["schtasks.exe", "sc.exe"])
+        self.assertEqual(next(reads, "drained"), "drained")
 
     def test_tarefa_rodando(self):
         for saida, quer in (("Running\r\n", True), ("Queued\r\n", True), ("Ready\r\n", False),

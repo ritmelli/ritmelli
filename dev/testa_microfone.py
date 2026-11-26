@@ -351,8 +351,11 @@ class TestaMicrofone(unittest.TestCase):
         for result in ({"ok": True}, {"ok": False, "motivo": "nao_pronto", "reopen": True}):
             v = VigiaNoAnel()
             try:
-                def task(mic, result=result, v=v):
+                other_error = {"key": "server.test.otherError"}
+
+                def task(mic, result=result, v=v, other_error=other_error):
                     v.e.set_devices(mic="Mic2")
+                    v.e.error = other_error
                     return result
                 without_filter = {"filtro": False, "melhorias": True, "guid": "{a}"}
                 with mock.patch.object(eng, "_do_microfone", lambda mic: without_filter), \
@@ -361,6 +364,7 @@ class TestaMicrofone(unittest.TestCase):
                     v.e._confere_filtro("Mic")
                 self.assertEqual([m for m, _ in v.aberturas], ["Mic", "Mic2", "Mic2"],
                                  f"the task restarted the Windows audio, so the streams of Mic2 died too ({result})")
+                self.assertIs(v.e.error, other_error, f"the old microphone's task keeps another error ({result})")
                 check_silent.assert_called_once_with()
             finally:
                 v.fecha()

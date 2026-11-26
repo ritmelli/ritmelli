@@ -699,11 +699,11 @@ class FilterNotInstalled(Exception):
 
 
 def instala_todos(dll):
-    """Pendura em todo microfone do Windows (ativo, desligado ou desconectado) que nao tem o filtro, e troca a DLL se
-    a do app mudou. O audio do PC so reinicia se algo mudou: rodar de novo sem nada novo nao mexe no som, e so a DLL
-    nova reinicia so o servico de audio. A conferencia dos aparelhos, se o audio reiniciou (confere_aparelhos), ou
-    None. Um microfone que recusa o filtro nao segura os outros nem reinicia o audio por si: no fim, FilterNotInstalled,
-    com a conferencia (ou None)."""
+    """Puts the filter on every Windows microphone (active, disabled or unplugged) that doesn't have it, and replaces
+    the DLL if the app's one changed. The PC audio restarts only when something changed: running again with nothing
+    new leaves the sound alone, and only a new DLL restarts only the audio service. Returns the device check if the
+    audio restarted (confere_aparelhos), or None. A microphone that refuses the filter doesn't stop the others or
+    restart the audio by itself: at the end, FilterNotInstalled carries the check (or None)."""
     parou = _prepara_dll(dll)
     novos, failures = [], []
     for m in microfones(todos=True):
@@ -986,6 +986,9 @@ def pede_tarefa(nome, espera_s=60):
                             errors="replace", creationflags=NO_WINDOW).stdout
         if "RUNNING" in st:
             time.sleep(2.0)  # os aparelhos se enumeram de novo logo depois
+            if not ready:
+                m = do_microfone(nome)
+                ready = bool(m and m["filtro"] and m["melhorias"])
             return {"ok": True} if ready else {"ok": False, "motivo": "nao_pronto", "reopen": True}
         if time.monotonic() >= fim:
             return {"ok": False, "motivo": "audio"}

@@ -823,9 +823,6 @@ def _erro_da_tarefa(r, mic):
     if motivo == "sem_tarefa":
         return i18n.msg("server.mic.noTask", "The Ritmelli component that prepares microphones is missing. "
                         "Reinstall Ritmelli.")
-    if motivo == "nao_pronto":
-        return i18n.msg("server.mic.notReady", "Couldn't prepare the microphone \"{name}\" for Ritmelli, so the "
-                                               "music can't reach it. Close and reopen Ritmelli to try again.", name=mic)
     if motivo == "audio":
         return i18n.msg("server.mic.audioSlow", "Windows audio didn't restart in time. Close and reopen Ritmelli to "
                                                 "try again.")
@@ -1486,13 +1483,12 @@ class Engine:
             r = filtro.pede_tarefa(mic)
         finally:
             self.preparando = None
-        if not r.get("ok"):
+        if not r.get("ok") and not r.get("reopen"):
             self._aviso = self.error = _erro_da_tarefa(r, mic)
-            if not r.get("reopen"):
-                return
-        elif self.error == prep:
+            return
+        if self.error == prep:
             self._aviso = self.error = None
-        with self._lock:  # o audio do Windows reiniciou: os streams daqui morreram
+        with self._lock:
             if self._fechado:
                 return
             # os do registro entram nesta, e antes do _reabre: o _confere_filtro que ele abre nao confere junto
