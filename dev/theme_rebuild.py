@@ -19,17 +19,19 @@ USAGE = """Proof that a change to a theme only moves code: the page put back tog
 
 The page is the index.html of the theme with every <!-- inline-script: --> made a <script> with the text of its file,
 as the server sends it, and every <script src> and <link rel="stylesheet"> replaced by the text of the file the
-browser requests (the path of the URL, without the query and the fragment). Tags end where the HTML tokenizer ends
-them: a quote opens a value only where a value starts, a script ends at its </script with the escaped states of
-script data, and a script that reaches the end of the page unclosed, which the browser does not run, is another
-script. Every script and stylesheet sits between a line that opens it ([script NAME], [inline-script NAME], [script],
-[link NAME] or [style], with the tag's other attributes when it has any) and a [/script] or [/style] line. <base> and
-<head> are git commits (the head defaults to the working tree).
+browser requests (the path of the URL, without the query and the fragment). Every script and stylesheet sits between a
+line that opens it ([script NAME], [inline-script NAME], [script], [link NAME] or [style], with the tag's other
+attributes when it has any) and a [/script] or [/style] line. <base> and <head> are git commits (the head defaults to
+the working tree).
 
-Exit 3, naming the place, when the page holds markup the browser may read otherwise: a <base>, a text element
-(title, textarea, noscript, xmp, iframe, noembed, noframes, plaintext) with a < inside or never closed, a comment
-never closed or closed by <!-->, <!---> or --!>, a <! that is no comment nor doctype, a <?, a </ with no name, a & in
-the tag of a <script src> or a <link>, or a script or style tag that never ends.
+The tool judges only a page in a strict form the browser reads one way: text with no < between tags, start tags in
+lower case with name="value" attributes (or a bare name) separated by ASCII spaces, end tags </name>, comments
+<!-- ... --> with no <!-->, <!---> or --!>, and <!doctype html>. A <script> or <style> ends at its first </script> or
+</style>, with no other </script or </style before it, no <!-- in a script (nor in the files the server inlines) and
+no text in a <script src>; a text element (title, textarea, noscript, xmp, iframe, noembed, noframes, plaintext) holds
+no <. Anything else, and <script/>, <style/>, a script or stylesheet inside <svg> or <math>, a <base>, a preload
+<link>, a & that is no whole reference in a value, or a &, a % or a backslash in a src or href, exits 3, naming the
+file, the line and the place.
 
 Exit 0 when the head only moves code: the two pages are the same, or
 - every file of the theme that the page does not read (images, fonts) has the same content;
@@ -55,17 +57,18 @@ printed, and the exit is 1."""
 
 INLINE_SCRIPT = re.compile(r"<!-- inline-script: ([\w-]+\.js) -->")
 INLINED = "data-theme-rebuild-inline-script"
-UNCLOSED = "data-theme-rebuild-never-closed"
 CANNOT_JUDGE = 3
-TAG_NAME = re.compile(r"<[^\t\n\f\r />]+")
-RAW_ATTRIBUTE = re.compile(r"""([^\t\n\f\r />"'=][^\t\n\f\r />=]*)(?:[\t\n\f\r ]*=[\t\n\f\r ]*("[^"]*"|'[^']*'|[^\t\n\f\r >]+))?""")
-TEXT_ELEMENT = re.compile(r"<(title|textarea|noscript|xmp|iframe|noembed|noframes|plaintext)(?=[\t\n\f\r />])", re.I)
-ODD_MARKUP = re.compile(r"<base(?=[\t\n\f\r />])|<!(?!--|doctype[\t\n\f\r >])|<\?|</(?![A-Za-z])|<!--", re.I)
-RAW_TEXT = re.compile(r"<!--.*?-->|<(script|style)(?=[\t\n\f\r />])", re.I | re.S)
-SCRIPT_START = re.compile(r"<script[\t\n\f\r />]", re.I)
-SCRIPT_END = re.compile(r"</script[\t\n\f\r />]", re.I)
-STYLE_END = re.compile(r"</style[\t\n\f\r />]", re.I)
-ANY_END = re.compile(r"</(?:script|style)", re.I)
+TAG = r"[a-z][a-z0-9-]*"
+START_TAG = re.compile(rf'<({TAG})((?:[ \t\n]+[A-Za-z][A-Za-z0-9_:.-]*(?:="[^"]*")?)*)[ \t\n]*(/?)>')
+END_TAG = re.compile(rf"</({TAG})>")
+COMMENT_TAG = re.compile(r"<!--(?!-?>)(.*?)-->", re.S)
+DOCTYPE = re.compile(r"<!doctype html>", re.I)
+ATTRIBUTE = re.compile(r'([A-Za-z][A-Za-z0-9_:.-]*)(?:="([^"]*)")?')
+WHOLE_REFERENCE = re.compile(r"&(?:[A-Za-z][A-Za-z0-9]*|#[0-9]+|#[xX][0-9A-Fa-f]+);")
+TEXT_ONLY = ("textarea", "title", "xmp", "iframe", "noembed", "noframes", "noscript", "plaintext")
+FOREIGN = ("svg", "math")
+NOT_IN_FOREIGN = ("script", "style", "link", "foreignobject", "desc", "title", "annotation-xml", "mi", "mo", "mn", "ms",
+                  "mtext")
 TRAILING_SPACE = re.compile(r"(?<!\\)\s+$")
 CSS_SPACES = re.compile(r"[ \t\n\r\f]+")
 HTML_SPACE = " \t\n\r\f"
@@ -88,23 +91,49 @@ class Doubt(Exception):
     pass
 
 
-def doubt(text, at):
-    raise Doubt(f"index.html: {text[at:at + 60]!r}")
+def strict(html, name):
+    def refuse(at, why):
+        raise Doubt(f"{name}, line {html.count(chr(10), 0, at) + 1}: {why}: {html[at:at + 60]!r}")
+
+    at, foreign = 0, []
+    while (at := html.find("<", at)) >= 0:
+        tag = next((m for m in (p.match(html, at) for p in (DOCTYPE, COMMENT_TAG, END_TAG, START_TAG)) if m), None)
+        if tag is None:
+            refuse(at, "not a tag of the strict form")
+        if tag.re is COMMENT_TAG and "--!>" in tag.group(1):
+            refuse(at, "a comment with --!>")
+        if tag.re is END_TAG and tag.group(1) in FOREIGN and foreign:
+            foreign.pop()
+        if tag.re is START_TAG:
+            element, attributes = tag.group(1), dict(ATTRIBUTE.findall(tag.group(2)))
+            if element == "base" or element == "link" and {"preload", "modulepreload"} & set(
+                    attributes.get("rel", "").lower().split()):
+                refuse(at, f"a <{element}> that changes or adds what the page fetches")
+            if foreign and element in NOT_IN_FOREIGN:
+                refuse(at, f"a <{element}> inside <{foreign[-1]}>")
+            if element in FOREIGN and not tag.group(3):
+                foreign.append(element)
+            if loose := [v for k, v in attributes.items() if "&" in WHOLE_REFERENCE.sub("", v)]:
+                refuse(at, f"a & that is not a whole reference in {loose[0]!r}")
+            if set("&%\\") & set(attributes.get("src" if element == "script" else "href" if element == "link"
+                                                  else "", "")):
+                refuse(at, "a &, % or \\ in the address of a file")
+            if element in ("script", "style") + TEXT_ONLY:
+                if tag.group(3):
+                    refuse(at, f"a <{element}/>")
+                close = html.find(f"</{element}>", tag.end())
+                body = html[tag.end():close] if close >= 0 else ""
+                if close < 0 or body_problem(element, body, "src" in attributes):
+                    refuse(at, f"a <{element}> that does not end at its first </{element}>, with no other tag in it")
+                at = close + len(f"</{element}>")
+                continue
+        at = tag.end()
 
 
-def check_markup(text):
-    if odd := ODD_MARKUP.search(text):
-        doubt(text, odd.start())
-    for element in TEXT_ELEMENT.finditer(text):
-        started = tag_end(text, element.end())
-        close = re.compile(rf"</{element.group(1)}", re.I).search(text, started + 1) if started >= 0 else None
-        if not close or "<" in text[started + 1:close.start()]:
-            doubt(text, element.start())
-
-
-def check_comment(text):
-    if text.startswith(("<!-->", "<!--->")) or "--!>" in text:
-        doubt(text, 0)
+def body_problem(element, body, from_file):
+    if element == "script":
+        return from_file and body or re.search(r"</script|<!--", body, re.I)
+    return re.search(r"</style", body, re.I) if element == "style" else "<" in body
 
 
 def text_of(data):
@@ -149,7 +178,6 @@ class Block:
     code: bool
     folder: str = ""
     source: tuple = ()
-    ignored: str = ""
     raw: list = field(default_factory=list)
 
     @property
@@ -177,13 +205,6 @@ class Page:
         return lines
 
 
-def raw_value(tag, wanted):
-    for attribute in RAW_ATTRIBUTE.finditer(tag, TAG_NAME.match(tag).end()):
-        if attribute.group(1).lower() == wanted:
-            return attribute.group(2) or ""
-    return ""
-
-
 class _FileTags(HTMLParser):
     def __init__(self):
         super().__init__(convert_charrefs=False)
@@ -193,9 +214,6 @@ class _FileTags(HTMLParser):
         first = {}
         for name, value in attrs:
             first.setdefault(name, value)
-        if set("&%\\") & set(raw_value(self.get_starttag_text(), "src" if tag == "script" else "href" if tag == "link"
-                                       else "")):
-            raise Doubt(f"index.html: {self.get_starttag_text()!r}")
         if tag == "script" and first.get("src"):
             self.in_src = True
             self.found.append(("script", first.pop("src"), first, self.getpos(), self.get_starttag_text()))
@@ -238,87 +256,6 @@ def block_of(kind, name, others):
                  others.get("type") in JS_TYPES, source=("file" if kind == "script" else "inline", name))
 
 
-def ended_as_the_browser_ends(page):
-    out, at = [], 0
-    while opened := RAW_TEXT.search(page, at):
-        check_markup(page[at:opened.start()])
-        if not opened.group(1):
-            check_comment(opened.group(0))
-            out.append(page[at:opened.end()])
-            at = opened.end()
-            continue
-        kind = opened.group(1).lower()
-        started = tag_end(page, opened.end()) + 1
-        if not started:
-            doubt(page, opened.start())
-        end = script_end(page, started) if kind == "script" else page_end(page, started, STYLE_END)
-        close = tag_end(page, end + len(f"</{kind}")) if end >= 0 else -1
-        if close < 0 and kind == "script":
-            return "".join(out) + page[at:opened.end()] + f" {UNCLOSED}" + page[opened.end():started] + \
-                inert(page[started:]) + "</script>"
-        if close < 0:
-            return "".join(out) + page[at:started] + inert(page[started:])
-        out.append(page[at:started] + inert(page[started:end]) + f"</{kind}>")
-        at = close + 1
-    check_markup(page[at:])
-    return "".join(out) + page[at:]
-
-
-def inert(text):
-    return ANY_END.sub(lambda m: "<\\/" + m.group(0)[2:], text)
-
-
-def page_end(page, at, pattern):
-    found = pattern.search(page, at)
-    return found.start() if found else -1
-
-
-def script_end(page, at):
-    state = "data"
-    while at < len(page):
-        if state != "data" and page.startswith("-->", at):
-            state, at = "data", at + 3
-        elif state == "data" and page.startswith("<!--", at):
-            state, at = "escaped", at + 2
-        elif state == "escaped" and SCRIPT_START.match(page, at):
-            state, at = "double escaped", at + len("<script")
-        elif SCRIPT_END.match(page, at):
-            if state != "double escaped":
-                return at
-            state, at = "escaped", at + len("</script")
-        else:
-            at += 1
-    return -1
-
-
-def tag_end(page, at):
-    state = "before name"
-    while at < len(page):
-        c = page[at]
-        if state in ('"', "'"):
-            state = "after value" if c == state else state
-        elif c == ">":
-            return at
-        elif state == "before value":
-            state = c if c in "\"'" else state if c in HTML_SPACE else "unquoted"
-            if state == "unquoted" and c in "<=`":
-                doubt(page, at)
-        elif state == "unquoted":
-            if c in "\"'<=`":
-                doubt(page, at)
-            state = "before name" if c in HTML_SPACE else state
-        elif c in "\"'<":
-            doubt(page, at)
-        elif c in HTML_SPACE or c == "/":
-            state = "after name" if state in ("name", "after name") and c != "/" else "before name"
-        elif c == "=" and state in ("name", "after name"):
-            state = "before value"
-        elif state in ("before name", "after name", "after value"):
-            state = "name"
-        at += 1
-    return -1
-
-
 def assemble(read, files=None):
     names = set()
 
@@ -333,9 +270,12 @@ def assemble(read, files=None):
         if name is not None:
             names.add(name)
         return None if name is None else read(name)
-    page = ended_as_the_browser_ends(INLINE_SCRIPT.sub(
-        lambda m: f'<script {INLINED}="{m.group(1)}">\n{need(m.group(1))}</script>',
-        need("index.html").replace("\r\n", "\n")))
+    html = need("index.html")
+    strict(html, "index.html")
+    for inlined in INLINE_SCRIPT.findall(html):
+        if body_problem("script", need(inlined), False):
+            raise Doubt(f"{inlined}: a </script or a <!-- in a script the server puts inline")
+    page = INLINE_SCRIPT.sub(lambda m: f'<script {INLINED}="{m.group(1)}">\n{need(m.group(1))}</script>', html)
     parser = _FileTags()
     parser.feed(page)
     parser.close()
@@ -354,9 +294,7 @@ def assemble(read, files=None):
             continue
         end = begin + len(text)
         if kind == "script":
-            close = page.find("</script>", end)
-            blocks[number[id(found)]].ignored = (page[end:close] if close >= 0 else page[end:]).strip()
-            end = close + len("</script>") if close >= 0 else len(page)
+            end += len("</script>")
         body = f"\n\x00open {number[id(found)]}\x00\n"
         if kind in ("script", "link"):
             if (text := fetch(name)) is None:
@@ -599,7 +537,7 @@ def compare(a, b, compiles):
     for k, (x, y) in enumerate(zip(scripts_a, scripts_b)):
         bx, by = a.blocks[x], b.blocks[y]
         sx, sy = parsed_a[x].strict if x in parsed_a else None, parsed_b[y].strict if y in parsed_b else None
-        if (bx.source, bx.others, bx.ignored, sx) != (by.source, by.others, by.ignored, sy):
+        if (bx.source, bx.others, sx) != (by.source, by.others, sy):
             report.changes.append(("script tag or strict mode", f"script {k + 1}: {bx.header} (strict: {sx}) -> "
                                    f"{by.header} (strict: {sy})", []))
         if not bx.code and [r.strip() for r in bx.raw if r.strip()] != [r.strip() for r in by.raw if r.strip()]:

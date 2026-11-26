@@ -5,7 +5,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 theme_rebuild = importlib.import_module("theme_rebuild")
 
-TWO = "<script src='x.js'></script><script src='y.js'></script>"
+TWO = "<script src=\"x.js\"></script><script src=\"y.js\"></script>"
 CALL, DECLARATION = "globalThis.result = f();", "function f() { return 1; }"
 FOUR_LINES = "function f() {\n  const x = 1;\n  return x;\n}"
 NESTED = "@media (min-width: 1px) {\n  a { color: red; }\n  @container (max-width: 1rem) { .b::after { content: %s; } }\n}\n"
@@ -15,6 +15,7 @@ HIDDEN = "html:not(.i18n-ok) body { visibility: hidden; }"
 TWO_INLINED = "<!-- inline-script: s.js -->\n<!-- inline-script: t.js -->\n"
 TRANSLATED = {"index.html": "<!-- i18n -->\n", "i18n/i18n_en.properties": "", "i18n/i18n_pt_BR.properties": ""}
 NOTICE = '<script src="notice.js" onerror="scriptFailed(this)"></script>'
+CANNOT = "cannot judge"
 LEFT, CAME = "declaration left its script", "declaration came into the script"
 
 
@@ -23,7 +24,7 @@ def inline(*scripts):
 
 
 def styled(css):
-    return {"index.html": "<link rel='stylesheet' href='a.css'>\n", "a.css": css}
+    return {"index.html": "<link rel=\"stylesheet\" href=\"a.css\">\n", "a.css": css}
 
 
 SAMPLES = (
@@ -81,27 +82,27 @@ SAMPLES = (
      ["gone", "new"]),
     ("a <style> line reindented inside a template literal", inline("const s = `a\n<style>\nb`;\nf();"),
      inline("const s = `a\n  <style>\nb`;\nf();"), ["gone", "new"]),
-    ("a script that gains an attribute", {"index.html": "<script src='x.js'></script>", "x.js": "x();\n"},
-     {"index.html": "<script src='x.js' defer></script>", "x.js": "x();\n"}, ["script tag or strict mode"]),
+    ("a script that gains an attribute", {"index.html": "<script src=\"x.js\"></script>", "x.js": "x();\n"},
+     {"index.html": "<script src=\"x.js\" defer></script>", "x.js": "x();\n"}, ["script tag or strict mode"]),
     ("a script with a comment before 'use strict' that loses it",
-     {"index.html": "<script src='x.js'></script>", "x.js": "/* c */\n'use strict';\nx();\n"},
-     {"index.html": "<script src='x.js'></script>", "x.js": "/* c */\nx();\n"}, ["script tag or strict mode", "gone"]),
-    ("a script that does not parse", {"index.html": "<script src='x.js'></script>", "x.js": "x();\n"},
-     {"index.html": "<script src='x.js'></script>", "x.js": "x(;\n"}, ["does not parse", "gone", "new"]),
-    ("a script renamed", {"index.html": "<script src='x.js'></script>", "x.js": "'use strict';\nx();\n"},
-     {"index.html": "<script src='y.js'></script>", "y.js": "'use strict';\nx();\n"}, ["script tag or strict mode"]),
-    ("a script moved before a div", {"index.html": "<div id='a'></div>\n<script src='x.js'></script>", "x.js": "x();"},
-     {"index.html": "<script src='x.js'></script>\n<div id='a'></div>", "x.js": "x();"}, ["moved out of order"]),
+     {"index.html": "<script src=\"x.js\"></script>", "x.js": "/* c */\n'use strict';\nx();\n"},
+     {"index.html": "<script src=\"x.js\"></script>", "x.js": "/* c */\nx();\n"}, ["script tag or strict mode", "gone"]),
+    ("a script that does not parse", {"index.html": "<script src=\"x.js\"></script>", "x.js": "x();\n"},
+     {"index.html": "<script src=\"x.js\"></script>", "x.js": "x(;\n"}, ["does not parse", "gone", "new"]),
+    ("a script renamed", {"index.html": "<script src=\"x.js\"></script>", "x.js": "'use strict';\nx();\n"},
+     {"index.html": "<script src=\"y.js\"></script>", "y.js": "'use strict';\nx();\n"}, ["script tag or strict mode"]),
+    ("a script moved before a div", {"index.html": "<div id=\"a\"></div>\n<script src=\"x.js\"></script>", "x.js": "x();"},
+     {"index.html": "<script src=\"x.js\"></script>\n<div id=\"a\"></div>", "x.js": "x();"}, ["moved out of order"]),
     ("a style rule moved out of order", styled("a { }\nb { }\n"), styled("b { }\na { }\n"), ["moved out of order"]),
-    ("a style rule moved to the next stylesheet", {"index.html": "<link rel='stylesheet' href='a.css'>\n"
-                                                                 "<link rel='stylesheet' href='b.css'>\n",
+    ("a style rule moved to the next stylesheet", {"index.html": "<link rel=\"stylesheet\" href=\"a.css\">\n"
+                                                                 "<link rel=\"stylesheet\" href=\"b.css\">\n",
                                                    "a.css": "a { }\nb { }\n", "b.css": "c { }\n"},
-     {"index.html": "<link rel='stylesheet' href='a.css'>\n<link rel='stylesheet' href='b.css'>\n",
+     {"index.html": "<link rel=\"stylesheet\" href=\"a.css\">\n<link rel=\"stylesheet\" href=\"b.css\">\n",
       "a.css": "a { }\n", "b.css": "b { }\nc { }\n"}, []),
-    ("a style rule moved into a stylesheet for print", {"index.html": "<link rel='stylesheet' href='a.css'>\n"
-                                                                      "<link rel='stylesheet' href='b.css' media='print'>\n",
+    ("a style rule moved into a stylesheet for print", {"index.html": "<link rel=\"stylesheet\" href=\"a.css\">\n"
+                                                                      "<link rel=\"stylesheet\" href=\"b.css\" media=\"print\">\n",
                                                         "a.css": "a { }\nb { }\n", "b.css": "c { }\n"},
-     {"index.html": "<link rel='stylesheet' href='a.css'>\n<link rel='stylesheet' href='b.css' media='print'>\n",
+     {"index.html": "<link rel=\"stylesheet\" href=\"a.css\">\n<link rel=\"stylesheet\" href=\"b.css\" media=\"print\">\n",
       "a.css": "a { }\n", "b.css": "b { }\nc { }\n"}, ["gone", "new"]),
     ("a block mark put inside a CSS string", styled(".menu::before { content: \"\"; }\n"),
      styled(".menu::before { content: \"/* DIALOGS-INICIO */\"; }\n"), ["gone", "new"]),
@@ -119,34 +120,34 @@ SAMPLES = (
     ("a </script> put in a comment of an inlined script",
      {"index.html": "<!-- inline-script: s.js -->\n", "s.js": "'use strict';\nf();\n"},
      {"index.html": "<!-- inline-script: s.js -->\n", "s.js": "'use strict'; // </script>\nf();\n"},
-     ["new", "new", "gone"]),
+     CANNOT),
     ("a // <!-- in an inlined script turned into // <!-- <script>",
      {"index.html": TWO_INLINED, "s.js": "f();\n// <!--\n", "t.js": "g();\n"},
      {"index.html": TWO_INLINED, "s.js": "f();\n// <!-- <script>\n", "t.js": "g();\n"},
-     ["gone", "scripts", "does not parse", "script tag or strict mode", "gone", "new"]),
+     CANNOT),
     ("a // <!-- --> in an inlined script turned into // <!-- <script></script> -->",
      {"index.html": TWO_INLINED, "s.js": "f();\n// <!-- -->\n", "t.js": "g();\n"},
-     {"index.html": TWO_INLINED, "s.js": "f();\n// <!-- <script></script> -->\n", "t.js": "g();\n"}, []),
+     {"index.html": TWO_INLINED, "s.js": "f();\n// <!-- <script></script> -->\n", "t.js": "g();\n"}, CANNOT),
     ("a <script> put after the --> of a // <!-- --> in an inlined script",
      {"index.html": TWO_INLINED, "s.js": "f();\n// <!-- -->\n", "t.js": "g();\n"},
-     {"index.html": TWO_INLINED, "s.js": "f();\n// <!-- --> <script>\n", "t.js": "g();\n"}, []),
+     {"index.html": TWO_INLINED, "s.js": "f();\n// <!-- --> <script>\n", "t.js": "g();\n"}, CANNOT),
     ("the </script> of the last script of the page taken out",
-     {"index.html": "<p>x</p>\n<script src='x.js'></script>\n", "x.js": "f();\n"},
-     {"index.html": "<p>x</p>\n<script src='x.js'>\n", "x.js": "f();\n"}, ["script tag or strict mode"]),
+     {"index.html": "<p>x</p>\n<script src=\"x.js\"></script>\n", "x.js": "f();\n"},
+     {"index.html": "<p>x</p>\n<script src=\"x.js\">\n", "x.js": "f();\n"}, CANNOT),
     ("the markup a <script src> with no </script> swallows changed",
-     {"index.html": "<script src='x.js'>\n<p>1</p>\n</script>\n", "x.js": "f();\n"},
-     {"index.html": "<script src='x.js'>\n<p>2</p>\n</script>\n", "x.js": "f();\n"}, ["script tag or strict mode"]),
+     {"index.html": "<script src=\"x.js\">\n<p>1</p>\n</script>\n", "x.js": "f();\n"},
+     {"index.html": "<script src=\"x.js\">\n<p>2</p>\n</script>\n", "x.js": "f();\n"}, CANNOT),
     ("a stylesheet renamed with a # in its name", styled(HIDDEN),
-     {"index.html": "<link rel='stylesheet' href='a#copy.css'>\n", "a#copy.css": HIDDEN}, ["gone"]),
-    ("an empty script file taken out", {"index.html": "<script src='x.js'></script>\n", "x.js": ""},
-     {"index.html": "<script src='x.js'></script>\n"}, ["script tag or strict mode"]),
+     {"index.html": "<link rel=\"stylesheet\" href=\"a#copy.css\">\n", "a#copy.css": HIDDEN}, ["gone"]),
+    ("an empty script file taken out", {"index.html": "<script src=\"x.js\"></script>\n", "x.js": ""},
+     {"index.html": "<script src=\"x.js\"></script>\n"}, ["script tag or strict mode"]),
     ("two spaces put around the = of a quoted value with a > in the end tag of a script",
-     {"index.html": "<script src='x.js'></script>\n", "x.js": "f();\n"},
-     {"index.html": "<script src='x.js'></script x  =  \"a>b\">\n", "x.js": "f();\n"}, []),
-    ("a title with a character reference put on a script", {"index.html": "<script src='x.js'></script>\n", "x.js": ""},
-     {"index.html": "<script src='x.js' title='a&amp;b'></script>\n", "x.js": ""}, ["script tag or strict mode"]),
+     {"index.html": "<script src=\"x.js\"></script>\n", "x.js": "f();\n"},
+     {"index.html": "<script src=\"x.js\"></script x  =  \"a>b\">\n", "x.js": "f();\n"}, CANNOT),
+    ("a title with a character reference put on a script", {"index.html": "<script src=\"x.js\"></script>\n", "x.js": ""},
+     {"index.html": "<script src=\"x.js\" title=\"a&amp;b\"></script>\n", "x.js": ""}, ["script tag or strict mode"]),
     ("a stylesheet linked with a query", styled(HIDDEN),
-     {"index.html": "<link rel='stylesheet' href='a.css?v=2'>\n", "a.css": HIDDEN}, []),
+     {"index.html": "<link rel=\"stylesheet\" href=\"a.css?v=2\">\n", "a.css": HIDDEN}, []),
     ("a </script y> in a quoted value of the start tag of a script turned into </script z>",
      {"index.html": '<script x="a></script y>">\nf();\n</script>\n'},
      {"index.html": '<script x="a></script z>">\nf();\n</script>\n'}, ["script tag or strict mode"]),
@@ -164,14 +165,14 @@ SAMPLES = (
     ("a no-break space put before a button", {"index.html": "<div>\n  <button></button>\n</div>\n"},
      {"index.html": "<div>\n \u00a0<button></button>\n</div>\n"}, ["gone", "new"]),
     ("a rule moved from an inline style to a linked stylesheet",
-     {"index.html": f"<style>\n{HIDDEN}\n</style>\n<link rel='stylesheet' href='base.css'>\n", "base.css": "a { }\n"},
-     {"index.html": "<style>\n</style>\n<link rel='stylesheet' href='base.css'>\n", "base.css": HIDDEN + "\na { }\n"},
+     {"index.html": f"<style>\n{HIDDEN}\n</style>\n<link rel=\"stylesheet\" href=\"base.css\">\n", "base.css": "a { }\n"},
+     {"index.html": "<style>\n</style>\n<link rel=\"stylesheet\" href=\"base.css\">\n", "base.css": HIDDEN + "\na { }\n"},
      ["gone", "new"]),
     ("a comment in place of the space before + in a calc()", styled("a { padding: calc(14px + 1px); }\n"),
      styled("a { padding: calc(14px/* c */+ 1px); }\n"), ["gone", "new"]),
-    ("a stylesheet with a font moved to another folder", {"index.html": "<link rel='stylesheet' href='base.css'>\n",
+    ("a stylesheet with a font moved to another folder", {"index.html": "<link rel=\"stylesheet\" href=\"base.css\">\n",
                                                           "base.css": FONT},
-     {"index.html": "<link rel='stylesheet' href='gerado/base.css'>\n", "gerado/base.css": FONT}, ["gone", "new"]),
+     {"index.html": "<link rel=\"stylesheet\" href=\"gerado/base.css\">\n", "gerado/base.css": FONT}, ["gone", "new"]),
     ("a line break put after throw", inline("function g(x) {\n  throw x;\n}"),
      inline("function g(x) {\n  throw\n  x;\n}"), ["does not parse", LEFT, CAME]),
     ("a line break put after the comment between return and its template",
@@ -183,29 +184,48 @@ SAMPLES = (
 
 
 DOUBTFUL = (
-    ("an escaped separator in an href", {"index.html": "<link rel='stylesheet' href='x%5C..%2F..%2Fa.css'>\n"}),
-    ("a backslash in a src", {"index.html": "<script src='x\\..\\x.js'></script>\n"}),
+    ("a value in single quotes", {"index.html": "<script src='x.js'></script>\n"}),
+    ("a value with no quotes", {"index.html": "<div id=a></div>\n<script src=\"x.js\"></script>\n"}),
+    ("a tag name in capitals", {"index.html": "<SCRIPT src=\"x.js\"></SCRIPT>\n"}),
+    ("a < in the text", {"index.html": "<p>a < b</p>\n<script src=\"x.js\"></script>\n"}),
+    ("a <script/>", {"index.html": "<script src=\"x.js\"/></script>\n"}),
+    ("a <style/>", {"index.html": "<style/>a { }</style>\n"}),
+    ("a style with a </style x> before its </style>", {"index.html": "<style>a { }</style x>b { }</style>\n"}),
+    ("text inside a <script src>", {"index.html": "<script src=\"x.js\">f();</script>\n"}),
+    ("a script inside an svg", {"index.html": "<svg><script src=\"x.js\"></script></svg>\n"}),
+    ("a preload of a script", {"index.html": "<link rel=\"preload\" as=\"script\" href=\"x.js\">\n"}),
+    ("a & that is not a whole reference in a value", {"index.html": "<div title=\"a&b\"></div>\n"}),
+    ("a </script in an inlined script", {"index.html": "<!-- inline-script: s.js -->\n", "s.js": "// </script>\n"}),
+    ("an escaped separator in an href", {"index.html": "<link rel=\"stylesheet\" href=\"x%5C..%2F..%2Fa.css\">\n"}),
+    ("a backslash in a src", {"index.html": "<script src=\"x\\..\\x.js\"></script>\n"}),
     ("a / and a quote in an unquoted value of an end tag",
-     {"index.html": "<script src='x.js'></script x=a/b=\"><p>Visible text</p>\">\n"}),
+     {"index.html": "<script src=\"x.js\"></script x=a/b=\"><p>Visible text</p>\">\n"}),
     ("an end tag with a value whose quote is not at its start",
-     {"index.html": "<script src='x.js'></script x=x=\"><p>Visible text</p>\">\n"}),
-    ("a quote in an unquoted value of an end tag",{"index.html": "<script src='x.js'></script x=a\"b>\n"}),
-    ("a quote in an attribute name of an end tag", {"index.html": "<script src='x.js'></script a\"b>\n"}),
-    ("a = opening an unquoted value of a start tag", {"index.html": "<script src='x.js' x==a></script>\n"}),
-    ("a script inside a textarea", {"index.html": "<textarea><script src='x.js'></script></textarea>\n"}),
-    ("a tag inside a closed textarea", {"index.html": "<textarea><b>a</b></textarea>\n<script src='x.js'></script>\n"}),
-    ("a title that never closes", {"index.html": "<title>Ritmelli\n<script src='x.js'></script>\n"}),
-    ("a base URL", {"index.html": "<base href='other/'>\n<script src='x.js'></script>\n"}),
-    ("a comment closed by its own <!-->", {"index.html": "<!--> <script src='x.js'></script> -->\n"}),
-    ("a comment closed by --!>", {"index.html": "<!-- a --!> <script src='x.js'></script> -->\n"}),
-    ("a comment that never closes", {"index.html": "<script src='x.js'></script>\n<!-- a\n"}),
-    ("a CDATA section", {"index.html": "<![CDATA[ a ]]>\n<script src='x.js'></script>\n"}),
-    ("a character reference in a src", {"index.html": "<script src='x&#46;js'></script>\n"}),
+     {"index.html": "<script src=\"x.js\"></script x=x=\"><p>Visible text</p>\">\n"}),
+    ("a quote in an unquoted value of an end tag",{"index.html": "<script src=\"x.js\"></script x=a\"b>\n"}),
+    ("a quote in an attribute name of an end tag", {"index.html": "<script src=\"x.js\"></script a\"b>\n"}),
+    ("a = opening an unquoted value of a start tag", {"index.html": "<script src=\"x.js\" x==a></script>\n"}),
+    ("a script inside a textarea", {"index.html": "<textarea><script src=\"x.js\"></script></textarea>\n"}),
+    ("a tag inside a closed textarea", {"index.html": "<textarea><b>a</b></textarea>\n<script src=\"x.js\"></script>\n"}),
+    ("a title that never closes", {"index.html": "<title>Ritmelli\n<script src=\"x.js\"></script>\n"}),
+    ("a base URL", {"index.html": "<base href=\"other/\">\n<script src=\"x.js\"></script>\n"}),
+    ("a comment closed by its own <!-->", {"index.html": "<!--> <script src=\"x.js\"></script> -->\n"}),
+    ("a comment closed by --!>", {"index.html": "<!-- a --!> <script src=\"x.js\"></script> -->\n"}),
+    ("a comment that never closes", {"index.html": "<script src=\"x.js\"></script>\n<!-- a\n"}),
+    ("a CDATA section", {"index.html": "<![CDATA[ a ]]>\n<script src=\"x.js\"></script>\n"}),
+    ("a character reference in a src", {"index.html": "<script src=\"x&#46;js\"></script>\n"}),
     ("a character reference in a src after one in another value",
-     {"index.html": "<script title='src=a' src=x&#46;js></script>\n"}),
-    ("a character reference in an href", {"index.html": "<link rel='stylesheet' href='a&#46;css'>\n"}),
-    ("a script start tag that never ends", {"index.html": "<script src='x.js'\n"}),
+     {"index.html": "<script title=\"src=a\" src=x&#46;js></script>\n"}),
+    ("a character reference in an href", {"index.html": "<link rel=\"stylesheet\" href=\"a&#46;css\">\n"}),
+    ("a script start tag that never ends", {"index.html": "<script src=\"x.js\"\n"}),
 )
+
+
+def built(read, files=None):
+    try:
+        return theme_rebuild.assemble(read, files)
+    except theme_rebuild.Doubt as unsure:
+        return unsure
 
 
 def theme_mutant(changes):
@@ -233,14 +253,13 @@ def binder(text):
 
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
-    samples = [(title, theme_rebuild.assemble(base.get), theme_rebuild.assemble(head.get), expected)
-               for title, base, head, expected in SAMPLES]
+    samples = [(title, built(base.get), built(head.get), expected) for title, base, head, expected in SAMPLES]
     files = theme_rebuild.listing(None, "ritmelli")
     theme = theme_rebuild.assemble(theme_rebuild.reader(None, "ritmelli"), files)
     other_grain = {**files, "texturas/veio.webp": files["texturas/veio-v.webp"]}
     shelf_moved = {"shelf.js": lambda text, _: text.replace(binder(text), "") if binder(text) else "",
                    "start.js": lambda text, read: text + binder(read("shelf.js"))}
-    mutants = [(title, theme_rebuild.assemble(theme_mutant(changes), files), expected) for title, changes, expected in (
+    mutants = [(title, built(theme_mutant(changes), files), expected) for title, changes, expected in (
         ("notice.js and covers.js swapped", {"index.html": swapped}, "moved to another script"),
         ("desk-buttons.js and start.js before ui-events.js", {"index.html": early}, "moved to another script"),
         ("bindShelfClick moved from shelf.js to the end of start.js", shelf_moved, LEFT),
@@ -249,16 +268,16 @@ def main():
          "does not parse"),
         *((f"a {end} in a comment on the first line of start.js",
            {"start.js": lambda text, _, end=end: text.replace("'use strict';", f"'use strict'; // {end}", 1)
-            if "'use strict';" in text else ""}, "gone") for end in ("</script>", "</script/>", "</script x>")),
+            if "'use strict';" in text else ""}, CANNOT) for end in ("</script>", "</script/>", "</script x>")),
         ("start.js loaded from its file instead of inline",
          {"index.html": lambda html, _: html.replace("<!-- inline-script: start.js -->", '<script src="start.js"></script>')
           if "<!-- inline-script: start.js -->" in html else ""}, "script tag or strict mode"),
         ("the </script> of pedal.js taken out",
          {"index.html": lambda html, _: html.replace(PEDAL, PEDAL.removesuffix("</script>")) if PEDAL in html else ""},
-         "script tag or strict mode"),
+         CANNOT),
         ("the </script> of pedal.js with an open quote in it",
          {"index.html": lambda html, _: html.replace(PEDAL, PEDAL.replace("</script>", '</script x=">'))
-          if PEDAL in html else ""}, "script tag or strict mode"),
+          if PEDAL in html else ""}, CANNOT),
         ("a translation changed", {"i18n/i18n_en.properties": lambda text, _: text.replace(
             "nav.backToShelf=Back to the shelf", "nav.backToShelf=Close the app") if "nav.backToShelf=" in text else ""},
          "translation new"),
@@ -282,14 +301,18 @@ def main():
           if 'src="transporte.js"' in html else "",
           "transporte-new.js": lambda _, read: read("transporte.js")}, "script tag or strict mode"))]
     mutants.append(("texturas/veio.webp holding the image of veio-v.webp",
-                    theme_rebuild.assemble(theme_rebuild.reader(None, "ritmelli"), other_grain), "file changed"))
-    compiles = theme_rebuild.syntax([theme, *(page for _, a, b, _ in samples for page in (a, b)),
-                                     *(page for _, page, _ in mutants)])
+                    built(theme_rebuild.reader(None, "ritmelli"), other_grain), "file changed"))
+    pages = [theme, *(page for _, a, b, _ in samples for page in (a, b)), *(page for _, page, _ in mutants)]
+    compiles = theme_rebuild.syntax([page for page in pages if isinstance(page, theme_rebuild.Page)])
     results = []
     for title, base, head, expected in samples:
-        found = [kind for kind, _, _ in theme_rebuild.compare(base, head, compiles).changes]
-        results.append((found == expected, f"{title}: {found or 'only moves code'}"))
+        refused = [str(x) for x in (base, head) if isinstance(x, theme_rebuild.Doubt)]
+        found = refused and CANNOT or [kind for kind, _, _ in theme_rebuild.compare(base, head, compiles).changes]
+        results.append((found == expected, f"{title}: {refused or found or 'only moves code'}"))
     for title, head, expected in mutants:
+        if isinstance(head, theme_rebuild.Doubt):
+            results.append((expected == CANNOT, f"the theme with {title}: cannot judge ({head})"))
+            continue
         found = sorted({kind for kind, _, _ in theme_rebuild.compare(theme, head, compiles).changes})
         results.append((len(head.blocks) == len(theme.blocks) and expected in found,
                         f"the theme with {title} does more than move code ({found})"))
@@ -301,11 +324,14 @@ def main():
     code = theme_rebuild.judge(*allowed, compiles, **quiet)
     results.append((code == 0, f"the verdict on two functions swapped is {code}"))
     for title, page in DOUBTFUL:
+        unsure = built({**page, "x.js": "f();\n"}.get)
+        results.append((isinstance(unsure, theme_rebuild.Doubt), f"{title}: cannot judge ({unsure})"))
+    for page in ("themes/ritmelli/index.html", "gallery/index.html"):
         try:
-            theme_rebuild.assemble({**page, "x.js": "f();\n"}.get)
-            results.append((False, f"{title}: judged"))
+            theme_rebuild.strict(theme_rebuild.text_of((theme_rebuild.RAIZ / page).read_bytes()), page)
+            results.append((True, f"{page} is in the strict form"))
         except theme_rebuild.Doubt as unsure:
-            results.append((True, f"{title}: cannot judge ({unsure})"))
+            results.append((False, f"{page} is not in the strict form: {unsure}"))
     pages = {"base": inline("f();"), "head": dict(DOUBTFUL[0][1])}
     kept = theme_rebuild.reader, theme_rebuild.listing
     theme_rebuild.reader, theme_rebuild.listing = (lambda rev, _: pages[rev].get), (lambda rev, _: {})

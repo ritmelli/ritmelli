@@ -86,20 +86,18 @@ e que o `queue.js` vê o toque que fecha a busca na mesa.
 
 Para provar que um PR só mudou código de lugar, o `dev/theme_rebuild.py <base>` monta a página de novo nos dois
 commits, com cada `<!-- inline-script: -->` virando um `<script>` com o texto do arquivo, como o servidor manda, e cada
-`<script src>` e `<link>` trocado pelo texto do arquivo. Um script ou um estilo acaba onde o navegador o acaba: no
-primeiro `</script` ou `</style` seguido de espaço, `/` ou `>` (então um `</script>` num comentário fecha o script ali),
-salvo num script em que um `<!--` seguido de `<script` ainda não teve o `-->`, que pula esse `</script>` como o
-tokenizador do HTML pula; e um `<script src>` sem `</script>` engole o texto até o próximo, que entra na comparação.
-O script que chega ao fim da página sem fechar, e que por isso o navegador não roda, conta como outro script.
-O fim de uma tag `<script>`, `<style>`, `</script>` ou `</style>` respeita as aspas de um valor, que só abrem no começo
-dele (depois do `=`), e um `\r` sozinho conta como fim de linha, como no navegador (lido do git ou da pasta). O
-`src` e o `href` se leem como a URL que o navegador pede (sem a busca e o `#`, com os `%` desfeitos), e um arquivo que
-não está lá é um script ou uma folha que o servidor não entrega. O que ela não lê com certeza como o navegador, ela
-não julga: sai 3 e mostra o trecho do `index.html` quando acha um `<base>`, um elemento de texto (`title`, `textarea`,
-`noscript`, `xmp`, `iframe`, `noembed`, `noframes`, `plaintext`) com `<` dentro ou sem o fim dele, um comentário que não
-fecha ou que fecha de um jeito raro (`<!-->`, `<!--->`, `--!>`), um `<!` que não é comentário nem doctype, um `<?`, um
-`</` sem nome, um `&`, um `%` ou uma `\` no `src` de um script ou no `href` de uma folha, uma aspa, um `<` ou um `=`
-no nome ou no valor sem aspas de um atributo de uma tag de script ou de estilo, ou uma tag dessas que não acaba.
+`<script src>` e `<link>` trocado pelo texto do arquivo. Ela só julga a página escrita numa forma estrita, que
+o navegador lê de um jeito só: o `index.html` inteiro é texto sem `<` entre tags; a tag de início é `<nome>` em
+minúsculas com atributos `nome="valor"` (ou só o nome), separados por espaço, tab ou fim de linha; a de fim é
+`</nome>`; o comentário é `<!--` ... `-->`, sem `<!-->`, `<!--->` nem `--!>`; e o doctype é `<!doctype html>`. Um
+`<script>` e um `<style>` acabam no primeiro `</script>` e `</style>`, sem outro `</script` ou `</style` antes, sem
+`<!--` no script (nem nos arquivos que o servidor põe inline) e sem texto no `<script src>`; os elementos de texto
+(`title`, `textarea`, `noscript`, `xmp`, `iframe`, `noembed`, `noframes`, `plaintext`) não têm `<` dentro. Fora disso
+ela recusa, com o arquivo, a linha e o trecho, e sai 3 (não sei julgar): `<script/>` e `<style/>`, um script ou uma
+folha dentro de `<svg>` ou `<math>`, um `<base>`, um `<link>` de preload, um `&` que não é uma referência inteira num
+valor, e um `&`, um `%` ou uma `\` no `src` de um script ou no `href` de uma folha. O `src` e o `href` se leem como o
+caminho que o navegador pede (sem a busca e o `#`), um arquivo que não está lá é um script ou uma folha que o servidor
+não entrega, e um `\r` sozinho conta como fim de linha, como no navegador (lido do git ou da pasta).
 Ela sai 0 quando o head só muda código de lugar:
 - todo arquivo do tema que a página não lê (as imagens e as fontes) tem o mesmo conteúdo nos dois commits;
 - a marcação é a mesma, na mesma ordem (sem os cinco espaços do HTML nas pontas de cada linha), com cada script e cada

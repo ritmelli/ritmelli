@@ -343,14 +343,14 @@ def check_theme_rebuild():
                                    "a.js": "const a = 1;\n"}.__getitem__)
     if quoted == split:
         falha(f"theme_rebuild.rebuild: one attribute with &quot; inside rebuilds like two attributes ({quoted})")
-    files = {"index.html": "<!-- inline-script: c.js -->\n<script onerror='f(this)' src='a.js'></script>\n",
+    files = {"index.html": '<!-- inline-script: c.js -->\n<script onerror="f(this)" src="a.js"></script>\n',
              "a.js": "const a = 1;\n", "c.js": "const c = 3;\n"}
     lines = theme_rebuild.rebuild(files.__getitem__)
     files["a.js"] = "const a = 2;\n"
     changed = theme_rebuild.rebuild(files.__getitem__)
     if lines != ["[inline-script c.js]", "const c = 3;", "[/script]", "[script a.js: [('onerror', 'f(this)')]]",
                  "const a = 1;", "[/script]"] or changed == lines:
-        falha(f"theme_rebuild.rebuild with src after onerror, in single quotes, and an inline-script: {lines}, "
+        falha(f"theme_rebuild.rebuild with src after onerror and an inline-script: {lines}, "
               f"then {changed}")
     plain = theme_rebuild.rebuild({"index.html": "<script>\nconst d = 4;\n</script>\n"}.__getitem__)
     typed = theme_rebuild.rebuild({"index.html": '<script type="application/json">\nconst d = 4;\n</script>\n'}.__getitem__)
