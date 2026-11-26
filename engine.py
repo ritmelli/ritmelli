@@ -954,12 +954,12 @@ class Injetor:
     def estado(self):
         return {"anel": self.m is not None, "leitores": self.leitores,
                 "folga_min_ms": None if self.folga_min is None else round(self.folga_min * 1000 / SR, 1),
-                "volta_max_ms": round(self.volta_max * 1000, 1), **self.dry_outs.state(),
-                "efeito_no_filtro": self.efeito_no_filtro}
+                **self.dry_outs.state(), "efeito_no_filtro": self.efeito_no_filtro}
 
     def _volta(self, s):
         self.volta_max = max(self.volta_max, s)
         self.voltas[min(int(s * 1000), VOLTA_MS - 1)] += 1
+        self.dry_outs.counts = (self.secas, self.dry_outs.while_pedal_starting, self.volta_max)
 
     def _confere_fila(self, fila, volta, m):
         """O menor tanto no anel na chegada da thread, e a seca contada (o que diz, e quando: dryouts.RingDryOuts)."""
@@ -1069,7 +1069,6 @@ class Injetor:
             while self._vai:
                 agora = time.perf_counter()
                 volta, antes = agora - antes, agora
-                self._volta(volta)
                 contou = False  # a janela do "audio" ja recebeu esta volta
                 try:
                     m = self._abre()
@@ -1128,6 +1127,7 @@ class Injetor:
                     finally:
                         self._solta_efeito()
                     time.sleep(0.5)
+                self._volta(volta)
                 time.sleep(0.002)
         finally:
             if mm is not None:

@@ -643,11 +643,16 @@ class TestVoicePedalDryOut(unittest.TestCase):
         self.assertTrue(espera(lambda: self.inj.dry_outs.filled_at == self.now),
                         "the ring thread never saw the ring full at the test's time")
 
+    def published(self):
+        self.assertTrue(espera(lambda: self.inj.estado()["secas"] == self.inj.secas),
+                        "the pass that saw the dry ring never published its counts")
+
     def dry_out(self):
         self.wait_filled()
         self.dry_done.clear()
         self.drain.set()
         self.assertTrue(self.dry_done.wait(3.0), "the ring never ran dry")
+        self.published()
 
     def dry_out_after_away(self, away_s):
         self.wait_filled()
@@ -659,6 +664,7 @@ class TestVoicePedalDryOut(unittest.TestCase):
         self.drain.set()
         self.gate.set()
         self.assertTrue(self.dry_done.wait(3.0), "the ring never ran dry")
+        self.published()
 
     def logged(self):
         dryouts.LOG.written()
@@ -837,6 +843,7 @@ class TestVoicePedalDryOut(unittest.TestCase):
         self.drain_next = True
         self.gate.set()
         self.assertTrue(self.dry_done.wait(3.0), "the ring never ran dry")
+        self.published()
         self.assertEqual(self.inj.estado()["secas_pedal"], 1, "the pedal turned on before the read that saw the ring")
         line = self.pedal_lines()[-1]
         self.assertIn("(after the ring was last filled, maybe after it ran dry)", line)
@@ -994,8 +1001,41 @@ class TestVoicePedalDryOut(unittest.TestCase):
         self.assertEqual((self.inj.secas, state["secas"], state["secas_pedal"]), (1, 0, 0))
         hold.set()
         self.assertTrue(self.dry_done.wait(3.0), "the dry-out was never told")
+        self.published()
         state = self.inj.estado()
         self.assertEqual((state["secas"], state["secas_pedal"]), (1, 1))
+
+    def test_the_longest_return_is_published_with_the_counts(self):
+        self.pedal_on(1.0)
+        hold, held = threading.Event(), threading.Event()
+        starting = self.motor.voice_pedal.starting
+
+        def held_starting(*a):
+            held.set()
+            hold.wait()
+            return starting(*a)
+
+        self.addCleanup(hold.set)
+        self.motor.voice_pedal.starting = held_starting
+        self.wait_filled()
+        self.held.clear()
+        self.gate.clear()
+        self.assertTrue(self.held.wait(3), "the injector never got to the ring")
+        since = time.perf_counter()
+        self.assertTrue(espera(lambda: time.perf_counter() - since > 0.3))
+        self.dry_done.clear()
+        self.drain_next = True
+        self.gate.set()
+        self.assertTrue(held.wait(3), "the ring never ran dry")
+        state = self.inj.estado()
+        self.assertEqual((state["secas"], state["secas_pedal"]), (0, 0))
+        self.assertLess(state["volta_max_ms"], 300, "the long pass came out before its dry-out was classified")
+        hold.set()
+        self.assertTrue(self.dry_done.wait(3.0), "the dry-out was never told")
+        self.published()
+        state = self.inj.estado()
+        self.assertEqual((state["secas"], state["secas_pedal"]), (1, 1))
+        self.assertGreater(state["volta_max_ms"], 300, "the long pass came out with its dry-out")
 
     def test_pedal_off_before_the_ring_was_last_filled(self):
         self.pedal_on(1.0)

@@ -115,7 +115,7 @@ class RingDryOuts:
     def __init__(self, pedal):
         self.pedal = pedal
         self.while_pedal_starting = 0
-        self.counts = (0, 0)
+        self.counts = (0, 0, 0.0)
         self._told_at = -1e9
         self._start, self._told_this_start = None, 0
         self.filled_at = self.empty_at = None
@@ -131,8 +131,8 @@ class RingDryOuts:
         return f" it ran dry between {since:.2f} and {by:.2f} s after the pedal turned on;"
 
     def state(self):
-        dry_outs, while_pedal_starting = self.counts
-        return {"secas": dry_outs, "secas_pedal": while_pedal_starting}
+        dry_outs, while_pedal_starting, longest = self.counts
+        return {"secas": dry_outs, "secas_pedal": while_pedal_starting, "volta_max_ms": round(longest * 1000, 1)}
 
     def read_ring(self, read):
         before = self.pedal.clock()
@@ -147,8 +147,6 @@ class RingDryOuts:
         start, starting = self.pedal.starting(self.filled_at, self.empty_at)
         if starting is not None:
             self.while_pedal_starting += 1
-        self.counts = (count, self.while_pedal_starting)
-        if starting is not None:
             if start != self._start:
                 self._start, self._told_this_start = start, 0
             self._told_this_start += 1
