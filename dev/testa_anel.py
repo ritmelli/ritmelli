@@ -270,6 +270,29 @@ class TestVoicePedalStart(unittest.TestCase):
         done = subprocess.run([sys.executable, "-c", child], capture_output=True, text=True, timeout=30)
         self.assertEqual((done.returncode, "_enter_buffered_busy" in done.stderr), (0, False), done.stderr[-400:])
 
+    def test_a_line_reaches_stderr_as_the_text_layer_would_write_it(self):
+        def through(write):
+            written = bytearray()
+
+            class ThreeBytes(io.RawIOBase):
+                def writable(self):
+                    return True
+
+                def write(self, b):
+                    written.extend(bytes(b[:3]))
+                    return min(3, len(b))
+
+            err = io.TextIOWrapper(io.BufferedWriter(ThreeBytes()), encoding="utf-8", errors="replace",
+                                   line_buffering=True)
+            with mock.patch("sys.stderr", err):
+                write(err)
+            return bytes(written)
+
+        line = "ran dry → 12 so far, injector 3)"
+        log = dryouts.Log()
+        self.assertEqual(through(lambda err: (log.tell(line), log.written())),
+                         through(lambda err: print(line, file=err, flush=True)))
+
     def test_a_full_log_drops_lines_and_does_not_wait(self):
         release, written = threading.Event(), io.StringIO()
 
@@ -708,7 +731,7 @@ class TestVoicePedalStart(unittest.TestCase):
                     done.join(3.0)
                 self.assertFalse(done.is_alive(), "the log kept retrying a write that made no progress")
                 self.assertEqual((log.dropped, Raw.out.decode()),
-                                 (1, "second (1 line(s) of the dry-out log dropped before this one)\n"))
+                                 (1, "second (1 line(s) of the dry-out log dropped before this one)" + os.linesep))
 
     def test_the_track_is_up_only_once_its_line_is_queued(self):
         pedal = dryouts.VoicePedalStart(clock=lambda: 5.0)

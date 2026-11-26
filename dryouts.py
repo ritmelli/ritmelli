@@ -1,5 +1,6 @@
 import itertools
 import math
+import os
 import queue
 import sys
 import threading
@@ -42,7 +43,7 @@ class Log:
                 err = sys.stderr
                 raw = getattr(getattr(err, "buffer", None), "raw", None)
                 if raw is not None:
-                    data = (line + "\n").encode(err.encoding, err.errors)
+                    data = (line + os.linesep).encode(err.encoding, err.errors)
                     while data:
                         sent = raw.write(data)
                         if not sent:
