@@ -27,7 +27,8 @@ SETUP, EXE = f"Ritmelli-{MARK}", f"ritmelli-exe-{MARK}"
 NOTES = {"NOTAS": ("${{ inputs.notas }}", "--notas"), "NOTAS_EN": ("${{ inputs.notas_en }}", "--notas-en")}
 STEP_OUTPUTS = {"anterior": r"steps\.([\w-]+)\.outputs\.([\w-]+)\s*!=\s*''",
                 "parcial": r"steps\.([\w-]+)\.outputs\.(parcial)"}
-OTHER_VERSION = re.compile(r"Ritmelli-(?:[0-9]|<version>|\$\{\{.*?\}\})(?:[0-9.]|<version>|\$\{\{.*?\}\})*")
+OTHER_VERSION = re.compile(
+    r"(?:Ritmelli|ritmelli-exe)-(?:[0-9]|<version>|\$\{\{.*?\}\})(?:[0-9.]|<version>|\$\{\{.*?\}\})*")
 
 failures = []
 
@@ -223,7 +224,7 @@ def contract_problems(doc):
     problems += [f"the run uploads {len(w)} artifacts named {n}, not 1" for n, w in found.items() if len(w) != 1]
     problems += [f"the {n} artifact is uploaded under an if: or in a job that does not run in every build the "
                  "pipeline expects" for n, _, c, _ in run_uploads if n in found and c]
-    fixed = [n for n, _, _, _ in run_uploads if n != SETUP and OTHER_VERSION.fullmatch(n)]
+    fixed = [n for n, _, _, _ in run_uploads if n not in (SETUP, EXE) and OTHER_VERSION.fullmatch(n)]
     if fixed:
         problems.append(f"the run uploads {fixed}, which the pipeline would take for the version of the build")
     if len(found[EXE]) == 1 and not one_literal_file(found[EXE][0].get("path"), "ritmelli.exe"):
@@ -560,6 +561,10 @@ def main():
                                              {"uses": upload(d, exe)["uses"],
                                               "with": {"name": "ritmelli-exe-${{ steps.v.outputs.versao }}",
                                                        "path": "dist/ritmelli/ritmelli.exe"}}]}}),
+        "the assinar-app upload renamed to a literal ritmelli-exe version": lambda d: next(
+            s for s in d["jobs"]["monta"]["steps"]
+            if str((s.get("with") or {}).get("name", "")).startswith("assinar-app-"))["with"].update(
+                name="ritmelli-exe-0.6.0"),
         "a parcial=false in a one-line if block": lambda d: source_step(d, "parcial").update(
             run=source_step(d, "parcial")["run"].rstrip("\n")
             + '\nif ($env:ANTERIOR) { Add-Content -Path $env:GITHUB_OUTPUT -Value "parcial=false" -Encoding ascii }\n'),
