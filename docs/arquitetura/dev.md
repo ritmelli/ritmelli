@@ -56,12 +56,11 @@ execução inteira, contados como o server conta (sem o job ou o passo desligado
 esteira tomaria pela versão (`Ritmelli-1.2.3`). Os dois artefatos, o `congela`, o passo do `publica.py` e os
 passos das saídas `anterior` e `parcial` não podem ter `if:`, nenhum passo antes do `publica.py` o cita, e o
 que está em comentário do PowerShell não conta, salvo no `--saida`, que o server lê cru. O `--tela` junta o
-`fitcheck` e o `compara` do jeito do PR (no
-`testa.yml` o `compara` roda num job à parte, pelo `--compara`, com a referência da base no
-cache do Actions), e o `--areas` é o filtro por caminho do `.github/workflows/testa.yml`, que
-roda tudo isso em todo PR e na fila de merge. A fila leva a `main` ao mesmo commit que testou,
-então o push na `main` roda só a captura do `compara` desse commit para o cache (o `--capture`), e o
-"Testa o PR" do push reprova se nenhuma execução da fila passou nele. As bibliotecas da CI se
+`fitcheck` e o `compara` do jeito do PR (no `testa.yml` o `compara` roda num job à parte, pelo `--compara`,
+com a referência da base no cache do Actions), e o `--areas` é o filtro por caminho do
+`.github/workflows/testa.yml`, que roda tudo isso em todo PR e na fila de merge. A fila leva a `main` ao mesmo
+commit que testou, então o push na `main` roda só a captura do `compara` desse commit para o cache
+(o `--capture`), e o "Testa o PR" do push reprova se nenhuma execução da fila passou nele. As bibliotecas da CI se
 instalam com as versões do `instalador/travas.txt` (`-c`), que entra na chave do cache delas e na
 da captura do `compara`, e o PR que muda esse arquivo dispara todas as áreas. No PR, só abrir, reabrir e
 um commit novo rodam o check: editar a descrição ou mexer numa etiqueta não roda, porque uma

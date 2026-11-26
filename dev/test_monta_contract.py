@@ -134,7 +134,7 @@ def contract_problems(doc):
         problems.append("monta.yml does not run by hand (workflow_dispatch)")
     problems += [f"monta.yml has no {name} input" for name in INPUTS if name not in inputs]
     jobs = doc.get("jobs") or {}
-    names = [display(k, j) for k, j in jobs.items()]
+    names = [display(k, j) for k, j in jobs.items() if not switched_off(j.get("if"))]
     for required in REQUIRED_JOBS:
         if not any(n == required or n.startswith(required + " (") for n in names):
             problems.append(f"monta.yml has no job shown as {required}")
@@ -416,6 +416,14 @@ def main():
             r"^(\s*)(\$saida\s*=.*)$", r"\1# $saida = 'saida'\n\1\2", run, count=1, flags=re.M)),
         "a trailing comment on the --saida assignment": lambda d: edit_run(d, lambda run: re.sub(
             r"^(\s*)(\$saida\s*=.*)$", r"\1\2  # the artifact folder", run, count=1, flags=re.M)),
+        "the --saida assignment with a type": lambda d: edit_run(d, lambda run: re.sub(
+            r"^(\s*)(\$saida\s*=)", r"\1[string]\2", run, count=1, flags=re.M)),
+        "a statement before the --saida assignment on its line": lambda d: edit_run(d, lambda run: re.sub(
+            r"^(\s*)(\$saida\s*=)", r"\1$x = 1; \2", run, count=1, flags=re.M)),
+        "a $ in the single-quoted folder of --saida": lambda d: (
+            assign_folder(d, "'instalador\\$saida'"), upload(d, setup)["with"].update(path="instalador/$saida/")),
+        "the testa-atualizador job switched off": lambda d: shown(d, "testa-atualizador").update(
+            {"if": "${{ false }}"}),
         "the folder of --saida assigned twice": lambda d: edit_run(d, lambda run: re.sub(
             r"^(\s*)(\$saida\s*=.*)$", r"\1\2\n\1$saida += '_other'", run, count=1, flags=re.M)),
         "the ritmelli-exe upload under a condition": lambda d: upload(d, exe).update(
