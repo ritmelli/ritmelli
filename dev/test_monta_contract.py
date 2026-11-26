@@ -109,7 +109,8 @@ def partial_probed(job, folder):
     run = code(step.get("run", ""))
     probes = re.findall(r'^\s*\$(\w+)\s*=\s*Test-Path\s+(?:-Path\s+)?"([^"]+)"\s*$', run, re.M)
     written = r'"parcial=\$\(\${0}\.ToString\(\)\.ToLower\(\)\)"|"parcial=\${0}"'
-    return any(normal_path(path) == wanted and re.search(written.format(name), run) for name, path in probes)
+    return any(normal_path(path) == wanted and re.search(written.format(name), run, re.I)
+               and len(re.findall(rf"\${name}\b\s*[-+*/]?=(?!=)", run, re.I)) == 1 for name, path in probes)
 
 
 def step_output_problem(job, name):
@@ -372,6 +373,10 @@ def main():
           "the --saida value on the next line keeps the contract")
     marks = mutant(doc, lambda d: edit_run(d, lambda run: "# a <# in a line comment\n" + run + "# and a #> later\n"))
     check(contract_problems(marks) == [], "line comments that mention <# and #> keep the contract")
+    cased = mutant(doc, lambda d: source_step(d, "parcial").update(
+        run=source_step(d, "parcial")["run"].replace('"parcial=$($parcial.', '"parcial=$($Parcial.')))
+    check('"parcial=$($Parcial.' in source_step(cased, "parcial")["run"] and contract_problems(cased) == [],
+          "the parcial variable written in another case keeps the contract")
     migration_first = mutant(doc, lambda d: shown(d, "testa").update(
         needs=["monta", next(k for k, j in d["jobs"].items() if j is shown(d, "testa-migracao"))]))
     quoted_output = mutant(doc, lambda d: step_by_id(d["jobs"]["monta"], "congela").update(
@@ -506,6 +511,9 @@ def main():
             run=step_by_id(d["jobs"]["monta"], "congela")["run"].replace(
                 "-Path $env:GITHUB_OUTPUT -Value \"versao=", '-Path "$env:GITHUB_OUTPUT.tmp" -Value "versao=')),
         "the ritmelli-exe upload in a job that needs testa-parcial": lambda d: move_exe_upload(d),
+        "a second partial probe for another file": lambda d: source_step(d, "parcial").update(
+            run=re.sub(r'^(\s*)(\$parcial = Test-Path "[^"]*)-parcial\.exe"$', r'\1\2-parcial.exe"\n\1\2-partial.exe"',
+                       source_step(d, "parcial")["run"], count=1, flags=re.M)),
         "the partial probe negated": lambda d: source_step(d, "parcial").update(
             run=re.sub(r'= Test-Path ("[^"]*-parcial\.exe")', r"= -not (Test-Path \1)",
                        source_step(d, "parcial")["run"])),
