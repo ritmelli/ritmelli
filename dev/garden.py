@@ -737,7 +737,8 @@ def python_retries(tree):
             guards = {id(s): test_names(n.test) for n in inner if isinstance(n, ast.If) for s in n.body}
             for attempt in (n for n in inner if isinstance(n, ast.Try)):
                 again = [h for h in attempt.handlers if not leaves(h.body)]
-                waits_on_failure = any(is_sleep(n, aliases) for h in again for n in local_nodes(h))
+                waits_on_failure = any(is_sleep(n, aliases) for h in again for n in local_nodes(h)) and not any(
+                    is_sleep(n, aliases) for s in attempt.body + attempt.orelse for n in [s, *local_nodes(s)])
                 guard = guards.get(id(attempt), set()) | (test_names(loop.test) if isinstance(loop, ast.While) else set())
                 stops_on_success = bool(guard & assigned_names(attempt.body))
                 if again and (waits_on_failure or ends or stops_on_success):
@@ -791,11 +792,12 @@ def powershell_retries(code):
         body = "".join(own)
         if not (re.search(r"\btry\s*\{", body, re.I) and START_SLEEP.search(body)):
             continue
-        again = [block for block in ps_blocks(body, PS_CATCH) if not PS_LEAVES.search(block)]
+        again = [block for block in ps_blocks(body, PS_CATCH) if not PS_LEAVES.search(top_level(block))]
         if not again:
             continue
-        waits_on_failure = any(START_SLEEP.search(block) for block in again)
         tries = list(ps_blocks(body, PS_TRY))
+        waits_on_failure = any(START_SLEEP.search(block) for block in again) and not any(
+            START_SLEEP.search(block) for block in tries)
         ends = any(PS_EXITS.search(block) for block in tries)
         tried = {v.lower() for block in tries for v in PS_ASSIGNED.findall(block)}
         condition = code[start:body_start]
@@ -807,6 +809,15 @@ def powershell_retries(code):
         if waits_on_failure or ends or stops_on_success:
             found.append(code.count("\n", 0, start) + 1)
     return found
+
+
+def top_level(block):
+    out, depth = [], 0
+    for c in block[1:-1]:
+        depth += (c == "{") - (c == "}")
+        if depth == 0 and c != "}":
+            out.append(c)
+    return "".join(out)
 
 
 def ps_blocks(code, opener):
@@ -870,7 +881,7 @@ def js_functions(code):
 JS_CATCH_BLOCK = re.compile(r"\bcatch\s*(?:\([^)]*\))?\s*\{")
 JS_CATCH_CALL = re.compile(r"\.catch\s*\(")
 JS_EMPTY_CALLBACK = re.compile(r"^\s*(?:(?:async\s*)?(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>\s*\{\s*\}"
-                               r"|(?:async\s+)?function\s*[\w$]*\s*\([^)]*\)\s*\{\s*\})\s*$")
+                               r"|(?:async\s+)?function\s*[\w$]*\s*\([^)]*\)\s*\{\s*\})\s*,?\s*$")
 
 
 def js_swallowed(code):
@@ -897,10 +908,22 @@ def js_retries(code):
             if not body[:m.start()].rstrip().endswith("."))
     for m in JS_HANDLER.finditer(code):
         start, body = handler_body(code, m.end())
+        around = [(a, b) for _, a, b in functions if a < m.start() < b]
         enclosing = {name for name, a, b in functions if a < m.start() < b}
         found += [code.count("\n", 0, start + r.start()) + 1 for r in JS_RESCHEDULE.finditer(body)
-                  if r.group(1) in enclosing or enclosing & calls.get(r.group(1), set())]
+                  if (r.group(1) in enclosing or enclosing & calls.get(r.group(1), set()))
+                  and not (around and rescheduled_anyway(code, max(around), r.group(1), (start, start + len(body))))]
     return found
+
+
+def rescheduled_anyway(code, span, name, handler):
+    a, b = span
+    for r in JS_RESCHEDULE.finditer(code, a, b):
+        if r.group(1) == name and not handler[0] <= r.start() < handler[1]:
+            between = code[a:r.start()]
+            if between.count("{") - between.count("}") == 1:
+                return True
+    return False
 
 
 def joined_code(lexed):
