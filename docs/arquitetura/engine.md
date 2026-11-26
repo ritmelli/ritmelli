@@ -45,6 +45,10 @@ a prateleira aos poucos. Na prateleira de 14/11, as músicas iam de -19,2 a -5,3
 of Swing (+3,1 dB) com 0,2% do tempo acima de 3 dB de limitação, e em -10 seriam 2,7%.
 `dev/testa_ganho.py` testa a medida, o limitador e o motor sem som.
 
+A saída da Rubber Band vem alinhada com a entrada, mas só soa depois de uns 45 ms: o `esticar_saida` não mede atraso
+nenhum, e os primeiros `RUBBER_BAND_WARMUP` dele são o próprio áudio reamostrado, que passa para o da Rubber Band em
+`CROSSFADE`. O `dev/test_stretch_outgoing.py` confere as duas coisas, com um tom forte por baixo dos ataques (#197).
+
 O esticamento da passagem no tempo (o `esticar` e o `esticar_saida`, a velocidade como no vinil e o tom de volta pela
 Rubber Band do pedalboard) fica no processo do motor, na thread do planejador. Ele leva de 2 a 8 s por passagem, e a
 saída para o jogo segue no tempo nesse meio: a Rubber Band solta o interpretador quase o tempo todo enquanto estica

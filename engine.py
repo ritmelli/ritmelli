@@ -339,6 +339,8 @@ def _catmull(x, phi):
 # as chamadas a Rubber Band (o esticar e o esticar_saida), de qualquer thread: a janela do evento "audio" conta quantas
 # comecaram, o tempo com alguma em curso e as secas do anel no meio delas (o metricas.SaudeAudio)
 RUBBER_BAND = metricas.EmCurso()
+RUBBER_BAND_WARMUP = int(0.06 * SR)
+CROSSFADE = int(0.02 * SR)
 PASSAGEM_DEPOIS_S = 5.0  # a seca ate isso depois da virada ainda conta como da passagem (secas_passagem)
 
 
@@ -380,28 +382,24 @@ def esticar(x, s, n_sob, n_rampa, alvo):
 
 
 def esticar_saida(x, s, n_rampa):
-    """A que sai indo para a velocidade s antes da sobreposicao: x (n x 2) de 1 a s em n_rampa (meio cosseno) e
-    em s ate o fim de x, como no esticar (vinil e o tom de volta pela Rubber Band). O atraso da Rubber Band sai
-    pela correlacao no comeco, onde a velocidade ainda e 1, e os primeiros 20 ms sao o proprio x, que emenda no
-    que ja tocou sem degrau. Devolve (saida, a posicao em x de cada amostra de saida)."""
-    c = 0.5 * (1 - np.cos(np.linspace(0.0, np.pi, n_rampa, endpoint=False)))  # 0 -> 1
-    resto = len(x) - 2 - (n_rampa + (s - 1) * c.sum())  # o que sobra de x depois da rampa, em amostras de x
+    """The outgoing track going to speed s before the overlap: x (n x 2) from 1 to s over n_rampa (half cosine) and
+    at s to the end of x, as in esticar (vinyl, and the pitch back through the Rubber Band). The Rubber Band output
+    is aligned with its input and only starts sounding after RUBBER_BAND_WARMUP, so its first samples are x itself,
+    crossfading into it over CROSSFADE, which joins what already played without a step. Returns (output, the position
+    in x of each output sample)."""
+    c = 0.5 * (1 - np.cos(np.linspace(0.0, np.pi, n_rampa, endpoint=False)))
+    resto = len(x) - 2 - (n_rampa + (s - 1) * c.sum())
     vel = np.concatenate([1 + (s - 1) * c, np.full(max(0, int(resto / s)), s)])
     phi = np.concatenate([[0.0], np.cumsum(vel)[:-1]])
     y = _catmull(x, phi)
-    z = _rubber_band(y, vel)
-    m, janela = len(y), SR // 2
-    busca = min(SR // 10, len(z) - janela)
-    d = 0
-    if busca > 0:
-        cor = signal.correlate(z[:janela + busca, 0], y[:janela, 0], mode="valid", method="fft")
-        d = int(np.argmax(cor))
-    z = z[d:d + m]
+    m = len(y)
+    z = _rubber_band(y, vel)[:m]
     if len(z) < m:
         z = np.concatenate([z, y[len(z):]])
-    w = int(0.02 * SR)
-    g = np.linspace(0.0, 1.0, w, dtype=np.float32)[:, None]
-    z[:w] = y[:w] * (1 - g) + z[:w] * g
+    a, b = RUBBER_BAND_WARMUP, RUBBER_BAND_WARMUP + CROSSFADE
+    g = np.linspace(0.0, 1.0, CROSSFADE, dtype=np.float32)[:, None]
+    z[:a] = y[:a]
+    z[a:b] = y[a:b] * (1 - g) + z[a:b] * g
     return np.ascontiguousarray(z, np.float32), phi
 
 
