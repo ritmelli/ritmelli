@@ -168,8 +168,12 @@ def contract_problems(doc):
     if len(found[EXE]) == 1 and not one_literal_file(found[EXE][0].get("path"), "ritmelli.exe"):
         problems.append(f"the {EXE} artifact is not the ritmelli.exe alone ({found[EXE][0].get('path')!r})")
     manifest = manifest_step(monta)
+    first = next((s for j in jobs.values() if not switched_off(j.get("if")) for s in job_steps(j)
+                  if "publica.py" in str(s.get("run", "")) and not switched_off(s.get("if"))), None)
     if manifest is None or switched_off(manifest.get("if")):
         problems.append("the monta job has no one step that runs publica.py")
+    elif first is not manifest:
+        problems.append("an earlier step mentions publica.py, and the pipeline reads that step as the one that runs it")
     elif "if" in manifest:
         problems.append("the step that runs publica.py runs only under an if:, so the manifest may be missing")
     else:
@@ -290,6 +294,9 @@ def main():
     check('@("NOTAS", "notas", "--notas")' in manifest_step(tuples["jobs"]["monta"])["run"]
           and '@("NOTAS_EN", "notas_en", "--notas-en")' in manifest_step(tuples["jobs"]["monta"])["run"]
           and contract_problems(tuples) == [], "the notes tuples in double quotes keep the contract")
+    later = mutant(doc, lambda d: shown(d, "testa")["steps"].append(
+        {"name": "Lista", "shell": "powershell", "run": "# publica.py wrote the manifest\n"}))
+    check(contract_problems(later) == [], "a step after the manifest that mentions publica.py keeps the contract")
     helper = mutant(doc, lambda d: d["jobs"]["monta"]["steps"].append(
         {"uses": upload(d, setup)["uses"], "with": {"name": "Ritmelli-.1", "path": "x"}}))
     check(contract_problems(helper) == [], "an artifact named Ritmelli-.1, which the pipeline never takes for the "
@@ -335,6 +342,9 @@ def main():
         "the id of the step behind the anterior output": lambda d: source_step(d, "anterior").update(
             id=free_id(d, "previous")),
         "the needs of testa-parcial": lambda d: shown(d, "testa-parcial").update(needs=["testa"]),
+        "a step before the manifest that mentions publica.py": lambda d: d["jobs"]["monta"]["steps"].insert(
+            d["jobs"]["monta"]["steps"].index(step_by_id(d["jobs"]["monta"], "congela")) + 1,
+            {"name": "Lista", "shell": "powershell", "run": "# publica.py writes the manifest later\n"}),
         "a second testa-migracao job gated by parcial": lambda d: d["jobs"].update(
             {free_job(d, "partial-checks"): dict(copy.deepcopy(shown(d, "testa-parcial")),
                                                  name="testa-migracao (partial checks)")}),
