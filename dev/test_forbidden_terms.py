@@ -101,7 +101,7 @@ class TrackedFiles(unittest.TestCase):
         self.assertGreater(len(files), 100)
         hits = scan(files, FORBIDDEN_DIGESTS)
         signed = sum(has_binary_signature(name, data) for name, data in files.items())
-        print(f"scanned {len(files)} tracked files ({signed} binaries read only for their UTF-16 ASCII runs), {len(hits)} hits",
+        print(f"scanned {len(files)} tracked files ({signed} signed binaries read only by their runs), {len(hits)} hits",
               file=sys.stderr)
         self.assertEqual([f"{name}:{number} (term digest {h[:12]})" for name, number, h in hits], [])
 
