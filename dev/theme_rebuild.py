@@ -23,9 +23,9 @@ line. <base> and <head> are git commits (the head defaults to the working tree).
 
 The tool reads index.html with the build's own reader (theme_page.Template), so a page the build refuses exits 3, with
 the line and the build's reason. On top of it, it exits 3, naming the file, for a file tag whose address is not a plain
-path inside the theme (like gerado/base.css, or /t/<theme>/ and a plain path, read from that theme's folder), a linked
-file that is not in the theme (the server does not build the page), a script file with a </script or a <!-- or that starts with #!,
-a sheet file with a </style or that fails the build's sheet check (theme_page.sheet_problem: no @import, and outside the
+path inside the theme (like gerado/base.css, or /t/<theme>/ and a plain path, read from that theme's folder), a
+linked file that is not in the theme (the server does not build the page), a file that is not UTF-8 text, a script file
+with a </script or a <!-- or that starts with #!, a sheet file with a </style or that fails the build's sheet check (theme_page.sheet_problem: no @import, and outside the
 page's folder only plain url() values that are not relative), an @import, @namespace or @scope in any sheet (even
 escaped or in a comment), and an <!-- inline-script: --> comment, which servers before theme_page replaced with a file.
 In a sheet, only CSS whitespace and comments may sit between and around the rules.
@@ -33,7 +33,8 @@ In a sheet, only CSS whitespace and comments may sit between and around the rule
 Exit 0 when the head only moves code: the two pages are the same, or
 - every file of the theme that the page does not read (images, fonts) has the same content;
 - the markup is the same, line by line and in order, with every script and stylesheet in the same place in it,
-  with the same between it and the text on each side: nothing, HTML spaces, or HTML spaces with a line break;
+  with the same between it and the text on each side: nothing, the same HTML spaces, or HTML spaces with a line
+  break;
 - the head has the same scripts in the same order, each loaded the same way (inline or from the same file), with the
   same attributes and the same strict mode;
 - each script declares the same functions at its top level (they may move inside it: a script's function declarations
@@ -86,8 +87,12 @@ def sheet_reaches_out(text):
     return any(rule in read for rule in ("@import", "@namespace", "@scope"))
 
 
-def text_of(data):
-    return data.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")
+def text_of(data, name="the page"):
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError as broken:
+        raise Doubt(f"{name}: not UTF-8 text (byte {broken.start}), which the server refuses") from broken
+    return text.replace("\r\n", "\n").replace("\r", "\n")
 
 
 def theme_path(name, theme):
@@ -96,12 +101,12 @@ def theme_path(name, theme):
 
 def reader(rev, theme):
     if rev is None:
-        return lambda name: (text_of((RAIZ / theme_path(name, theme)).read_bytes())
+        return lambda name: (text_of((RAIZ / theme_path(name, theme)).read_bytes(), name)
                              if (RAIZ / theme_path(name, theme)).is_file() else None)
 
     def show(name):
         out = subprocess.run(["git", "-C", str(RAIZ), "show", f"{rev}:{theme_path(name, theme)}"], capture_output=True)
-        return None if out.returncode else text_of(out.stdout)
+        return None if out.returncode else text_of(out.stdout, name)
     return show
 
 
@@ -181,7 +186,7 @@ def edge(text):
     space = text[:len(text) - len(text.lstrip(HTML_SPACE))]
     if len(space) == len(text):
         return "a line break"
-    return "a line break" if "\n" in space else "a space" if space else "nothing"
+    return "a line break" if "\n" in space else f"the spaces {space!r}" if space else "nothing"
 
 
 def type_of(attributes):

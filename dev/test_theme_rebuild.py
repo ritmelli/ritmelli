@@ -197,6 +197,9 @@ SAMPLES = (
     ("the space before the i18n mark in a paragraph turned into a line break",
      {"index.html": "<p>Hello <!-- i18n -->world</p>\n", **TEXTS},
      {"index.html": "<p>Hello\n<!-- i18n -->world</p>\n", **TEXTS}, ["gone", "new"]),
+    ("one of two spaces before the i18n mark in a paragraph taken out",
+     {"index.html": "<p>Hello  <!-- i18n -->world</p>\n", **TEXTS},
+     {"index.html": "<p>Hello <!-- i18n -->world</p>\n", **TEXTS}, ["gone", "new"]),
     ("a script tag reindented on its own line", {"index.html": "<div>\n  <script src=\"x.js\"></script>\n</div>\n",
                                                  "x.js": "f();\n"},
      {"index.html": "<div>\n    <script src=\"x.js\"></script>\n</div>\n", "x.js": "f();\n"}, []),
@@ -477,6 +480,11 @@ def main():
     finally:
         theme_rebuild.reader, theme_rebuild.listing = kept
     results.append((code == 0, f"--theme outro reads a /t/outro/ sheet as one of the page's own folder ({code})"))
+    try:
+        broken = theme_rebuild.text_of(b"<p>caf\xe9</p>\n", "index.html")
+    except theme_rebuild.Doubt as unsure:
+        broken = unsure
+    results.append((isinstance(broken, theme_rebuild.Doubt), f"a page in Latin-1: cannot judge ({broken})"))
     for page in ("themes/ritmelli/index.html", "gallery/index.html"):
         try:
             theme_rebuild.tags_of(theme_rebuild.text_of((theme_rebuild.RAIZ / page).read_bytes()))
