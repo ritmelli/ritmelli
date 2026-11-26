@@ -29,31 +29,32 @@ pedal ligou (o `_pedal_voz_liga` conta) e quando a pista da voz ligou. Essa hora
 relógio nos dois processos, no Windows), no `pista_ligou_ms` do anel, como 1 mais o resto por 2³² − 1, para o zero ficar
 sendo "sem carimbo" sem tirar uma hora da conta (o campo de 32 bits ao lado do `pista_ligada`, o mesmo lugar e tamanho
 do antigo `pista_reservado`, que ninguém lia: o layout não muda; cada escritor carimba a própria subida, mesmo com a
-pista ainda ligada no anel por um processo da voz derrubado, #288; o carimbo sai por último, depois do `pista_ligada`,
-então uma pista com carimbo já está ligada), e o `Injetor`, a cada carimbo novo, refaz a hora dele com uma leitura só do
-relógio, depois de ler o carimbo; assim uma pista que ligou enquanto a thread do anel estava parada sai com a hora
-certa, e cada carimbo novo conta como uma subida, com a pista viva ou não (a pista desligou e religou, ou ligou e
-desligou, sem a thread ver); só o carimbo decide, e não a pista ficar viva: uma pista sem carimbo não conta como subida.
-Com o pedal subindo, a subida da pista sai no log uma vez, com quanto tempo depois do pedal ela veio, também quando o
-carimbo só é lido depois de o pedal desligar, ou de desligar e ligar de novo, se a pista subiu antes disso (a linha é da
-subida em que ela subiu). O `RingDryOuts` do `Injetor` conta cada seca entre o pedal ligar e `AFTER_TRACK_S` depois de a
-pista ligar no `secas_pedal` do `/api/state` e a põe no log com quanto tempo depois do pedal e da pista ela veio e entre
-quanto e quanto depois de o pedal ligar o anel secou (arredondado para fora: o limite de baixo para baixo e o de cima
-para cima; a seca só é vista quando a thread volta, e o anel secou entre a última leitura que o viu com algo e a que o
-viu vazio: o `read_ring` guarda a hora de antes da primeira e a de depois da segunda, e não o que o anel guardava,
-porque o leitor pode parar e só esvaziá-lo depois (quando os leitores mudam, a última leitura com algo some, porque era
-dos leitores de antes); a pista que subiu antes desse intervalo veio antes da seca, a que subiu depois dele veio depois,
-a que subiu dentro dele fica sem ordem, o pedal que ligou depois dele não conta no `secas_pedal`, o que ligou dentro
-dele sai com a nota de que pode ter ligado depois da seca, o que desligou dentro dele conta com a subida que acabou e
-com a pista dela (das `ENDED_STARTS` últimas subidas que acabaram, a mais nova que ligou antes do vazio e desligou
-depois da última leitura com algo, e não só a última, porque o pedal pode ligar e desligar de novo antes de a seca ser
-classificada; a pista lida tarde vai para a mais nova em que ela cabe; também a que só foi lida depois de o pedal
-desligar, mesmo que outra pista suba antes de a seca ser classificada; nunca a da subida seguinte, nem dentro da folga
-do fim dela: cada subida guarda a hora da própria pista, que o `track()` escreve nela, e só aceita uma pista que subiu
-depois de o `liga(True)` dela sair da fila do motor, o `sent()` que a thread do pedal carimba depois de o desligar
-anterior acabar, para a pista atrasada de um processo que ainda está parando não ir para a subida seguinte (a comparação
-é em milissegundos inteiros, a resolução do carimbo, que o `track()` reconstrói inteiro, e a pista do mesmo milissegundo
-do envio não é da subida); a latência segue contada da hora do clique; também quando o pedal desliga enquanto a linha da
+pista ainda ligada no anel por um processo da voz derrubado, #288; o carimbo e o `pista_ligada` saem numa escrita só, de
+64 bits alinhada (os dois campos são vizinhos), então a pista liga junto com o carimbo, e desligar zera só o
+`pista_ligada`), e o `Injetor`, a cada carimbo novo, refaz a hora dele com uma leitura só do relógio, depois de ler o
+carimbo; assim uma pista que ligou enquanto a thread do anel estava parada sai com a hora certa, e cada carimbo novo
+conta como uma subida, com a pista viva ou não (a pista desligou e religou, ou ligou e desligou, sem a thread ver); só o
+carimbo decide, e não a pista ficar viva: uma pista sem carimbo não conta como subida. Com o pedal subindo, a subida da
+pista sai no log uma vez, com quanto tempo depois do pedal ela veio, também quando o carimbo só é lido depois de o pedal
+desligar, ou de desligar e ligar de novo, se a pista subiu antes disso (a linha é da subida em que ela subiu). O
+`RingDryOuts` do `Injetor` conta cada seca entre o pedal ligar e `AFTER_TRACK_S` depois de a pista ligar no
+`secas_pedal` do `/api/state` e a põe no log com quanto tempo depois do pedal e da pista ela veio e entre quanto e
+quanto depois de o pedal ligar o anel secou (arredondado para fora: o limite de baixo para baixo e o de cima para cima;
+a seca só é vista quando a thread volta, e o anel secou entre a última leitura que o viu com algo e a que o viu vazio: o
+`read_ring` guarda a hora de antes da primeira e a de depois da segunda, e não o que o anel guardava, porque o leitor
+pode parar e só esvaziá-lo depois (quando os leitores mudam, a última leitura com algo some, porque era dos leitores de
+antes); a pista que subiu antes desse intervalo veio antes da seca, a que subiu depois dele veio depois, a que subiu
+dentro dele fica sem ordem, o pedal que ligou depois dele não conta no `secas_pedal`, o que ligou dentro dele sai com a
+nota de que pode ter ligado depois da seca, o que desligou dentro dele conta com a subida que acabou e com a pista dela
+(das `ENDED_STARTS` últimas subidas que acabaram, a mais nova que ligou antes do vazio e desligou depois da última
+leitura com algo, e não só a última, porque o pedal pode ligar e desligar de novo antes de a seca ser classificada; a
+pista lida tarde vai para a mais nova em que ela cabe; também a que só foi lida depois de o pedal desligar, mesmo que
+outra pista suba antes de a seca ser classificada; nunca a da subida seguinte, nem dentro da folga do fim dela: cada
+subida guarda a hora da própria pista, que o `track()` escreve nela, e só aceita uma pista que subiu depois de o
+`liga(True)` dela sair da fila do motor, o `sent()` que a thread do pedal carimba depois de o desligar anterior acabar,
+para a pista atrasada de um processo que ainda está parando não ir para a subida seguinte (a comparação é em
+milissegundos inteiros, a resolução do carimbo, que o `track()` reconstrói inteiro, e a pista do mesmo milissegundo do
+envio não é da subida); a latência segue contada da hora do clique; também quando o pedal desliga enquanto a linha da
 pista é escrita), com a nota de que pode ter desligado antes da seca, e a janela dos `AFTER_TRACK_S` vale para o começo
 desse intervalo, e não para a volta da thread; a pista é lida de novo quando a seca aparece, para um carimbo que chegou
 na mesma volta (só para a conta: a mistura da volta segue com o que o `_voz` leu)), até `PEDAL_LINES` linhas por subida

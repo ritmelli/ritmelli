@@ -1095,15 +1095,21 @@ class TestVoicePedalDryOut(unittest.TestCase):
         release.set()
         self.assertIn("its voice track isn't up yet", self.pedal_lines()[-1])
 
-    def test_a_track_on_before_its_stamp_is_one_start(self):
+    def test_a_track_turns_on_with_its_stamp_in_one_write(self):
+        self.assertEqual((injeta.Anel.pista_ligada.offset % 8, injeta.Anel.pista_ligou_ms.offset),
+                         (0, injeta.Anel.pista_ligada.offset + 4), "the two fields must be one aligned 64-bit word")
         self.pedal_on(0.5)
         release = self.hold_producer((injeta, "clock"))
-        self.assertTrue(espera(lambda: self.a.pista_ligada == 1 and self.motor._pista_viva))
+        self.assertEqual((self.a.pista_ligada, self.a.pista_ligou_ms), (0, 0), "the track went on before its stamp")
         self.dry_out()
+        self.assertIn("its voice track isn't up yet", self.pedal_lines()[-1])
         release.set()
         self.assertTrue(espera(lambda: self.a.pista_ligou_ms and self.motor.voice_pedal._stamp == self.a.pista_ligou_ms),
                         "the injector never read the stamp")
-        self.assertEqual(self.logged().count("voice pedal: its voice track came up"), 1, self.logged())
+        self.assertEqual((self.a.pista_ligada, self.logged().count("voice pedal: its voice track came up")), (1, 1))
+        stamped = self.a.pista_ligou_ms
+        self.producer.pista_liga(False)
+        self.assertEqual((self.a.pista_ligada, self.a.pista_ligou_ms), (0, stamped), "turning off keeps the stamp")
 
     def test_dry_out_long_after_the_track_came_up(self):
         self.pedal_on(0.0)
