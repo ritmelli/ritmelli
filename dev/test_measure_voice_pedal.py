@@ -1,6 +1,7 @@
 import io
 import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -118,6 +119,41 @@ class CycleRow(unittest.TestCase):
                 got, problem = row(states_seen)
                 self.assertIsNone(got)
                 self.assertTrue(problem.startswith("cycle 5: "), problem)
+
+
+class TheMicrophone(unittest.TestCase):
+    def run_main(self, opened, asked=MIC):
+        sent = []
+        work = self.enterContext(tempfile.TemporaryDirectory())
+
+        def urlopen(req, timeout=None):
+            path = req.full_url.split("8970", 1)[1]
+            sent.append((req.get_method(), path))
+            answers = {"/api/effects": [{"id": "pistavoz"}], "/api/state": state(mic=opened)}
+            return io.BytesIO(json.dumps(answers.get(path, {})).encode())
+
+        proc = mock.Mock(**{"poll.return_value": None})
+        with (mock.patch("onnxruntime.get_available_providers", return_value=WITH_DML),
+              mock.patch.object(measure.so_mock, "sai_se_o_app_ligado"),
+              mock.patch.object(measure.so_mock, "porta_responde", side_effect=[False, True]),
+              mock.patch.object(measure.so_mock, "start_job", return_value=(proc, None)),
+              mock.patch.object(measure.tempfile, "mkdtemp", return_value=work),
+              mock.patch.object(measure.urllib.request, "urlopen", urlopen),
+              mock.patch.object(measure, "states", lambda base, seconds: iter([state(mic=opened)])),
+              mock.patch.object(sys, "argv", ["measure_voice_pedal.py", asked, "--port", "8970"]),
+              self.assertRaises(SystemExit) as stop):
+            measure.main()
+        return str(stop.exception.code), sent
+
+    def test_a_fallback_microphone_stops_before_the_pedal(self):
+        why, sent = self.run_main("Microfone (Realtek(R) Audio)")
+        self.assertIn("opened the microphone 'Microfone (Realtek(R) Audio)' and not 'IN 1'", why)
+        self.assertEqual(sent, [("GET", "/api/effects"), ("POST", "/api/devices"), ("GET", "/api/state"),
+                                ("POST", "/api/shutdown")])
+
+    def test_the_name_asked_in_another_case_is_the_same_microphone(self):
+        self.assertIsNone(measure.mic_refusal("in 1", state()))
+        self.assertIn("opened the microphone None", measure.mic_refusal(MIC, state(mic=None)))
 
 
 def stream(*states_sent):

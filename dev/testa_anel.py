@@ -281,7 +281,7 @@ class TestVoicePedalStart(unittest.TestCase):
         dry = dryouts.RingDryOuts(pedal, 0.03)
         with mock.patch("sys.stderr", io.StringIO()) as log:
             now[0] = 0.1
-            pedal.track(False)
+            dry.filled()
             now[0] = 0.756
             pedal.track(True, 7_000, now[0] - up_at)
             dry.ran_dry(0.656, 1)
@@ -307,7 +307,10 @@ class TestVoicePedalStart(unittest.TestCase):
     def test_a_pedal_on_as_the_thread_left_may_be_after_the_dry_out(self):
         counted, log = self.away(0.11, 0.5)
         self.assertEqual(counted, 1)
-        self.assertIn("(while the thread was away, maybe after the ring ran dry)", log)
+        self.assertIn("(after the ring was last filled, maybe after it ran dry)", log)
+        counted, log = self.away(0.095, 0.5)
+        self.assertEqual(counted, 1)
+        self.assertNotIn("maybe after it ran dry", log)
 
     def test_without_stderr_nothing_is_written(self):
         log = dryouts.Log()
@@ -383,15 +386,21 @@ class TestVoicePedalDryOut(unittest.TestCase):
         self.motor.voice_pedal = dryouts.VoicePedalStart(clock=lambda: self.now)
         self.drain, self.gate, self.held = threading.Event(), threading.Event(), threading.Event()
         self.gate.set()
+        self.read_gate, self.read_held = threading.Event(), threading.Event()
+        self.read_gate.set()
         self.log = io.StringIO()
         full = eng.INJ_FOLGA * eng.BLOCK
 
-        self.wrote = False
+        self.wrote = self.drain_next = False
 
         def na_fila(m):
             if not self.gate.is_set():
                 self.held.set()
                 self.gate.wait()
+                if self.drain_next:
+                    self.drain_next = False
+                    self.drain.set()
+                    return full
             if self.wrote:
                 self.wrote = False
                 return full
@@ -404,8 +413,17 @@ class TestVoicePedalDryOut(unittest.TestCase):
             self.wrote = True
             return len(x)
 
+        pista_ligou = injeta.Microfone.pista_ligou
+
+        def read_track(m):
+            if not self.read_gate.is_set():
+                self.read_held.set()
+                self.read_gate.wait()
+            return pista_ligou(m)
+
         patches = [mock.patch.object(injeta, "k32", self.k), mock.patch.object(injeta.Microfone, "na_fila", na_fila),
                    mock.patch.object(injeta.Microfone, "escreve", escreve),
+                   mock.patch.object(injeta.Microfone, "pista_ligou", read_track),
                    mock.patch.object(eng.preset, "pede", return_value=None), mock.patch("sys.stderr", self.log)]
         for p in patches:
             p.start()
@@ -415,6 +433,7 @@ class TestVoicePedalDryOut(unittest.TestCase):
         self.inj = eng.Injetor(self.motor)
         self.addCleanup(self.inj.para)
         self.addCleanup(self.gate.set)
+        self.addCleanup(self.read_gate.set)
         self.assertTrue(espera(lambda: self.inj.folga_min is not None), "the injector never served the reader")
         self.dry_done = threading.Event()
         ran_dry = self.inj.dry_outs.ran_dry
@@ -431,10 +450,22 @@ class TestVoicePedalDryOut(unittest.TestCase):
         self.a.leitor[0].batida = self.tick
 
     def dry_out(self):
-        self.assertTrue(espera(lambda: self.motor.voice_pedal._seen_before == self.now),
-                        "the ring thread never came round at the test's time")
+        self.assertTrue(espera(lambda: self.inj.dry_outs.filled_at == self.now),
+                        "the ring thread never filled the ring at the test's time")
         self.dry_done.clear()
         self.drain.set()
+        self.assertTrue(self.dry_done.wait(3.0), "the ring never ran dry")
+
+    def dry_out_after_away(self, away_s):
+        self.assertTrue(espera(lambda: self.inj.dry_outs.filled_at == self.now),
+                        "the ring thread never filled the ring at the test's time")
+        self.held.clear()
+        self.gate.clear()
+        self.assertTrue(self.held.wait(3), "the injector never got to the ring")
+        self.advance(away_s)
+        self.dry_done.clear()
+        self.drain.set()
+        self.gate.set()
         self.assertTrue(self.dry_done.wait(3.0), "the ring never ran dry")
 
     def logged(self):
@@ -545,6 +576,21 @@ class TestVoicePedalDryOut(unittest.TestCase):
         self.assertEqual(self.offset(self.pedal_lines()[-1], "came up"), 0.5)
         self.assertIn("its voice track came up 1.00 s after the pedal turned on", self.logged())
 
+    def test_a_track_up_within_what_the_ring_held_has_no_order(self):
+        self.pedal_on(1.0)
+        self.assertTrue(espera(lambda: self.inj.dry_outs.filled_at == self.now),
+                        "the ring thread never filled the ring at the test's time")
+        self.read_gate.clear()
+        self.assertTrue(self.read_held.wait(3), "the injector never got to the voice track")
+        self.advance(0.03)
+        self.producer.pista_liga(True)
+        self.dry_done.clear()
+        self.drain.set()
+        self.read_gate.set()
+        self.assertTrue(self.dry_done.wait(3.0), "the ring never ran dry")
+        self.assertIn("came up 0.00 s ago, after the ring was last filled, so which came first is not known",
+                      self.pedal_lines()[-1])
+
     def test_a_slow_log_does_not_hold_the_ring(self):
         release = threading.Event()
         log = self.log
@@ -574,6 +620,34 @@ class TestVoicePedalDryOut(unittest.TestCase):
         self.dry_out()
         self.assertEqual((self.inj.secas, self.inj.dry_outs.while_pedal_starting), (1, 0))
         self.assertEqual(self.pedal_lines(), [])
+
+    def test_dry_out_seen_past_the_window_of_a_track_up_within_it(self):
+        self.pedal_on(1.0)
+        self.track_up()
+        self.advance(4.9)
+        self.dry_out_after_away(0.656)
+        self.assertEqual(self.inj.dry_outs.while_pedal_starting, 1, "the ring ran dry 4.9 s after the track came up")
+        self.assertIn("came up 5.56 s ago", self.pedal_lines()[-1])
+
+    def test_dry_out_of_a_ring_filled_past_the_window_of_a_track_up(self):
+        self.pedal_on(1.0)
+        self.track_up()
+        self.advance(dryouts.AFTER_TRACK_S + 0.2)
+        self.dry_out_after_away(0.656)
+        self.assertEqual((self.inj.secas, self.inj.dry_outs.while_pedal_starting), (1, 0))
+
+    def test_pedal_and_track_up_while_the_ring_was_being_filled(self):
+        self.gate.clear()
+        self.assertTrue(self.held.wait(3), "the injector never got to the ring")
+        self.advance(0.3)
+        self.pedal_on(0.0)
+        self.producer.pista_liga(True)
+        self.dry_done.clear()
+        self.drain_next = True
+        self.gate.set()
+        self.assertTrue(self.dry_done.wait(3.0), "the ring never ran dry")
+        self.assertEqual(self.inj.estado()["secas_pedal"], 1, "the pedal turned on before the ring was last filled")
+        self.assertIn("so which came first is not known", self.pedal_lines()[-1])
 
     def test_dry_out_with_the_pedal_off(self):
         self.track_up()

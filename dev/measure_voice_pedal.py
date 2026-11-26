@@ -58,6 +58,14 @@ def hold(base, seconds):
     return list(states(base, seconds))
 
 
+def mic_refusal(asked, state):
+    opened = state["active_devices"]["mic"]
+    if (opened or "").casefold() != asked.casefold():
+        return (f"the server opened the microphone {opened!r} and not {asked!r}: pass the full name Windows gives it, "
+                "and check that it is plugged in")
+    return None
+
+
 def interruption(states_seen, mic):
     for st in states_seen:
         m = st["microfone"]
@@ -159,6 +167,9 @@ def main():
             if not read:
                 sys.exit(f"the filter of {a.mic} never read the ring (see {server_err})")
             state = call("GET", "/api/state")
+            refusal = mic_refusal(a.mic, state)
+            if refusal:
+                sys.exit(refusal)
             print(f"microphone {state['active_devices']['mic']}, voice {voice}; before: {state['microfone']}",
                   flush=True)
             log = work / "local" / "Ritmelli" / "logs" / "pistavoz.log"
@@ -192,7 +203,7 @@ def main():
                     job.end()
     dry = [ln for ln in lines(work / "server.err") if "ran dry" in ln]
     blocks = [c["voice_slowest_block_ms"] for c in cycles if c["voice_slowest_block_ms"] is not None]
-    result = {"microphone": a.mic, "voice": voice, "provider": a.provider, "cycles": cycles,
+    result = {"microphone": mic, "voice": voice, "provider": a.provider, "cycles": cycles,
               "dry_outs": sum(c["dry_outs"] for c in cycles),
               "dry_outs_while_starting": sum(c["dry_outs_while_starting"] for c in cycles),
               "slowest_track_up_s": max([c["track_up_after_s"] for c in cycles] or [None]),

@@ -962,8 +962,7 @@ class Injetor:
         self.voltas[min(int(s * 1000), VOLTA_MS - 1)] += 1
 
     def _confere_fila(self, fila, volta):
-        """O tanto no anel quando a thread chegou, antes de completar: guarda o menor e conta quando secou (o que diz,
-        e quando, e do dryouts.RingDryOuts)."""
+        """O menor tanto no anel na chegada da thread, e a seca contada (o que diz, e quando: dryouts.RingDryOuts)."""
         if self.folga_min is None or fila < self.folga_min:
             self.folga_min = fila
         seca = fila == 0
@@ -1100,6 +1099,7 @@ class Injetor:
                                 break
                             m.escreve(self.motor._mixa(BLOCK))
                             fila = m.na_fila()
+                        self.dry_outs.filled()
                         servidos = donos
                         prox = time.perf_counter() + BLOCK / SR
                     else:

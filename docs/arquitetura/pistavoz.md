@@ -34,9 +34,10 @@ desligou e religou, ou ligou e desligou, sem a thread ver); com um carimbo váli
 viva. Com o pedal subindo, a subida da pista sai no log uma vez, com quanto tempo depois do pedal ela veio. O
 `RingDryOuts` do `Injetor` conta cada seca entre o pedal ligar e `AFTER_TRACK_S` depois de a pista ligar no
 `secas_pedal` do `/api/state` e a põe no log com quanto tempo depois do pedal e da pista ela veio (a seca só é vista
-quando a thread volta, mas o anel secou logo no começo da ausência: no que ele guardava quando a thread saiu, o `full_s`
-que o `Injetor` dá; a pista que subiu depois disso veio depois da seca, a que subiu dentro disso fica sem ordem, e a
-seca de antes de o pedal ligar não conta no `secas_pedal`), até `PEDAL_LINES` linhas por subida do pedal (passou disso,
+quando a thread volta, mas o anel secou entre a última vez que ela o encheu, o `filled` no fim de cada volta, e o que
+ele guardava então, o `full_s` que o `Injetor` dá; a pista que subiu depois disso veio depois da seca, a que subiu
+dentro disso fica sem ordem, a seca de antes de o pedal ligar não conta no `secas_pedal`, e a janela dos
+`AFTER_TRACK_S` vale para o começo desse intervalo, e não para a volta da thread), até `PEDAL_LINES` linhas por subida do pedal (passou disso,
 a seca sai como as outras, uma linha a cada `QUIET_S`, e a conta segue). As linhas não saem da thread do anel: vão para
 uma fila de `LOG_LINES` lidas por uma thread só do log, e com a fila cheia, ou com a escrita falhando, a linha se perde
 e a thread do anel não espera (a próxima linha escrita diz quantas se perderam antes dela); a thread do log nasce com
