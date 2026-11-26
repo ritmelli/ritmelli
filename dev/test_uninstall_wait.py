@@ -27,12 +27,13 @@ def uninstall_wait():
 
 
 def run(helpers, condition, app):
-    code = "\n".join(["$ErrorActionPreference = 'Stop'", *helpers, f"$app = '{app}'", "$pasta = \"$app\\atualizacao\"",
+    code = "\n".join(["$ErrorActionPreference = 'Stop'", *helpers, "$app = $env:RITMELLI_TEST_APP", "$pasta = \"$app\\atualizacao\"",
                       f"$cond = {condition}",
                       "try { $null = Test-Path $pasta; 'direct=ok' } catch { \"direct=$($_.FullyQualifiedErrorId)\" }",
                       "try { \"result=$(& $cond)\" } catch { \"threw=$($_.FullyQualifiedErrorId)\" }"])
     p = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", code], capture_output=True,
-                       text=True, encoding="utf-8", errors="replace", timeout=120)
+                       text=True, encoding="utf-8", errors="replace", timeout=120,
+                       env=dict(os.environ, RITMELLI_TEST_APP=str(app)))
     return (p.stdout + p.stderr).strip().splitlines()
 
 
