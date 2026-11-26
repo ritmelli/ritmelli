@@ -1,6 +1,3 @@
-"""dev/theme_rebuild.py on small pages and on the theme of the working tree: what only moves code passes, and what
-does more fails, the theme with its scripts out of order or a function moved between them included. Exit 1 if a check
-fails."""
 import importlib
 import sys
 from pathlib import Path
