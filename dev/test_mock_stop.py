@@ -231,7 +231,7 @@ class RecordedConnect:
 
 
 def connect_that_times_out_is_cancelled_then_collected():
-    calls, connected = [], []
+    calls, connected, in_time = [], [], False
     real = _winapi.ConnectNamedPipe
     pipe = pipe_named(rf"\\.\pipe\ritmelli-nobody-{os.getpid()}")
     connecting = threading.Thread(target=lambda: connected.append(connect_within(pipe, 0.001)), daemon=True)
@@ -239,13 +239,14 @@ def connect_that_times_out_is_cancelled_then_collected():
     try:
         connecting.start()
         connecting.join(HOLDER_WAIT_S)
+        in_time = not connecting.is_alive()
     finally:
         _winapi.ConnectNamedPipe = real
         _winapi.CloseHandle(pipe)
         connecting.join(HOLDER_WAIT_S)
-    check(connected == [False] and calls == ["cancel", ("result", True, ERROR_OPERATION_ABORTED)],
+    check(in_time and connected == [False] and calls == ["cancel", ("result", True, ERROR_OPERATION_ABORTED)],
           f"a pipe connect that nobody answers is cancelled, then its result collected before the pipe closes, and "
-          f"it reports no connection ({connected}, {calls})")
+          f"it reports no connection (in time {in_time}, {connected}, {calls})")
 
 
 def endless_wav_header():
