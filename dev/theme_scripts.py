@@ -101,6 +101,13 @@ SEARCH_OPEN = ("(() => { const q = document.getElementById('q'); q.value = 'abc'
 OUTSIDE_TOUCH = ("document.getElementById('estante').dispatchEvent(new PointerEvent('pointerdown', {bubbles: true,"
                  " cancelable: true, composed: true, isPrimary: true, pointerId: 7, pointerType: 'touch', button: 0,"
                  " clientX: 11, clientY: 13}))")
+PADS_REDRAWN = ("(async () => { const c = document.querySelector('#pads > canvas.pads-px');"
+                " if (!c || !c.width) return {canvas: false};"
+                " const frame = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));"
+                " const drawn = c.toDataURL(); c.getContext('2d').clearRect(0, 0, c.width, c.height);"
+                " const cleared = c.toDataURL(); await frame(); const stays = c.toDataURL() === cleared;"
+                " document.dispatchEvent(new Event('repinta-canvas')); await frame();"
+                " return {canvas: true, drawn: drawn !== cleared, stays, back: c.toDataURL() === drawn}; })()")
 PAGE_READY_S = 15.0
 INLINE_MARK = re.compile(r"<!-- inline-script: ([\w-]+\.js) -->")
 
@@ -220,6 +227,12 @@ async def checks(tab):
     after = await tab.js("({closed: S.busca === null, touch: ultimoToque})")
     results.append((opened.get("open") and after.get("closed") and after.get("touch") == {"x": 11, "y": 13},
                     f"a touch outside the search on the mesa closes it, and queue.js still sees that touch ({after})"))
+
+    pads = (await tab.cmd("Runtime.evaluate", expression=PADS_REDRAWN, awaitPromise=True,
+                          returnByValue=True)).get("result", {}).get("value") or {}
+    results.append((pads == {"canvas": True, "drawn": True, "stays": True, "back": True},
+                    f"the pads canvas, cleared, stays cleared until a repinta-canvas, and then draws the pads again "
+                    f"({pads})"))
     return results
 
 
