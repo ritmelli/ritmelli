@@ -52,13 +52,16 @@ LOG = Log()
 class VoicePedalStart:
     def __init__(self, clock=time.monotonic):
         self.clock = clock
-        self.on_at = self.track_up_at = self._stamp = None
+        self.on_at = self.track_up_at = self._stamp = self.last_on = None
         self._live = False
 
     def pedal(self, on):
+        on_at = self.on_at
         if not on:
+            if on_at is not None:
+                self.last_on = (on_at, self.clock())
             self.on_at = None
-        elif self.on_at is None:
+        elif on_at is None:
             self.on_at = self.clock()
 
     def track(self, live, stamp=None, up_s_ago=0.0):
@@ -73,24 +76,29 @@ class VoicePedalStart:
             self._stamp = stamp
         return live
 
-    def starting(self, filled_at=None, full_s=0.0):
-        on_at, up_at, left_at = self.on_at, self.track_up_at, filled_at
-        if on_at is None:
+    def starting(self, filled=None, full_s=0.0):
+        on_at, last_on, up_at = self.on_at, self.last_on, self.track_up_at
+        lo, hi = filled or (None, None)
+        end = None if hi is None else hi + full_s
+        off_at = None
+        if (lo is not None and last_on is not None and last_on[1] > lo and last_on[0] <= end
+                and (on_at is None or on_at > end)):
+            on_at, off_at = last_on
+        if on_at is None or (end is not None and on_at > end):
             return on_at, None
         now = self.clock()
-        dry_by = None if left_at is None else left_at + full_s + TICK_S
-        if dry_by is not None and on_at > dry_by:
-            return on_at, None
         pedal = f"the pedal turned on {now - on_at:.2f} s ago"
-        if left_at is not None and on_at > left_at:
+        if off_at is not None:
+            pedal += f" and off {now - off_at:.2f} s ago"
+        if lo is not None and on_at > lo:
             pedal += " (after the ring was last filled, maybe after it ran dry)"
         if up_at is None or up_at < on_at:
             return on_at, f"{pedal}, its voice track isn't up yet"
-        if (now if left_at is None else left_at) - up_at > AFTER_TRACK_S:
+        if (now if lo is None else lo) - up_at > AFTER_TRACK_S:
             return on_at, None
-        if dry_by is not None and up_at > dry_by:
+        if end is not None and up_at > end + TICK_S:
             return on_at, f"{pedal}, its voice track came up {now - up_at:.2f} s ago, after the ring ran dry"
-        if left_at is not None and up_at > left_at - TICK_S:
+        if lo is not None and up_at > lo - TICK_S:
             return on_at, (f"{pedal}, its voice track came up {now - up_at:.2f} s ago, after the ring was last filled, "
                            "so which came first is not known")
         return on_at, f"{pedal}, its voice track came up {now - up_at:.2f} s ago"
@@ -104,8 +112,12 @@ class RingDryOuts:
         self._start, self._told_this_start = None, 0
         self.filled_at = None
 
-    def filled(self):
-        self.filled_at = self.pedal.clock()
+    def read_ring(self, read):
+        before = self.pedal.clock()
+        held = read()
+        if held > 0:
+            self.filled_at = (before, self.pedal.clock())
+        return held
 
     def ran_dry(self, back_s, count):
         start, starting = self.pedal.starting(self.filled_at, self.full_s)

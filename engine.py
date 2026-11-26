@@ -961,7 +961,7 @@ class Injetor:
         self.volta_max = max(self.volta_max, s)
         self.voltas[min(int(s * 1000), VOLTA_MS - 1)] += 1
 
-    def _confere_fila(self, fila, volta):
+    def _confere_fila(self, fila, volta, m):
         """O menor tanto no anel na chegada da thread, e a seca contada (o que diz, e quando: dryouts.RingDryOuts)."""
         if self.folga_min is None or fila < self.folga_min:
             self.folga_min = fila
@@ -969,6 +969,7 @@ class Injetor:
         self.saude.fila(fila, passagem=seca and self.motor.em_passagem(), esticando=seca and RUBBER_BAND.em_curso())
         if seca:
             self.secas += 1
+            self.motor._pista_viva = self.motor.voice_pedal.track(m.pista_viva(), *m.pista_ligou())
             self.dry_outs.ran_dry(volta, self.secas)
 
     def para(self):
@@ -1089,17 +1090,16 @@ class Injetor:
                     if vivos:
                         self._teve_leitor, self.perdeu_em = True, None
                         donos = tuple(sorted(lt.dono for lt in vivos))
-                        fila = m.na_fila()
+                        fila = self.dry_outs.read_ring(m.na_fila)
                         if donos == servidos:
-                            self._confere_fila(fila, volta)
+                            self._confere_fila(fila, volta, m)
                         # no maximo INJ_FOLGA blocos (o que enche o anel vazio): o leitor que some no meio deixa o
                         # na_fila em 0, e sem o limite a thread nao saia daqui nem via a perda
                         for _ in range(INJ_FOLGA):
                             if not self._vai or fila > (INJ_FOLGA - 1) * BLOCK:
                                 break
                             m.escreve(self.motor._mixa(BLOCK))
-                            fila = m.na_fila()
-                        self.dry_outs.filled()
+                            fila = self.dry_outs.read_ring(m.na_fila)
                         servidos = donos
                         prox = time.perf_counter() + BLOCK / SR
                     else:

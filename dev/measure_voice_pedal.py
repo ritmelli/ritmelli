@@ -160,6 +160,9 @@ def main():
             if "pistavoz" not in [e.get("id") for e in call("GET", "/api/effects")]:
                 sys.exit(f"the voice pedal is off in this checkout (see {work / 'server.err'})")
             call("POST", "/api/devices", {"mic": a.mic})
+            refusal = mic_refusal(a.mic, call("GET", "/api/state"))
+            if refusal:
+                sys.exit(refusal)
             try:
                 read = any(st["microfone"]["leitores"] >= 1 for st in states(base, UP_S))
             except EOFError as ex:
@@ -167,9 +170,6 @@ def main():
             if not read:
                 sys.exit(f"the filter of {a.mic} never read the ring (see {server_err})")
             state = call("GET", "/api/state")
-            refusal = mic_refusal(a.mic, state)
-            if refusal:
-                sys.exit(refusal)
             print(f"microphone {state['active_devices']['mic']}, voice {voice}; before: {state['microfone']}",
                   flush=True)
             log = work / "local" / "Ritmelli" / "logs" / "pistavoz.log"

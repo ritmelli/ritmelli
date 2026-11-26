@@ -139,7 +139,7 @@ class TheMicrophone(unittest.TestCase):
               mock.patch.object(measure.so_mock, "start_job", return_value=(proc, None)),
               mock.patch.object(measure.tempfile, "mkdtemp", return_value=work),
               mock.patch.object(measure.urllib.request, "urlopen", urlopen),
-              mock.patch.object(measure, "states", lambda base, seconds: iter([state(mic=opened)])),
+              mock.patch.object(measure, "states", lambda base, seconds: iter([state(mic=opened, leitores=0)])),
               mock.patch.object(sys, "argv", ["measure_voice_pedal.py", asked, "--port", "8970"]),
               self.assertRaises(SystemExit) as stop):
             measure.main()
