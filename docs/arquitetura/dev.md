@@ -160,6 +160,9 @@ Nunca no Ritmelli instalado, com o microfone de verdade nem no Discord de quem u
 jogando. O Discord se testa num canal fechado de teste, e o `instala-todos` e o `remove` do
 `microfone\microfone.py`, que mexem em todo microfone e no filtro do Ritmelli instalado, só num Windows de teste.
 
+O `testa_pasta_protegida --disco` cria e apaga pastas em Program Files: também só num Windows de teste. O
+`microfone\apo\compila.bat teste` roda com o Ritmelli desligado e sem o `--mock` no ar, que segura a DLL dos efeitos.
+
 ## A montagem
 
 Na CI, só o "Monta o instalador" (`monta.yml`) compila o `.iss` e roda a parcial, a migração e o atualizador: a

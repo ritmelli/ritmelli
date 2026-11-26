@@ -20,7 +20,7 @@ até 80 linhas (o `dev/garden.py` confere as duas).
   faz o filtro de verdade ler o que o `injeta.py` escreve.
 - Efeito de voz: as configurações moram no `fx.py`, e o `microfone/preset.py` as leva ao motor em C++. Etapa nova
   precisa do par no `microfone/apo/voz.h` (o `dev/testa_voz.py` falha sem ele).
-- A chave que o tema pede (num `data-i18n*` ou no `I18N.t`) existe nas duas línguas:
+- A chave escrita entre aspas num `data-i18n*` ou dentro de uma chamada do `I18N.t` existe nas duas línguas:
   `themes/ritmelli/i18n/i18n_en.properties` e `i18n_pt_BR.properties`, com as mesmas chaves na mesma ordem, e as da
   galeria em `gallery/i18n/`; a chave `server.*` de cada `i18n.msg` e `i18n.Recusa` do servidor existe em todo tema com
   `i18n/`, com os mesmos parâmetros (o `testa_i18n` confere as duas coisas).
@@ -50,11 +50,11 @@ até 80 linhas (o `dev/garden.py` confere as duas).
 | Servidor e YouTube | `server.py`, `comandos.py`, `automatico.py`, `music.py` (as funções puras de música), `yt_fora.py`, `yt_erros.py` | `testa_comandos`, `testa_automatico`, `testa_adianta`, `testa_rapido`, `testa_vivo`, `testa_musica` |
 | `--mock` | `server.py`, `pastas.py`, `dev/so_mock.py` (a trava que tira as ferramentas de `dev/` da 8799) | `testa_mock`, `testa_so_mock` |
 | Gravação dos dados | `pastas.py` (`save_json`), o `grava_cfg` do `server.py` | `testa_grava` (o `save_json`), `test_grava_cfg` (o `grava_cfg` grava sob a trava, de várias threads) |
-| Pasta protegida | `pastas.py` (`pasta_protegida`, `create_task`, `disarm`) e quem os chama (`microfone/microfone.py`, `atualizador.py`, `atualizacao.py`, `migra.py`) | `testa_pasta_protegida` (em memória; o `--disco` precisa de administrador e cria pasta em Program Files: só num Windows de teste), `testa_mfx`, `testa_atualizador`, `testa_atualizacao`, `testa_migra` |
+| Pasta protegida | `pastas.py` (`pasta_protegida`, `create_task`, `disarm`) e quem os chama (`microfone/microfone.py`, `atualizador.py`, `atualizacao.py`, `migra.py`) | `testa_pasta_protegida` (em memória; o `--disco` precisa de administrador e cria pasta em Program Files), `testa_mfx`, `testa_atualizador`, `testa_atualizacao`, `testa_migra` |
 | A regra no setup | `instalador/protegida.ps1` | `testa_pasta_protegida --disco` (roda o `instalador/protegida.ps1` em cada caso e exige o mesmo veredito do `pastas.py`) |
 | Pareamento e permissões | `pareamento.py`, `permissao.py`, o `guard` do `server.py` | `testa_pareamento`, `testa_mock`, `testa_protocolo` |
 | Protocolo da sessão remota | `docs/protocolo-remoto.md`, `docs/protocolo-remoto/v1/` | `testa_protocolo` (`--gera` escreve as fixtures de novo) |
-| Filtro e efeitos | `microfone/`, `fx.py`, `instalador/mudos.iss`, `winvol.py` | `testa_filtro`, `testa_mfx`, `testa_microfone`, `testa_anel`, `testa_aparelho_mudo` (os casos do setup de teste precisam do Inno Setup 6: sem ele, pulam no PC e reprovam no GitHub), `testa_voz` e `microfone/apo/teste/teste_reamostra.py` (este, o `testa_filtro`, o `testa_microfone` e o `testa_voz` precisam das DLLs do `microfone\apo\compila.bat teste`, com o Ritmelli desligado: o `--mock` também segura a DLL dos efeitos), `test_winvol` (o volume do microfone, com aparelhos falsos do Windows) |
+| Filtro e efeitos | `microfone/`, `fx.py`, `instalador/mudos.iss`, `winvol.py` | `testa_filtro`, `testa_mfx`, `testa_microfone`, `testa_anel`, `testa_aparelho_mudo` (os casos do setup de teste precisam do Inno Setup 6: sem ele, pulam no PC e reprovam no GitHub), `testa_voz` e `microfone/apo/teste/teste_reamostra.py` (este, o `testa_filtro`, o `testa_microfone` e o `testa_voz` precisam das DLLs do `microfone\apo\compila.bat teste`), `test_winvol` (o volume do microfone, com aparelhos falsos do Windows) |
 | Troca de voz | `pistavoz.py`, `pista.py`, `conversor.py`, `vozes.json` | `testa_pedal_voz`, `testa_vozes`, `testa_pista`, `testa_conversor` |
 | Atualizações | `atualizacao.py`, `atualizador.py`, `instalador/atualizacao/` | `testa_atualizacao`, `testa_atualizador` e `instalador/atualizacao/testa_parcial.py` |
 | Textos | `i18n.py`, `themes/ritmelli/i18n/`, `gallery/i18n/` | `testa_i18n` |
