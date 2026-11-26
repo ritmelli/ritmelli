@@ -81,7 +81,7 @@ STDLIB = [f"dev/testa_{n}.py" for n in ("i18n", "metricas", "migra", "mock", "vo
                                              "ganchos", "pasta_protegida", "so_mock")] + [
     "dev/test_trusted_author.py", "dev/test_needs_owner.py", "dev/test_ci_workflow.py",
     "dev/test_forbidden_terms.py", "dev/test_music.py", "dev/test_bumbo_grid.py", "dev/garden.py",
-    "dev/test_garden.py", "dev/test_monta_contract.py", "dev/test_lock_order.py",
+    "dev/test_garden.py", "dev/test_audio_imports.py", "dev/test_monta_contract.py", "dev/test_lock_order.py",
     "dev/test_queue_entries.py"]
 # o STDLIB mais os que usam as bibliotecas do app (requirements-dev.txt) e o ffmpeg
 COMPLETO = STDLIB + [f"dev/testa_{n}.py" for n in (
@@ -89,8 +89,8 @@ COMPLETO = STDLIB + [f"dev/testa_{n}.py" for n in (
     "passagens", "pedal_voz", "pista", "preabre", "protocolo", "rapido", "transicao", "vivo")] + [
     "instalador/atualizacao/testa_parcial.py", "dev/test_compara_not_ready.py",
     "dev/test_compara_push_steps.py", "dev/test_external_module.py", "dev/test_release_workflow.py",
-    "dev/test_fitcheck_ready.py", "dev/test_mock_stop.py", "dev/test_races_211.py",
-    "dev/test_stretch_outgoing.py"]
+    "dev/test_fitcheck_ready.py", "dev/test_mock_stop.py", "dev/test_races_211.py", "dev/test_stretch_outgoing.py",
+    "dev/test_grava_cfg.py", "dev/test_andamento.py", "dev/test_compasso.py", "dev/test_winvol.py"]
 LONG_TESTS = {"bench": "dev/testa_passagem.py", "capture": "dev/test_capture.py"}
 # os do filtro, com as DLLs do microfone\apo\compila.bat teste: o testa.yml so roda quando a area do filtro muda
 # o testa_aparelho_mudo fica aqui pelo Inno Setup, que o job do filtro instala: sem ele, os casos do instalador
@@ -216,7 +216,7 @@ VERDICT_STEP = "Verdict"
 # what goes into the key of a compara capture besides the commit and the Chrome version: the scripts that take it and
 # the libraries of the server
 CAPTURA = ("dev/compara.py", "dev/fitcheck.py", "dev/so_mock.py", "requirements.txt", "requirements-dev.txt",
-           "instalador/travas.txt")
+           "instalador/travas.txt", "dev/travas.txt")
 LONG_TITLES = {"bench": "Banca", "capture": "Captura"}
 # o filtro por caminho do testa.yml (caminhos do git, com /; o que termina em / e a pasta inteira). O PR que leva
 # codigo de renderizacao ou de traducao para outro modulo poe o modulo na "tela"
@@ -226,7 +226,7 @@ AREAS = {
     "tela": ("themes/", "server.py", "i18n.py", "metricas.py", "dev/compara.py", "dev/fitcheck.py", "dev/so_mock.py",
              "dev/missing_script.py", "dev/theme_scripts.py", "dev/theme_listeners.py", "dev/test_theme_listeners.py"),
 }
-TODAS = (".github/workflows/testa.yml", ".github/actions/", "dev/testa_tudo.py", "instalador/travas.txt")
+TODAS = (".github/workflows/testa.yml", ".github/actions/", "dev/testa_tudo.py", "instalador/travas.txt", "dev/travas.txt")
 # a etiqueta do PR que dispara uma area mesmo sem arquivo dela: a extracao-tema, do PR que leva codigo de
 # renderizacao ou de traducao do tema para outro modulo (posta por quem mantem o repo)
 ETIQUETAS = {"extracao-tema": "tela"}

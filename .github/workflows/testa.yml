@@ -378,7 +378,7 @@ jobs:
         if: steps.areas.outputs.roda == 'true' && github.event_name != 'push'
         with:
           path: ${{ runner.temp }}\compara-ref
-          key: compara-${{ steps.chave.outputs.base }}-${{ steps.chave.outputs.chave }}-${{ hashFiles('dev/compara.py', 'dev/fitcheck.py', 'dev/so_mock.py', 'requirements.txt', 'requirements-dev.txt', 'instalador/travas.txt') }}
+          key: compara-${{ steps.chave.outputs.base }}-${{ steps.chave.outputs.chave }}-${{ hashFiles('dev/compara.py', 'dev/fitcheck.py', 'dev/so_mock.py', 'requirements.txt', 'requirements-dev.txt', 'instalador/travas.txt', 'dev/travas.txt') }}
       - name: compara
         id: compara
         if: steps.areas.outputs.roda == 'true'
@@ -414,7 +414,7 @@ jobs:
         if: always() && steps.compara.outputs.head_cache == 'true'
         with:
           path: ${{ runner.temp }}\compara-ref
-          key: compara-${{ github.sha }}-${{ steps.chave.outputs.chave }}-${{ hashFiles('dev/compara.py', 'dev/fitcheck.py', 'dev/so_mock.py', 'requirements.txt', 'requirements-dev.txt', 'instalador/travas.txt') }}
+          key: compara-${{ github.sha }}-${{ steps.chave.outputs.chave }}-${{ hashFiles('dev/compara.py', 'dev/fitcheck.py', 'dev/so_mock.py', 'requirements.txt', 'requirements-dev.txt', 'instalador/travas.txt', 'dev/travas.txt') }}
       - name: Prints
         if: always() && (steps.compara.outcome == 'failure' || steps.compara.outputs.mudou == 'true')
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9

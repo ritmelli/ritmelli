@@ -19,6 +19,7 @@ starts is a fake Popen: nothing is run.
     python dev/testa_so_mock.py
 
 Exits 1 if something fails."""
+import ctypes
 import http.server
 import json
 import socket
@@ -121,13 +122,13 @@ class FakeStdin:
 
 
 class FakeJob:
-    def __init__(self, left=0, query_fails=False):
-        self.left, self.ended, self.query_fails = left, False, query_fails
+    def __init__(self, left=0, query_fails=False, seen=()):
+        self.left, self.ended, self.query_fails, self.seen = left, False, query_fails, list(seen)
 
     def left_after(self, seconds):
         if self.query_fails:
             raise so_mock.Recusa("the test server job did not list its processes (error 5)")
-        return self.left
+        return self.left, self.seen
 
     def end(self, seconds=10.0):
         self.ended = True
@@ -287,10 +288,12 @@ def child(srv):
     job = FakeJob()
     so_mock.Filho(FakeChild(), srv.port, job).encerra(espera=1)
     check(job.ended, "a clean stop still ends the server's job, so nothing it started outlives it")
-    job = FakeJob(left=2)
+    job = FakeJob(left=1, seen=[("ffmpeg.exe", False), ("conhost.exe", True)])
     msg = refused(so_mock.Filho(FakeChild(), srv.port, job).encerra, espera=1)
-    check(job.ended and msg is not None and "left 2" in msg,
-          f"a server that stops but leaves processes running fails the stop, with them ended ({msg})")
+    check(job.ended and msg is not None and "left 1" in msg and "ffmpeg.exe ended after 1 s" in msg
+          and "conhost.exe still running after 1 s" in msg,
+          f"a server that stops but leaves processes running fails the stop, with them ended, and names each process "
+          f"that was in its job and whether it was still running ({msg})")
     job = FakeJob(query_fails=True)
     msg = refused(so_mock.Filho(FakeChild(), srv.port, job).encerra, espera=1)
     check(job.ended and msg is not None and "did not list" in msg,
@@ -407,7 +410,78 @@ def starts():
           f"another --mock answering on the port while the child exits: refused, the answer isn't the child's ({msg})")
 
 
+
+class FakeKernel:
+    def __init__(self, processes, exits_on_first_name=None, ended_before_listing=()):
+        self.processes, self.named = {h: list(v) for h, v in processes.items()}, []
+        self.exits_on_first_name, self.ended_before_listing, self.asked = exits_on_first_name, ended_before_listing, set()
+
+    def WaitForSingleObject(self, handle, ms):
+        if handle.value not in self.asked:
+            self.asked.add(handle.value)
+            return 0 if handle.value in self.ended_before_listing else so_mock.WAIT_TIMEOUT
+        return so_mock.WAIT_TIMEOUT if self.processes[handle.value][2] else 0
+
+    def QueryFullProcessImageNameW(self, handle, flags, buf, size):
+        name = self.processes[handle.value][0]
+        if not self.named and self.exits_on_first_name is not None:
+            self.processes[self.exits_on_first_name][1:] = [0, False]
+        self.named.append(handle.value)
+        if name is None:
+            ctypes.set_last_error(5)
+            return 0
+        buf.value = "C:/x/" + name
+        return 1
+
+    def GetExitCodeProcess(self, handle, code):
+        code._obj.value = self.processes[handle.value][1]
+        return 1
+
+    def CloseHandle(self, handle):
+        return 1
+
+
+def leftovers(processes, active, exits_on_first_name=None, ended_before_listing=(), born_in_wait=()):
+    job = object.__new__(so_mock._Job)
+    listings = [[h for h in processes if h not in born_in_wait], list(processes)]
+    job.k = FakeKernel(processes, exits_on_first_name, ended_before_listing)
+    with mock.patch.object(so_mock._Job, "members", lambda self: listings.pop(0) if len(listings) > 1 else listings[0]),             mock.patch.object(so_mock._Job, "active", lambda self: active):
+        try:
+            return job.left_after(0.01), job.k.named
+        except so_mock.Recusa as ex:
+            return (None, str(ex)), job.k.named
+
+
+def left_after_names():
+    (left, seen), named = leftovers({1: ("ffmpeg.exe", 0, False)}, 0)
+    check(left == 0 and seen == [] and named == [],
+          f"a job left empty is not asked for any process name ({left}, {seen}, {named})")
+    (left, seen), named = leftovers({1: (None, 259, True), 2: ("conhost.exe", 259, True),
+                                     3: ("python.exe", 259, False)}, 2)
+    check(left == 2 and seen == [("a process whose name could not be read (error 5)", True), ("conhost.exe", True),
+                                 ("python.exe", False)],
+          f"a process whose name cannot be read is listed as such, the others are still named, and one that ended with "
+          f"code 259 is not taken for one still running ({seen})")
+    (left, seen), _ = leftovers({1: ("ffmpeg.exe", 259, True), 2: ("conhost.exe", 259, True)}, 2,
+                                exits_on_first_name=2)
+    check(seen == [("ffmpeg.exe", True), ("conhost.exe", True)],
+          f"each process is reported as it was when the wait ended, even one that exits while the names are read ({seen})")
+    (left, seen), named = leftovers({1: (None, 0, False)}, 1, ended_before_listing={1})
+    check(left == 0 and seen == [] and named == [],
+          f"a server that had already exited when the job was listed, still in the job's count, is not a process left "
+          f"running ({left}, {seen}, {named})")
+    (left, seen), named = leftovers({1: (None, 0, False), 2: ("python.exe", 259, True)}, 1, ended_before_listing={1})
+    check(left == 1 and seen == [("python.exe", True)] and named == [2],
+          f"a process that had already ended when the job was listed, as the server whose wait returned, is not named "
+          f"as left in the job ({seen}, {named})")
+    (left, seen), _ = leftovers({1: ("python.exe", 0, False), 2: ("ffmpeg.exe", 259, True)}, 0, born_in_wait={2})
+    check(left == 1 and seen == [("python.exe", False)],
+          f"a process started during the wait counts as left, and the names are those running when the job was listed "
+          f"({left}, {seen})")
+
+
 app_port()
+left_after_names()
 fake = FakeServer()
 try:
     state(fake)
