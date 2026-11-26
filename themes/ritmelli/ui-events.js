@@ -1,14 +1,14 @@
 /* UI-EVENTS-JS-INICIO */
 'use strict';
 /* ---------- eventos da interface ---------- */
-if (scriptLoaded('shelf.js')) bindShelfClick();
-if (!scriptsMissing().length) bindVoiceEffects();
+bindShelfClick();
+bindVoiceEffects();
 matchMedia('(max-width: 899.98px)').addEventListener('change', () => {
   abrirGaveta(S.gaveta); if (!celular()) abrirPalco(false); else abrirDisco(false); inertPalco(); textoBusca();
 });
-if (scriptLoaded('stage.js')) bindMiniBar();
+bindMiniBar();
 $('#b-mudo-topo').addEventListener('click', mutarComAviso);
-if (scriptLoaded('disc-page.js')) bindDiscPage();
+bindDiscPage();
 /* na mesa a prateleira, os pedais e a maleta correm de lado: a rodinha do mouse, que rola em pe, corre os tres. O
    ouvinte so existe com a mesa montada (montarMesa): o wheel que bloqueia a rolagem, preso na pedaleira em toda tela,
    mudava o desenho do feltro no celular (um a seis pontos de cor, no compara) */
@@ -23,7 +23,7 @@ function rodinhas(on) {
   for (const rolo of [$('#estante'), $('#gaveta'), $('#gaveta-dir'), $('.fila-parede .lista-fila')])
     rolo[on ? 'addEventListener' : 'removeEventListener']('wheel', rodaDeLado, { passive: false });
 }
-if (scriptLoaded('stage.js')) bindStageButtons();
+bindStageButtons();
 /* a pilha e [pagina, busca, palco, opcoes]: cada voltar fecha o que esta por cima. Entrada
    morta (de antes de a pagina recarregar, ou que diz aberto o que ja fechou) o voltar pula:
    senao um voltar nao fazia nada, e a busca so fechava no segundo (18/10) */
@@ -40,8 +40,8 @@ addEventListener('popstate', e => {
     history.back();
   }
 });
-if (scriptLoaded('stage.js')) bindStageGestures();
-if (scriptLoaded('shelf.js')) bindShelf();
+bindStageGestures();
+bindShelf();
 /* no toque a barra so muda arrastando o cursor: encostar em outro ponto da canaleta (sem
    querer, rolando a pagina) pulava o volume ou a faixa para la; o mouse
    e o teclado seguem como antes */
@@ -62,11 +62,11 @@ document.querySelectorAll('input[type=range]').forEach(r => {
   r.addEventListener('input', barrar, true);
   r.addEventListener('change', barrar, true);
 });
-if (scriptLoaded('receiver.js')) bindReceiver();
-if (scriptLoaded('turntable.js')) bindTurntable();
-if (!scriptsMissing().length) bindSearch();
-if (scriptLoaded('phone.js')) bindPhoneButton();
-if (scriptLoaded('devices.js')) bindDeviceButtons();
+bindReceiver();
+bindTurntable();
+bindSearch();
+bindPhoneButton();
+bindDeviceButtons();
 
 function campoDeTexto(t) {
   if (!t || !t.closest) return false;

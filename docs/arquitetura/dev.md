@@ -41,14 +41,15 @@ do "Cancelada", com um mutante de cada, e que toda biblioteca da CI tem versão 
 `fitcheck` e o `compara` esperam o tema pela mesma função (o `wait_ready` do `dev/fitcheck.py`), que separa o
 Chrome que caiu do tema que não ficou pronto e, no segundo caso, mostra cada condição, os erros da página e as
 respostas com erro (o `Network.responseReceived`). O `dev/test_compara_not_ready.py` roda o `compara` com um sinal
-de pronto que nunca fecha e confere o diagnóstico, no celular e na mesa, com os 3 s contados da página carregada e
-do script que ele injeta já recusado (sem isso, um runner lento chegava ao veredito antes do 404); o
-`dev/test_fitcheck_ready.py` faz o mesmo no `fitcheck` e confere o relógio do aviso dos dados de uso: os 6 s contam da resposta do `GET /api/state` da página
-(o aviso só abre depois do estado), e não do `Page.navigate`. Com um script do tema ou o estado atrasados de propósito
-o aviso ainda passa, também na reabertura depois do Esc (cada carga conta do estado dela), e um aviso que abre 8 s
-depois do estado reprova. O servidor desses casos sobe com o `dev/stacks_hook` (um `sitecustomize` ligado a um
-socket do teste): quando o `GET /api/state` não volta do servidor em 2 s, o proxy do teste pede as pilhas de todas
-as threads dele, e elas saem no veredito (o `server_stacks`). Todo servidor de teste que o `dev/so_mock.py` sobe nasce
+de pronto que nunca fecha e confere o diagnóstico, no celular e na mesa, com os 3 s contados da página carregada e do
+script que ele injeta já recusado (sem isso, um runner lento chegava ao veredito antes do 404); o
+`dev/test_fitcheck_ready.py` faz o mesmo no `fitcheck` e confere o relógio do aviso dos dados de uso: os 6 s contam da
+resposta do `GET /api/state` da página (o aviso só abre depois do estado), e não do `Page.navigate`. Com a página do
+tema (que leva todos os scripts) ou o estado atrasados de propósito o aviso ainda passa, também na reabertura depois do
+Esc (cada carga conta do estado dela), e um aviso que abre 8 s depois do estado reprova. O servidor desses casos sobe
+com o `dev/stacks_hook` (um `sitecustomize` ligado a um socket do teste): quando o `GET /api/state` não volta do
+servidor em 2 s, o proxy do teste pede as pilhas de todas as threads dele, e elas saem no veredito (o `server_stacks`).
+Todo servidor de teste que o `dev/so_mock.py` sobe nasce
 suspenso num job do Windows (o que ele abrir fica no job) e recebe o `--stop-on-stdin-eof`: desliga quando o teste
 fecha a entrada dele, sem pedido, e o papel do celular, que o `POST /api/shutdown` recusa, desliga do mesmo jeito.
 Toda parada esvazia o job. Na parada pela entrada, o servidor que não sai em 10 s, sai com erro ou deixa processo
@@ -100,7 +101,9 @@ que para, como o de verdade, se o `--setup`, o `--parcial` ou o `--parcial-info`
 parcial) tem de sair do jeito que o caso a montou, mais esse `manifest.json`, e cada caso traz os mutantes do script
 que ele reprova. O `atualizacao/test_contract.py` do `ritmelli-server` roda o mesmo script num build de mentira, até a
 assinatura de ensaio e as notas da versão. O
-`--tela` junta o `fitcheck` e o `compara` do jeito do PR (no `testa.yml` o `compara` roda em três jobs:
+`--tela` junta o `fitcheck`, o `compara` do jeito do PR e as conferências do tema num Chrome sem tela, entre elas a da
+gramática da página, o `dev/theme_page_oracle.py`, descrita no [temas.md](temas.md) (no `testa.yml` o `compara` roda em
+três jobs:
 o Compara: base e o Compara: HEAD capturam em paralelo, pelo `--capture-base` e pelo `--capture`, a base só
 quando o cache do Actions não a tem, e o Compara compara as duas pelo `--compara --head-capture`; o
 `dev/test_ci_workflow.py` exige a captura da base num job próprio, sem `needs` entre os dois), e o `--areas` é o filtro por caminho do
@@ -179,7 +182,7 @@ base e o descanso dele, os botões de tocar do palco e do mini player e o pisado
 o LED dos pedais, a chave 110/220 do fim do disco, o trilho e o cursor das barras de tempo e volume (os da chave de correr que ela substituiu) e o salvar da parecida no prato, e grava as
 variáveis `--braco-*`, `--tocar-*`, `--icone-*`, `--knob-margem` e `--led-recuo` no
 `themes/ritmelli/gerado/pecas.css`, que o tema carrega fora do bloco do celular, e a `PE_SVG`, a `LED_SVG`, os `KNOBS`, a
-`CHAVE_PARECIDAS` e o `SALVAR_PIXEL` no `themes/ritmelli/gerado/pecas.js`, que o tema carrega antes do script principal;
+`CHAVE_PARECIDAS` e o `SALVAR_PIXEL` no `themes/ritmelli/gerado/pecas.js`, que o tema carrega no `<head>`;
 os dois arquivos inteiros) e `dev/previews.py` (gera o preview de cada tema para a galeria, um `preview_<lingua>.png` por língua no tema com textos e um `preview.png` no que não tem, com a prateleira de mentira do
 `dev/compara.py`; ele entra no git porque o instalador leva a pasta do tema como ela está).
 

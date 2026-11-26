@@ -5,71 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ritmelli</title>
 <!-- i18n -->
-<script>
-/* I18N: os textos da interface na lingua de quem usa (o plano esta no I18N.md do ritmelli-server). Os textos moram em
-   i18n/i18n_<lingua>.properties, e o servidor (i18n.py) poe no lugar do comentario i18n acima os da lingua escolhida e
-   os do ingles, a reserva para chave que falte. Na marcacao: data-i18n="chave" (o texto) e data-i18n-title,
-   data-i18n-aria-label e data-i18n-placeholder (os atributos), aplicados no comeco do script principal. No JS:
-   I18N.t('chave', { param }) e, com plural, I18N.tp('chave', n) (as chaves chave.one e chave.other). O nome curto t
-   nao serve: ele ja e variavel local em mais de cem funcoes daqui. O texto com negrito ou codigo dentro da frase
-   (<b>...</b>, <code>...</code>) vai pelo data-i18n ou pelo I18N.rico(elemento, 'chave', { param }); na marcacao, o
-   filho com data-i18n-lugar="nome" entra no {nome} da frase (a URL do celular, que o JS preenche depois) */
-const I18N = (() => {
-  const d = window.I18N_DADOS || { lingua: 'pt_BR', textos: {}, reserva: {} };
-  const lang = d.lingua.replace('_', '-');
-  const tem = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
-  const existe = k => tem(d.textos, k) || tem(d.reserva, k);
-  const avisadas = new Set();
-  function bruto(chave) {
-    if (tem(d.textos, chave)) return d.textos[chave];
-    if (tem(d.reserva, chave)) return d.reserva[chave];
-    // a chave que falta nas duas linguas aparece na tela como a propria chave: o erro fica a vista
-    if (!avisadas.has(chave)) { avisadas.add(chave); console.warn(`i18n: missing key "${chave}"`); }
-    return chave;
-  }
-  function t(chave, params) {
-    const s = bruto(chave);
-    return params ? s.replace(/\{(\w+)\}/g, (m, k) => (tem(params, k) ? String(params[k]) : m)) : s;
-  }
-  // o singular so para 1, nas duas linguas que temos: o Intl.PluralRules poe o 0 no singular em portugues, e o Ritmelli
-  // sempre escreveu "0 discos". Uma lingua com outras regras pede o plural.select aqui
-  function tp(chave, n, params) {
-    const k = `${chave}.${n === 1 ? 'one' : 'other'}`;
-    return t(existe(k) ? k : `${chave}.other`, { n: n.toLocaleString(lang), ...params });
-  }
-  // numero com as casas e a virgula (ou o ponto) da lingua
-  const num = (v, casas) => v.toLocaleString(lang, { minimumFractionDigits: casas, maximumFractionDigits: casas });
-  // so <b> e <code> viram elemento, e sempre com textContent: nada dos arquivos passa por innerHTML. Um param que e
-  // um elemento (Node) entra inteiro no lugar do {param}
-  function rico(e, chave, params = {}) {
-    const troca = s => s.replace(/\{(\w+)\}/g, (m, k) => (tem(params, k) && !(params[k] instanceof Node) ? String(params[k]) : m));
-    e.replaceChildren(...bruto(chave).split(/(<(?:b|code)>[\s\S]*?<\/(?:b|code)>|\{\w+\})/).filter(Boolean).map(p => {
-      const tag = p.match(/^<(b|code)>([\s\S]*)<\/\1>$/);
-      if (tag) { const x = document.createElement(tag[1]); x.textContent = troca(tag[2]); return x; }
-      const k = (p.match(/^\{(\w+)\}$/) || [])[1];
-      return k && tem(params, k) && params[k] instanceof Node ? params[k] : document.createTextNode(troca(p));
-    }));
-  }
-  const ATRIBUTOS = ['title', 'aria-label', 'placeholder'];
-  function aplica(raiz = document) {
-    for (const e of raiz.querySelectorAll('[data-i18n]')) {
-      const lugares = {};
-      for (const f of e.querySelectorAll('[data-i18n-lugar]')) lugares[f.dataset.i18nLugar] = f;
-      rico(e, e.dataset.i18n, lugares);
-    }
-    for (const a of ATRIBUTOS) {
-      for (const e of raiz.querySelectorAll(`[data-i18n-${a}]`)) e.setAttribute(a, t(e.getAttribute(`data-i18n-${a}`)));
-    }
-  }
-  document.documentElement.lang = lang;
-  // o texto da lingua de reserva (o ingles): a reserva do que tem um desenho por palavra (os botoes do Locutor)
-  const reserva = k => (tem(d.reserva, k) ? d.reserva[k] : undefined);
-  return { lingua: d.lingua, lang, tem: existe, t, tp, num, rico, aplica, reserva };
-})();
-</script>
-<!-- inline-script: script-failed.js -->
-<!-- a pagina aparece quando os textos ja estao no lugar (o I18N.aplica, no comeco do script principal) -->
-<style>html:not(.i18n-ok) body { visibility: hidden; }</style>
+<script src="i18n.js"></script>
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="stylesheet" href="base.css">
 <link rel="stylesheet" href="buttons.css">
@@ -111,8 +47,8 @@ const I18N = (() => {
 <link rel="stylesheet" href="deck.css">
 <link rel="stylesheet" href="mix.css">
 <link rel="stylesheet" href="pedal.css">
-<script src="shared.js" onerror="scriptFailed(this)"></script>
-<script src="gerado/pecas.js" onerror="scriptFailed(this)"></script>
+<script src="shared.js"></script>
+<script src="gerado/pecas.js"></script>
 </head>
 <body data-status="idle">
 <div class="app">
@@ -594,50 +530,45 @@ const I18N = (() => {
   </form>
 </div>
 
-<script src="transporte.js" onerror="scriptFailed(this)"></script>
-<script>
-'use strict';
-// os textos da marcacao na lingua de quem usa (o I18N, no <head>), antes de qualquer coisa ler ou medir a tela; a
-// pagina so aparece depois, e aparece mesmo se der erro aqui
-try { I18N.aplica(); } finally { document.documentElement.classList.add('i18n-ok'); }
-</script>
-<script src="desk-scale.js" onerror="scriptFailed(this)"></script>
-<script src="api.js" onerror="scriptFailed(this)"></script>
-<script src="notice.js" onerror="scriptFailed(this)"></script>
-<script src="covers.js" onerror="scriptFailed(this)"></script>
-<script src="tonearm.js" onerror="scriptFailed(this)"></script>
-<script src="turntable.js" onerror="scriptFailed(this)"></script>
-<script src="dj-visor.js" onerror="scriptFailed(this)"></script>
-<script src="receiver.js" onerror="scriptFailed(this)"></script>
-<script src="voice-effects.js" onerror="scriptFailed(this)"></script>
-<script src="stage.js" onerror="scriptFailed(this)"></script>
-<script src="disc-page.js" onerror="scriptFailed(this)"></script>
-<script src="dj-desk.js" onerror="scriptFailed(this)"></script>
-<script src="shelf.js" onerror="scriptFailed(this)"></script>
-<script src="commands.js" onerror="scriptFailed(this)"></script>
-<script src="search.js" onerror="scriptFailed(this)"></script>
-<script src="options.js" onerror="scriptFailed(this)"></script>
-<script src="queue.js" onerror="scriptFailed(this)"></script>
-<script src="dialogs.js" onerror="scriptFailed(this)"></script>
-<script src="metrics.js" onerror="scriptFailed(this)"></script>
-<script src="devices.js" onerror="scriptFailed(this)"></script>
-<script src="phone.js" onerror="scriptFailed(this)"></script>
-<script src="update.js" onerror="scriptFailed(this)"></script>
-<script src="caps.js" onerror="scriptFailed(this)"></script>
-<script src="connection.js" onerror="scriptFailed(this)"></script>
-<script src="pairing.js" onerror="scriptFailed(this)"></script>
-<script src="welcome.js" onerror="scriptFailed(this)"></script>
-<script src="ui-events.js" onerror="scriptFailed(this)"></script>
-<!-- inline-script: desk-buttons.js -->
-<!-- inline-script: start.js -->
-<script src="letra-placa.js" onerror="scriptFailed(this)"></script>
-<script src="prateleira.js" onerror="scriptFailed(this)"></script>
-<script src="maleta-tit.js" onerror="scriptFailed(this)"></script>
-<script src="mesa-topo.js" onerror="scriptFailed(this)"></script>
+<script src="transporte.js"></script>
+<script src="page-texts.js"></script>
+<script src="desk-scale.js"></script>
+<script src="api.js"></script>
+<script src="notice.js"></script>
+<script src="covers.js"></script>
+<script src="tonearm.js"></script>
+<script src="turntable.js"></script>
+<script src="dj-visor.js"></script>
+<script src="receiver.js"></script>
+<script src="voice-effects.js"></script>
+<script src="stage.js"></script>
+<script src="disc-page.js"></script>
+<script src="dj-desk.js"></script>
+<script src="shelf.js"></script>
+<script src="commands.js"></script>
+<script src="search.js"></script>
+<script src="options.js"></script>
+<script src="queue.js"></script>
+<script src="dialogs.js"></script>
+<script src="metrics.js"></script>
+<script src="devices.js"></script>
+<script src="phone.js"></script>
+<script src="update.js"></script>
+<script src="caps.js"></script>
+<script src="connection.js"></script>
+<script src="pairing.js"></script>
+<script src="welcome.js"></script>
+<script src="ui-events.js"></script>
+<script src="desk-buttons.js"></script>
+<script src="start.js"></script>
+<script src="letra-placa.js"></script>
+<script src="prateleira.js"></script>
+<script src="maleta-tit.js"></script>
+<script src="mesa-topo.js"></script>
 
-<script src="deck.js" onerror="scriptFailed(this)"></script>
-<script src="maleta-vazia.js" onerror="scriptFailed(this)"></script>
-<script src="mix.js" onerror="scriptFailed(this)"></script>
-<script src="pedal.js" onerror="scriptFailed(this)"></script>
+<script src="deck.js"></script>
+<script src="maleta-vazia.js"></script>
+<script src="mix.js"></script>
+<script src="pedal.js"></script>
 </body>
 </html>
