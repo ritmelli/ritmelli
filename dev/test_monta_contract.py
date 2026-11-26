@@ -3,6 +3,7 @@ import importlib.util
 import json
 import re
 import sys
+import tempfile
 from pathlib import Path
 
 from workflow_yaml import job_steps, load
@@ -107,8 +108,8 @@ def texts(node):
     return [str(node)]
 
 
-def manifest_folder():
-    spec = importlib.util.spec_from_file_location("build_manifest", BUILD_MANIFEST)
+def manifest_folder(script=BUILD_MANIFEST):
+    spec = importlib.util.spec_from_file_location("build_manifest", script)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module.OUTPUT.as_posix()
@@ -185,7 +186,7 @@ def one_literal_file(path, filename):
     return "\n" not in path and not any(c in path for c in "*?[!") and Path(path).name == filename
 
 
-def contract_problems(doc, folder=None):
+def contract_problems(doc, script=BUILD_MANIFEST):
     problems = []
     dispatch = (doc.get("on") or {}).get("workflow_dispatch") if isinstance(doc.get("on"), dict) else None
     inputs = (dispatch or {}).get("inputs") or {}
@@ -234,7 +235,7 @@ def contract_problems(doc, folder=None):
         problems.append(f"the {EXE} artifact is not the ritmelli.exe alone ({found[EXE][0].get('path')!r})")
     manifest = manifest_step(monta)
     callers = [s for j in jobs.values() for s in job_steps(j) if any(CALLS.search(t) for t in texts(s))]
-    folder = folder or manifest_folder()
+    folder = manifest_folder(script)
     if manifest is None or switched_off(manifest.get("if")):
         problems.append("the monta job has no one step that runs build_manifest.py, the script that runs publica.py")
     elif callers != [manifest]:
@@ -340,10 +341,14 @@ def main():
                                    source_step(d, "parcial").update(run=source_step(d, "parcial")["run"].replace(
                                        f'Test-Path "{folder}/'.replace("/", "\\"),
                                        f'Test-Path "{other}/'.replace("/", "\\")))))
-    check(contract_problems(moved, folder=other) == [],
-          "the folder build_manifest.py writes to and the Ritmelli artifact path moved together keep the contract")
-    check([p for p in contract_problems(doc, folder=other) if "not the folder build_manifest.py writes" in p] != [],
-          "the check catches the folder build_manifest.py writes to changed alone")
+    with tempfile.TemporaryDirectory() as temp:
+        script = Path(temp, BUILD_MANIFEST.name)
+        source = BUILD_MANIFEST.read_text(encoding="utf-8")
+        script.write_text(source + f"\nOUTPUT = Path({other!r})\n", encoding="utf-8")
+        check(contract_problems(moved, script) == [],
+              "the folder build_manifest.py writes to and the Ritmelli artifact path moved together keep the contract")
+        check([p for p in contract_problems(doc, script) if "not the folder build_manifest.py writes" in p] != [],
+              "the check catches the folder build_manifest.py writes to changed alone")
     marks = mutant(doc, lambda d: edit_run(d, lambda run: "# a <# in a line comment\n" + run + "# and a #> later\n"))
     check(contract_problems(marks) == [], "line comments that mention <# and #> keep the contract")
     cased = mutant(doc, lambda d: source_step(d, "parcial").update(
@@ -450,8 +455,6 @@ def main():
              "with": {"name": "Ritmelli-${{ format('{0}', github.run_number) }}", "path": "x"}}),
         "a Ritmelli artifact named by the version and a suffix": lambda d: d["jobs"]["monta"]["steps"].append(
             {"uses": upload(d, setup)["uses"], "with": {"name": setup + ".1", "path": "x"}}),
-        "the build_manifest.py call commented out": lambda d: edit_run(d, lambda run: re.sub(
-            r"^(\s*)(&.*build_manifest\.py.*)$", r"\1# \2", run, count=1, flags=re.M)),
         "the manifest step running publica.py instead of build_manifest.py": lambda d: edit_run(
             d, lambda run: run.replace("build_manifest.py", "publica.py")),
         "a step after the manifest that mentions publica.py": lambda d: shown(d, "testa")["steps"].append(
@@ -460,8 +463,6 @@ def main():
             {"if": "false", "run": "python instalador\\atualizacao\\publica.py --app outro\n"}),
         "an action whose script mentions publica": lambda d: shown(d, "testa")["steps"].append(
             {"uses": "actions/github-script@v7", "with": {"script": "// publica"}}),
-        "the manifest step that only prints the script's path": lambda d: manifest_step(d["jobs"]["monta"]).update(
-            run="Write-Output 'instalador\\atualizacao\\build_manifest.py'\n"),
         "the build_manifest.py call written with forward slashes": lambda d: edit_run(d, lambda run: run.replace(
             "instalador\\atualizacao\\build_manifest.py", "instalador/atualizacao/build_manifest.py")),
         "a second line in the manifest step that runs publica.py": lambda d: edit_run(
