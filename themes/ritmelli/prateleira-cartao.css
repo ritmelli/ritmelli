@@ -1,7 +1,8 @@
 @media (min-width: 1400px) and (min-aspect-ratio: 20/19) {
-  /* PRATELEIRA-CARTAO-INICIO (07/11, pedido do dono): o cartao da prateleira no molde do da maleta, fora do bloco gerado pelo
-     integra_prat.py: a capa lisa com a beira creme de 3 px, o contorno e a sombra dura de baixo; a etiqueta creme de
-     moldura miuda no pe da capa, com a tecla, a musica em negrito, o artista e a duracao, e o menu no lugar do x */
+  /* PRATELEIRA-CARTAO-INICIO */
+  /* o cartao da prateleira no molde do da maleta, fora do bloco gerado pelo integra_prat.py: a capa lisa com a beira
+     creme de 3 px, o contorno e a sombra dura de baixo; a etiqueta creme de moldura miuda no pe da capa, com a tecla,
+     a musica em negrito, o artista e a duracao, e o menu no lugar do x */
   body.mesa-dj .estante > li.disco-item, body.mesa-dj .estante .disco-item.no-prato { filter: none; }
   body.mesa-dj .estante .borda { display: none; }
   body.mesa-dj .estante .capa {

@@ -1,3 +1,4 @@
+/* TRANSPORTE-INICIO */
 /* O transporte do tema: toda conversa com o servidor passa por aqui (os pedidos da API e o fluxo de eventos do SSE),
    e o resto do tema nao sabe como ela chega. Hoje e o HTTP do mesmo servidor que serviu a pagina. O que o tema mostra
    nao sai do endereco da pagina: sai do caps que o servidor manda (no /api/state, no 401 do pareamento e no primeiro
@@ -38,3 +39,4 @@ const TRANSPORTE = (() => {
   const local = ['127.0.0.1', 'localhost', '[::1]'].includes(location.hostname);
   return { pedir, eventos, local };
 })();
+/* TRANSPORTE-FIM */

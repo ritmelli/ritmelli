@@ -1,4 +1,5 @@
-/* LETRA-PLACA-INICIO: a letra de pixel das placas da mesa, em celulas: a negrita dos titulos (o da placa da
+/* LETRA-PLACA-INICIO */
+/* a letra de pixel das placas da mesa, em celulas: a negrita dos titulos (o da placa da
    Prateleira e o da maleta do A seguir; maiuscula de 9, minuscula de 7, descendente de 2) e a regular das contagens
    (algarismo de 7, x de 5). So as letras que os titulos e as contagens das duas linguas pedem: o texto com outra letra
    fica no HTML, e o dev/testa_i18n.py confere que cada lingua cabe nelas */

@@ -9,9 +9,11 @@ do `server.py`), porque o celular pareado, o atalho na tela inicial e os favorit
 
 Todo arquivo de `/t/` sai com `Cache-Control: no-cache`, como a página (o `tema_sem_guardar` do `server.py`): o
 navegador confere cada um com o servidor antes de usar o que guardou, e não usa um `.js` ou um `.css` de antes sem
-conferir (o `dev/testa_mock.py` confere a página, o 304 dela e um `.js`). O `dev/testa_i18n.py` lê o `index.html` e
-todos os `.js` e `.css` da pasta do tema, e cada bloco marcado (`/* NOME-INICIO */` ... `/* NOME-FIM */`, ou o
-`/* nome:inicio */` de um gerador de `dev/`) mora num arquivo só, aberto e fechado nele, nessa ordem.
+conferir (o `dev/testa_mock.py` confere a página, o 304 dela, um `.js`, um `.css`, uma fonte e uma imagem). O
+`dev/testa_i18n.py` lê o `index.html` e todos os `.js` e `.css` da pasta do tema: cada bloco marcado
+(`/* NOME-INICIO */` ... `/* NOME-FIM */`, ou o `/* nome:inicio */` de um gerador de `dev/`) mora num arquivo só,
+aberto e fechado nele, nessa ordem, e cada `.js` e `.css` fora do `gerado/` tem exatamente um bloco, com a marca
+sozinha na linha dela (o texto que explica o bloco vai num comentário logo abaixo).
 
 Código novo do tema vai num arquivo da pasta `themes/ritmelli/` (um `.js` ou `.css`), não no `index.html`.
 Texto novo da interface entra por uma chave nas duas línguas (`i18n/` do tema, `gallery/i18n/` da galeria),
@@ -154,6 +156,11 @@ essas `MediaQueryList` na ordem em que nasceram, entre consultas, que é a ordem
 mudança. Sai 0 só com as tabelas iguais. O
 arquivo em que um ouvinte mora não entra na comparação: mudar um ouvinte de arquivo, ou para dentro de uma função,
 mantém as tabelas. O `dev/test_theme_listeners.py`, que o `--tela` roda, confere a leitura numa página própria.
+
+Num PR com a etiqueta `extracao-tema`, o job Tela roda as duas provas da base contra o head, nos passos "Only moves
+code" (`dev/testa_tudo.py --passo theme-rebuild --base`) e "Same listeners" (`--passo theme-listeners`), e reprova se
+uma delas não sai 0. A base é a do PR, e na fila o commit logo antes da entrada (a mesma do Compara). O
+`dev/test_ci_workflow.py` confere os dois passos, a condição deles, a base e o comando.
 
 Toda conversa do tema com o servidor passa pelo `transporte.js` (os pedidos da API, que o `api()` do `api.js` chama,
 e o fluxo de eventos do SSE): o resto do tema não sabe como ela chega, e o `fetch`, o `EventSource` e o
