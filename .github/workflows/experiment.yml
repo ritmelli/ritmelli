@@ -29,18 +29,12 @@ jobs:
           git worktree add --detach "$env:RUNNER_TEMP/main" origin/main
           git -C "$env:RUNNER_TEMP/main" log --oneline -1
           git log --oneline -1
-      - name: transporte scenario, 20 rounds, on the merge
-        continue-on-error: true
-        run: python dev/experiment_transporte.py . 20
-      - name: transporte scenario, 20 rounds, on main alone
-        continue-on-error: true
-        run: python dev/experiment_transporte.py "$env:RUNNER_TEMP/main" 20
-      - name: missing_script, 3 runs, on the merge
+      - name: missing_script, 6 runs, on the merge
         continue-on-error: true
         run: |
-          for ($i = 1; $i -le 3; $i++) { python dev/missing_script.py | Select-String -Pattern '^FAIL|transporte'; "merge run $i exit $LASTEXITCODE" }
-      - name: missing_script, 3 runs, on main alone
+          for ($i = 1; $i -le 6; $i++) { python dev/missing_script.py > "$env:RUNNER_TEMP/ms.txt" 2>&1; "merge run $i exit $LASTEXITCODE"; Get-Content "$env:RUNNER_TEMP/ms.txt" | Where-Object { $_ -notmatch '^OK' } | ForEach-Object { Write-Output $_ } }
+      - name: missing_script, 6 runs, on main alone
         continue-on-error: true
         working-directory: ${{ runner.temp }}/main
         run: |
-          for ($i = 1; $i -le 3; $i++) { python dev/missing_script.py | Select-String -Pattern '^FAIL|transporte'; "main run $i exit $LASTEXITCODE" }
+          for ($i = 1; $i -le 6; $i++) { python dev/missing_script.py > "$env:RUNNER_TEMP/ms.txt" 2>&1; "main run $i exit $LASTEXITCODE"; Get-Content "$env:RUNNER_TEMP/ms.txt" | Where-Object { $_ -notmatch '^OK' } | ForEach-Object { Write-Output $_ } }
