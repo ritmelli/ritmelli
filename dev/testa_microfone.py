@@ -164,8 +164,8 @@ ALVOS = {"Mic": ALVO, "Mic2": OUTRO}  # o Mic e o que o AnelFalso le; o Mic2, ni
 
 class VigiaNoAnel:
     """The real Engine with its watcher running, the device list frozen (LISTA) and start replaced by one that only
-    brings the Injetor up on the fake ring, aimed at the chosen microphone (ALVOS). It records each opening (microphone,
-    monotonic), and wait_for_reopenings waits for the openings themselves instead of a fixed time."""
+    brings the Injetor up on the fake ring, aimed at the chosen microphone (ALVOS). It records the microphone of each
+    opening, and wait_for_reopenings waits for the openings themselves instead of a fixed time."""
 
     def __init__(self):
         self.e = e = eng.Engine(mic="Mic", monitor="")
@@ -193,7 +193,7 @@ class VigiaNoAnel:
         st.callback(inj.para)
         e._stack, e._injetor = st, inj
         with self._opened:
-            self.aberturas.append((mic, time.monotonic()))
+            self.aberturas.append(mic)
             self._opened.notify_all()
 
     def reaberturas(self):
@@ -232,7 +232,7 @@ class TestaMicrofone(unittest.TestCase):
             # a janela do evento "audio" segue nas reaberturas, com a perda que as pediu
             self.assertIs(v.e._injetor.saude, janela, "a reabertura do leitor perdido trocou a janela do audio")
             self.assertEqual(janela.leitor_perdido, 1, "a perda que pediu a reabertura sumiu da janela do audio")
-            self.assertTrue(all(m == "Mic" for m, _ in v.aberturas), "a reabertura trocou de microfone")
+            self.assertTrue(all(m == "Mic" for m in v.aberturas), "a reabertura trocou de microfone")
             time.sleep(0.6)
             self.assertEqual(v.reaberturas(), 3, "passou do limite de tentativas")
             anel.liga()  # o filtro voltou a ler: a conta zera
@@ -354,7 +354,7 @@ class TestaMicrofone(unittest.TestCase):
             v.e.set_devices(mic="Mic2")
             anel.desliga()
             time.sleep(1.0)
-            self.assertEqual([m for m, _ in v.aberturas], ["Mic", "Mic2"], "o vigia mexeu na troca manual")
+            self.assertEqual(v.aberturas, ["Mic", "Mic2"], "o vigia mexeu na troca manual")
             self.assertEqual(v.e.active["mic"], "Mic2")
         finally:
             v.fecha()
@@ -374,7 +374,7 @@ class TestaMicrofone(unittest.TestCase):
                         mock.patch("microfone.microfone.pede_tarefa", task), \
                         mock.patch.object(v.e, "_confere_mudos") as check_silent:
                     v.e._confere_filtro("Mic")
-                self.assertEqual([m for m, _ in v.aberturas], ["Mic", "Mic2", "Mic2"],
+                self.assertEqual(v.aberturas, ["Mic", "Mic2", "Mic2"],
                                  f"the task restarted the Windows audio, so the streams of Mic2 died too ({result})")
                 self.assertIs(v.e.error, other_error, f"the old microphone's task keeps another error ({result})")
                 check_silent.assert_called_once_with()
