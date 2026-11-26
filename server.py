@@ -1248,7 +1248,7 @@ class App:
         with self.engine.state_section():  # the same stretch in which a Next joins it (Proximo.liga): none is left out
             if self.reserva is r:
                 self.reserva = None
-            r.entrada, r.error = entrada, error
+            r.entrada, r.error, r.resolved_line = entrada, error, self.engine.line()
             r.feita.set()
             for g in r.grupos:
                 g.resolve(entrada, error)

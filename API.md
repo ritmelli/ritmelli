@@ -328,9 +328,9 @@ caso). O segundo que espera o avanço de outro (o que se junta ao grupo, ou o qu
 s e responde 409 se a espera terminar sem uma entrada: passado o prazo (o primeiro, que fez o avanço, ainda responde a
 entrada que tocou), ou com o avanço sem tocar nada. Se tocar a entrada falha antes de ela entrar no prato (a entrada
 quebrada, que sai da fila), o erro vai para o grupo todo: os dois respondem 500; se um Parar resolveu o avanço antes da
-falha, os dois respondem 409 e o erro vai para o `error` do estado, se o prato segue parado. Quando o avanço que os
-dois esperam é o do fim do disco (o vigia reservou antes deles), a falha dele não vai para os Próximos: os dois
-respondem 409, e o erro vai para o `error` do estado:
+falha, os dois respondem 409 e o erro vai para o `error` do estado, se o prato segue parado desde aquele Parar. Quando o
+avanço que os dois esperam é o do fim do disco (o vigia reservou antes deles), a falha dele não vai para os Próximos: os
+dois respondem 409, e o erro vai para o `error` do estado:
 
 | o segundo roda | o prato entre os dois | o primeiro responde | o segundo responde |
 |---|---|---|---|
@@ -344,6 +344,7 @@ respondem 409, e o erro vai para o `error` do estado:
 | com o primeiro tocando uma entrada que não toca | nada mudou | 500 | 500, o mesmo erro |
 | com o primeiro tocando uma entrada que não toca | um Parar resolveu o avanço antes da falha | 409, com o erro no `error` do estado | 409 |
 | com o primeiro tocando uma entrada que não toca | um Parar e outro disco antes da falha | 409, sem erro no disco novo | 409 |
+| com o primeiro tocando uma entrada que não toca | um Parar, outro disco e outro Parar antes da falha | 409, sem erro no prato parado | 409 |
 | com o primeiro esperando o avanço do fim do disco, que toca uma entrada que não toca | nada mudou | 409 | 409, com o erro no `error` do estado |
 
 O `dev/testa_comandos.py` confere cada linha desta tabela (na primeira das linhas da entrada que não toca, o erro que a

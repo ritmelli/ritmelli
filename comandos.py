@@ -43,7 +43,7 @@ class Reserva:
     def __init__(self, deck, linha, x):
         self.deck, self.linha, self.x = deck, linha, x
         self.entrada = None
-        self.error = None
+        self.error = self.resolved_line = None
         self.feita = threading.Event()
         self.tocando = False  # a troca dela ja publicou o disco no prato (numa linha nova), e falta confirmar
         self.publicada = None  # o (deck, linha) que a troca dela publicou, anotado sob o _lock da troca
@@ -374,7 +374,7 @@ def avanca(A, virada=None, historico=True, na_tela=False, visto=None, entrada=No
         if na_tela:
             E.set_error(warning)
             return r.x
-        if not E.warn_on(None, warning):
+        if not E.warn_on(None, warning, line=r.resolved_line):
             print(f"queue: {r.x.get('title')!r} failed after its advance was resolved: {ex}", file=sys.stderr, flush=True)
         return r.entrada
     if not tocou:  # a reserva foi invalidada no meio (o prato trocou, ou a entrada saiu da fila)

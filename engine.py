@@ -3327,9 +3327,9 @@ class Engine:
             threading.Thread(target=self._reader, args=(gen, novo, t, d), daemon=True).start()
         return True
 
-    def warn_on(self, track, message, waiting=False):
+    def warn_on(self, track, message, waiting=False, line=None):
         with self._qlock:
-            if self.track is not track or (waiting and not self.esperando_arquivo()):
+            if self.track is not track or line not in (None, self.line()) or (waiting and not self.esperando_arquivo()):
                 return False
             self._stream_warning = message
             return True

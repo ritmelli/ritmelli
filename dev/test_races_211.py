@@ -1096,25 +1096,58 @@ def prepared_head_moved_back_during_the_poll(A, E, readers):
     x, y = (dict(e, auto=False) for e in two_entries(A, 10))
     with A.fila_lock:
         A.change_queue(lambda: (A.fila.clear(), A.fila.extend([x, y])))
-    held, take = [], E.take_prepare_failure
+    inner, take, cancel, done = A.fila_lock, E.take_prepare_failure, E.cancelar_pronto, []
 
-    def moves_back_and_publishes():
-        held.append(A.fila_lock.locked())
-        if not held[-1]:
+    def gap():
+        if not done:
+            done.append(True)
             cmd.mover_na_fila(A, y["qid"], 0)
             with E.state_section():
                 E.pronto_tag = y["qid"]
+
+    class GapLock:
+        released = False
+
+        def __enter__(self):
+            if GapLock.released:
+                gap()
+            inner.acquire()
+
+        def __exit__(self, *exc):
+            inner.release()
+            GapLock.released = True
+
+        def locked(self):
+            return inner.locked()
+
+    def moves_back_and_publishes():
+        if not inner.locked():
+            gap()
         return take()
+
+    def moves_back_and_cancels():
+        if not inner.locked():
+            gap()
+        return cancel()
+    with E.state_section():
+        E.pronto_tag = y["qid"]
     with mock.patch.object(eng, "TRANS_PREP_S", 1e6), mock.patch.object(server.threading, "Thread", Launches()), \
-            mock.patch.object(E, "take_prepare_failure", moves_back_and_publishes):
+            mock.patch.object(E, "take_prepare_failure", moves_back_and_publishes), \
+            mock.patch.object(E, "cancelar_pronto", moves_back_and_cancels), \
+            mock.patch.object(A, "fila_lock", GapLock()):
         A._volta_passagem()
+    gap()
     survived = E.pronto_tag
+    with mock.patch.object(eng, "TRANS_PREP_S", 1e6), mock.patch.object(server.threading, "Thread", Launches()):
+        A._volta_passagem()
+    kept = E.pronto_tag
     A.preparando = None
     with E.state_section():
         E.pronto_tag = None
-    check(held == [True] or survived == y["qid"],
-          f"a head that moves back and gets its prepared deck between the watcher's read of the queue and of the engine "
-          f"keeps that deck (fila_lock held at the read: {held}, prepared after: {survived})")
+    check(survived == kept == y["qid"],
+          f"a head that moves back and gets its prepared deck in any gap of the watcher's poll keeps that deck, and "
+          f"the next poll keeps the deck prepared for the head (prepared after the poll: {survived}, after the next: "
+          f"{kept})")
 
 
 def audio_version_entries(A, E):

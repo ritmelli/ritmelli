@@ -8,7 +8,7 @@ import sys
 import tempfile
 import time
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from unittest import mock
 
@@ -33,6 +33,7 @@ class Run:
     symmetry: bool = True
     deadlock: bool = True
     action: str = None
+    unchecked: tuple = ()
 
 
 RENAME = (("WithTheRename", "TRUE"), ("WithTheMoves", "FALSE"), ("WithTheSeek", "FALSE"), ("WithThePlay", "FALSE"),
@@ -144,17 +145,12 @@ RUNS = (
         "invariant NoStaleLoading", invariants=("NoStaleLoading",),
         constants=(("FileSwapStartsItsReader", "FALSE"), ("WithTheMoves", "FALSE"), ("WithTheSeek", "FALSE"))),
     Run("Races211, the code as it is with a stream that drops: every property but the one #294 breaks", "Races211",
-        invariants=("TypeOK", "LockOrderKept", "NoOrphanLoading", "SwitchEntryMatchesPlatter",
-                    "ReservedEntryMatchesRead", "StreamActsOnItsAttempt", "NoRefusalWhilePlaying",
-                    "NoPassageFromBeforeTheSeek", "FinishedDownloadReachesThePlatter",
-                    "HandoverOnlyOntoTheJobsRecord"),
+        unchecked=("NoStaleLoading",),
         constants=(("WithTheDrop", "TRUE"), ("WithTheMoves", "FALSE"),
                    ("WithTheSeek", "FALSE"), ("WithThePlay", "FALSE"), ("WithTheForget", "FALSE"))),
     Run("Races211, the code as it is with a switch to a job's stream: every property but the one #294 breaks",
         "Races211",
-        invariants=("TypeOK", "LockOrderKept", "NoOrphanLoading", "NoStaleLoading", "SwitchEntryMatchesPlatter",
-                    "ReservedEntryMatchesRead", "StreamActsOnItsAttempt", "NoRefusalWhilePlaying",
-                    "NoPassageFromBeforeTheSeek", "HandoverOnlyOntoTheJobsRecord"),
+        unchecked=("FinishedDownloadReachesThePlatter",),
         constants=(("WithTheJobSwitch", "TRUE"), ("WithTheMoves", "FALSE"),
                    ("WithTheSeek", "FALSE"), ("WithThePlay", "FALSE"), ("WithTheForget", "FALSE"))),
     Run("Races211, the code as it is with a switch to a job's entry already on the shelf (or failed) when the passage "
@@ -280,6 +276,7 @@ def write_cfg(base, run):
         blocks["INVARIANTS"] = list(run.invariants)
     elif run.expect.startswith("invariant "):
         blocks["INVARIANTS"] = [run.expect.split()[1]]
+    blocks["INVARIANTS"] = [i for i in blocks.get("INVARIANTS", []) if i not in run.unchecked]
     if run.properties:
         blocks["PROPERTIES"] = list(run.properties)
     if run.specification:
@@ -366,10 +363,13 @@ def run_choices(run, cfg_text):
 
 
 def rename_part_failures(runs, cfg_text):
-    parts = [r for r in runs if r.spec == "Races211" and any(n in dict(r.constants) for n in PART_CONSTANTS)]
+    parts = [r for r in runs if r.spec == "Races211" and r.expect == "pass"
+             and any(n in dict(r.constants) for n in PART_CONSTANTS)]
     whole = set(itertools.product(*cfg_choices(cfg_text)))
     covered = [c for r in parts for c in itertools.product(*run_choices(r, cfg_text))]
-    out = [f"the rename parts leave out {sorted(whole - set(covered), key=str)}"] if whole - set(covered) else []
+    off = [r.title for r in parts if [c for c in r.constants if c[0] not in PART_CONSTANTS] != list(RENAME)]
+    out = [f"the rename parts do not run the rename's base constants: {off}"] if off else []
+    out += [f"the rename parts leave out {sorted(whole - set(covered), key=str)}"] if whole - set(covered) else []
     out += [f"the rename parts choose {sorted(set(covered) - whole, key=str)}, which the cfg does not"
             ] if set(covered) - whole else []
     out += ["the rename parts overlap"] if len(covered) != len(set(covered)) else []
@@ -377,12 +377,20 @@ def rename_part_failures(runs, cfg_text):
 
 
 def invariant_failures(runs, cfgs):
-    out = []
-    for run in runs:
-        if run.expect == "pass" and run.invariants is None and run.specification is None:
-            found = set(parse_cfg(write_cfg(cfgs[run.spec], run)).get("INVARIANTS", []))
-            out += [f"{run.title} does not check {sorted(REQUIRED[run.spec] - found)}"] if REQUIRED[run.spec] - found else []
-    return out
+    out, fair = [], []
+    for run in (r for r in runs if r.expect == "pass"):
+        blocks = parse_cfg(write_cfg(cfgs[run.spec], run))
+        if run.specification is not None:
+            fair += [run] if (run.specification, run.spec) == ("FairSpec", "LocksAndSwitch") else []
+            out += [] if ("ReservationsResolve" in blocks.get("PROPERTIES", []) and "SYMMETRY" not in blocks
+                          and "Reopens = FALSE" in blocks["CONSTANTS"]) else [f"{run.title} is not the fairness run"]
+            continue
+        missing = REQUIRED[run.spec] - set(blocks["INVARIANTS"]) - set(run.unchecked)
+        out += [f"{run.title} does not check {sorted(missing)}"] if missing else []
+        out += [f"{run.title} names its invariants"] if run.invariants is not None else []
+        out += [f"{run.title} leaves out more than one invariant"] if len(run.unchecked) > 1 else []
+        out += [f"{run.title} does not check deadlock"] if blocks["CHECK_DEADLOCK"] != ["TRUE"] else []
+    return out + ([] if fair else ["no passing run checks ReservationsResolve under FairSpec"])
 
 
 def main():
@@ -396,6 +404,8 @@ def main():
           f"({found})")
     check(rename_part_failures([r for r in RUNS if r is not parts[-1]], cfg) != [],
           "the mutant whose schedule leaves out the last rename run fails")
+    check(rename_part_failures([replace(r, constants=r.constants[1:]) if r is parts[0] else r for r in RUNS], cfg)
+          != [], "the mutant whose first rename run leaves out WithTheRename fails")
     wider = cfg.replace('StreamReaderStartsWith = {"done", "st_reading"}',
                         'StreamReaderStartsWith = {"done", "st_reading", "sr_dropped"}')
     check(wider != cfg and rename_part_failures(RUNS, wider) != [],
@@ -405,6 +415,18 @@ def main():
     narrower = dict(cfgs, LocksAndSwitch=cfgs["LocksAndSwitch"].replace("    HistoryOnceInOrder\n", "", 1))
     check(narrower != cfgs and invariant_failures(RUNS, narrower) != [],
           "the mutant whose LocksAndSwitch.cfg drops HistoryOnceInOrder fails")
+    code = next(r for r in RUNS if r.title == "LocksAndSwitch, the code as it is")
+    fair = next(r for r in RUNS if r.expect == "pass" and r.specification == "FairSpec")
+    drop = next(r for r in RUNS if r.unchecked)
+    for name, schedule in (
+            ("the code run names its invariants without HistoryOnceInOrder",
+             [replace(r, invariants=tuple(sorted(REQUIRED["LocksAndSwitch"] - {"HistoryOnceInOrder"})))
+              if r is code else r for r in RUNS]),
+            ("the fairness run checks no property", [replace(r, properties=()) if r is fair else r for r in RUNS]),
+            ("the schedule has no fairness run", [r for r in RUNS if r is not fair]),
+            ("a #294 run leaves out a second invariant",
+             [replace(r, unchecked=r.unchecked + ("TypeOK",)) if r is drop else r for r in RUNS])):
+        check(invariant_failures(schedule, cfgs) != [], f"the mutant where {name} fails")
     java = shutil.which("java")
     check(java is not None, "java is on the PATH")
     if java is None:

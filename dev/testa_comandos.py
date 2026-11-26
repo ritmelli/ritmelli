@@ -1440,7 +1440,7 @@ def avanco(A, E):
     confere(timed_out is None, f"a Next whose wait ran out answers no entry (the 409), even with the failure published "
                                f"right after the wait ({timed_out!r})")
 
-    def joined_next_and_a_play_that_raises(stops, then_plays=False):
+    def joined_next_and_a_play_that_raises(stops, after=()):
         limpa()
         toca("d1")
         E.set_error(None)
@@ -1458,8 +1458,8 @@ def avanco(A, E):
             joined.wait(5)
             if stops:
                 cmd.parar(A)
-            if then_plays:
-                cmd.tocar(A, "d1")
+            for step in after:
+                step()
             raise refused
         with mock.patch.object(cmd.Proximo, "espera", joins), mock.patch.object(A, "tocar_entrada", raises):
             t1, r1 = em_thread(cmd.pular, A)
@@ -1467,7 +1467,7 @@ def avanco(A, E):
             t2, r2 = em_thread(cmd.pular, A)
             t1.join(5)
             t2.join(5)
-        same = (r1 == r2 == [None] and (E.error is None) == then_plays) if stops else (
+        same = (r1 == r2 == [None] and (E.error is None) == bool(after)) if stops else (
             len(r1) == len(r2) == 1 and all(type(r[0]) is cmd.QueuePlayFailed and r[0].__cause__ is refused
                                             for r in (r1, r2)) and r1[0].message == r2[0].message)
         return joined.is_set() and same, (r1, r2, no_prato(E), fila(A), E.error)
@@ -1480,10 +1480,16 @@ def avanco(A, E):
             f"a Next joins one whose play raises after a Stop resolved the advance: both get the Stop's result, and "
             f"the error goes to the screen {seen}")
     with contextlib.redirect_stderr(io.StringIO()):
-        same, seen = joined_next_and_a_play_that_raises(stops=True, then_plays=True)
+        same, seen = joined_next_and_a_play_that_raises(stops=True, after=(lambda: cmd.tocar(A, "d1"),))
     confere(same and seen[2] == "d1" and seen[3] == ["d3"],
             f"a Next joins one whose play raises after a Stop and another record: both get the Stop's result, and the "
             f"error stays off the record playing now {seen}")
+    with contextlib.redirect_stderr(io.StringIO()):
+        same, seen = joined_next_and_a_play_that_raises(stops=True, after=(lambda: cmd.tocar(A, "d1"),
+                                                                           lambda: cmd.parar(A)))
+    confere(same and seen[2] is None and seen[3] == ["d3"],
+            f"a Next joins one whose play raises after a Stop, another record and a second Stop: both get the first "
+            f"Stop's result, and the error stays off the platter the second Stop left {seen}")
 
     # a fila muda no mesmo trecho do _qlock em que a passagem preparada sai: o motor, no bloco que chega bem nessa hora,
     # nao vira para a entrada que acabou de sair
