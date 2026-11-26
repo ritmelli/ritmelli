@@ -463,21 +463,30 @@ TRACK_FIELDS = TRACK_TEXTS + ("duration",)
 
 
 def check_track_fields(b, target, fields=TRACK_FIELDS):
-    """The title, channel, thumb and duration the body b brings about the video target, which is not on the shelf (the
-    POST /api/queue, and the POST /api/library with play; saving without play only uses the title, as the download's
-    label): one rule for both routes and every role, on the fields the path uses. The theme and the handoffs read the
-    texts as text (or null); the duration in seconds (or null, up to a day) wins over the one yt-dlp finds and sizes
-    the visualizer (engine.Onda allocates by it). The target and the texts go in valid Unicode (is_valid_unicode).
-    Raises ValueError, or the i18n.Recusa the theme can show for a duration longer than a day."""
+    """The title, channel, thumb and duration the body b brings about the video target, on the fields the path uses
+    (parse_target). Raises ValueError, or the i18n.Recusa the theme can show for a duration longer than a day."""
     texts = [k for k in TRACK_TEXTS if k in fields]
     dur = b.get("duration") if "duration" in fields else None
     if not (all(b.get(k) is None or isinstance(b[k], str) for k in texts)
-            and (dur is None or (isinstance(dur, (int, float)) and not isinstance(dur, bool) and dur >= 0))):
+            and (dur is None or (isinstance(dur, (int, float)) and not isinstance(dur, bool)
+                                 and (isinstance(dur, int) or math.isfinite(dur)) and dur >= 0))):
         raise ValueError("Send title, channel and thumb as text and duration as seconds (up to a day).")
-    if dur is not None and dur > QUEUE_DURATION_MAX_S:  # a search result can be this long: the theme shows it
+    if dur is not None and dur > QUEUE_DURATION_MAX_S:
         raise i18n.Recusa("server.queue.tooLong", "Ritmelli can't queue a video longer than a day.")
     if not is_valid_unicode(target, *(b.get(k) for k in texts)):
         raise ValueError("Send text in valid Unicode.")
+
+
+def parse_target(b, fields, search=False):
+    target = b.get("youtube_id") or b.get("url") or (b.get("query") if search else None) or ""
+    target = target.strip() if isinstance(target, str) else ""
+    if not target:
+        raise ValueError("Send a YouTube link, a video ID, or search text." if search
+                         else "Send the id of a record on the shelf, a video id or a YouTube link.")
+    m = YT_URL.search(target)
+    yid = m.group(1) if m else (target if YT_ID.match(target) else None)
+    check_track_fields(b, target, fields)
+    return target, yid
 
 
 def antes_das_parecidas(fila):
@@ -1120,9 +1129,8 @@ class App:
         """O Future do endereco adiantado de yid (uma vez so), ou None."""
         with self._adi_lock:
             x = self._adiantados.pop(yid, None) if yid else None
-            if x is not None and x[0] is not None:  # a marca do usado: a busca que chega depois (a da LLM, a do
-                self._adiantados[yid] = (None, time.monotonic())  # lote) nao pede de novo o endereco do disco que ja
-                # toca (revisao da r12: um endereco e um ffmpeg orfao a cada uso da antecipada)
+            if x is not None and x[0] is not None:
+                self._adiantados[yid] = (None, time.monotonic())
         return x[0] if x and x[0] is not None and time.monotonic() - x[1] <= ADIANTA_S else None
 
     def _abre_stream(self, tr, target, tem_titulo):
@@ -1372,20 +1380,16 @@ class App:
         prateleira ou um video do YouTube, com a capa dele: nada de link de outro endereco para o PC baixar, nem de
         capa que o tema abriria."""
         iid = b.get("id")
-        it = self.lib.get(iid or "") if not remoto or isinstance(iid, str) else None
-        j = None
-        if not it:
-            target = b.get("youtube_id") or b.get("url") or ""
-            if not isinstance(target, str):
-                target = ""
-            target = target.strip()
-            if not target:
-                raise ValueError("Send the id of a record on the shelf, a video id or a YouTube link.")
-            m = YT_URL.search(target)
-            yid = m.group(1) if m else (target if YT_ID.match(target) else None)
+        by_id = isinstance(iid, str) and bool(iid)
+        target = yid = j = None
+        if not by_id or "youtube_id" in b or "url" in b:
+            target, yid = parse_target(b, TRACK_FIELDS)
             if remoto and not yid:
                 raise ValueError("A remote session can only queue a record on the shelf or a YouTube video.")
-            check_track_fields(b, target)  # every role, the PC included
+        it = self.lib.get(iid) if by_id else None
+        if not it:
+            if target is None:
+                target, yid = parse_target(b, TRACK_FIELDS)
             it = self.lib.by_youtube(yid) if yid else None
         if it:
             x = {"id": it["id"], "youtube_id": it.get("youtube_id"), "url": None, "title": it["title"],
@@ -2139,21 +2143,15 @@ def build(app_state):
     @r.post("/api/library")
     async def lib_add(request):
         b = await body(request)
-        target = b.get("youtube_id") or b.get("url") or b.get("query") or ""
-        target = target.strip() if isinstance(target, str) else ""
-        if not target:
-            return j_err(i18n.so_texto("Send a YouTube link, a video ID, or search text."))
-        m = YT_URL.search(target)
-        yid = m.group(1) if m else (target if YT_ID.match(target) else None)
+        try:
+            target, yid = parse_target(b, TRACK_FIELDS if b.get("play") else ("title",), search=True)
+        except ValueError as ex:
+            return j_err(getattr(ex, "msg", None) or i18n.so_texto(str(ex)))
         it = A.lib.by_youtube(yid) if yid else None
         if it:
             if b.get("play"):
                 cmd.play_shelf_record(A, it)
             return j_ok(item=it)
-        try:  # the queue's rule: with play, every field goes to the platter and the visualizer; without, the title
-            check_track_fields(b, target, TRACK_FIELDS if b.get("play") else ("title",))
-        except ValueError as ex:
-            return j_err(getattr(ex, "msg", None) or i18n.so_texto(str(ex)))
         alvo = yid or target
         j = A.job_rodando(alvo)  # ja baixando (da fila, ou um toque repetido): nao baixa de novo
         if j is None:
