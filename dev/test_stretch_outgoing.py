@@ -10,7 +10,8 @@ tracks stretched, on its own, through the real Rubber Band:
   - short: an input shorter than the warm-up and the crossfade (SHORT_MS) comes back whole, one output frame per
     position.
 
-Each runs at a speed below and one above 1 (A slowed down and sped up, as in the dois and dois-106 pairs).
+Position, pitch and level run at a speed below and one above 1 (A slowed down and sped up, as in the dois and dois-106
+pairs); both short inputs run at SHORT_SPEED.
 
     python dev/test_stretch_outgoing.py
 
