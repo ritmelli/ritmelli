@@ -178,28 +178,40 @@ def sent(request, loader, ticks, wall, path="/api/state", method="GET"):
                        "request": {"method": method, "url": f"http://127.0.0.1:1{path}"}}}
 
 
+def answered(request, status=200):
+    return {"method": "Network.responseReceived",
+            "params": {"requestId": request, "response": {"status": status, "url": "http://127.0.0.1:1/api/state"}}}
+
+
 def finished(request, ticks):
     return {"method": "Network.loadingFinished", "params": {"requestId": request, "timestamp": ticks}}
 
 
 def state_of_this_navigation_only():
     events, wall = fitcheck.PageEvents(), time.time()
-    for m in (sent("a", "old", 10.0, wall), finished("a", 10.5), sent("b", "new", 11.0, wall + 1, "/api/library"),
-              finished("b", 11.5), sent("c", "new", 12.0, wall + 2, method="POST"), finished("c", 12.5),
-              sent("d", "new", 13.0, wall + 3), finished("d", 13.25)):
+    for m in (sent("a", "old", 10.0, wall), answered("a"), finished("a", 10.5),
+              sent("b", "new", 11.0, wall + 1, "/api/library"), answered("b"), finished("b", 11.5),
+              sent("c", "new", 12.0, wall + 2, method="POST"), answered("c"), finished("c", 12.5),
+              sent("e", "new", 12.5, wall + 2.5), answered("e", 500), finished("e", 12.75),
+              sent("d", "new", 13.0, wall + 3), answered("d"), finished("d", 13.25)):
         events.take(m)
+        if m["params"]["requestId"] == "e" and m["method"] == "Network.loadingFinished":
+            events.loader = "new"
+            failed_counted = events.state_at is not None
+            events.loader = None
     before = events.state_at
     events.loader = "new"
     expected = wall + 3.25 - time.time() + time.monotonic()
-    check(before is None and events.state_at is not None and abs(events.state_at - expected) < 0.05,
+    check(before is None and not failed_counted and events.state_at is not None
+          and abs(events.state_at - expected) < 0.05,
           "the GET /api/state of the current navigation starts the clock at its own end, even when its events came "
-          "before Page.navigate returned, and not one of the page before it nor another request")
+          "before Page.navigate returned, and not one of the page before it, another request or a failed state")
 
 
 def clock_from_the_event_not_from_its_handling():
     events = fitcheck.PageEvents()
     events.loader = "now"
-    for m in (sent("a", "now", 100.0, time.time() - 10), finished("a", 101.0)):
+    for m in (sent("a", "now", 100.0, time.time() - 10), answered("a"), finished("a", 101.0)):
         events.take(m)
 
     async def notice_open(method, **params):
@@ -247,11 +259,28 @@ def fitcheck_never_ready():
         check(shot.is_file() and shot.stat().st_size > 0, "the fitcheck saves a print of the page that was not ready")
 
 
+def wall_clock_step_after_the_events():
+    events = fitcheck.PageEvents()
+    events.loader = "now"
+    for m in (sent("a", "now", 100.0, time.time()), answered("a"), finished("a", 101.0)):
+        events.take(m)
+    at = events.state_at
+    real_time = time.time
+    time.time = lambda: real_time() + 3600
+    try:
+        stepped = events.state_at
+    finally:
+        time.time = real_time
+    check(at is not None and stepped == at, f"a wall clock step after the events leaves the clock where it was "
+                                            f"({at}, {stepped})")
+
+
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
     probe_past_the_deadline()
     state_of_this_navigation_only()
     clock_from_the_event_not_from_its_handling()
+    wall_clock_step_after_the_events()
     notice_on_slow_load()
     notice_on_slow_state()
     notice_late_after_state()

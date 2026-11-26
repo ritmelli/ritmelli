@@ -83,6 +83,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/python
         with:
@@ -101,3 +102,11 @@ jobs:
           }
           "injected rounds that did not give the expected diagnoses: $bad of 8"
           exit $bad
+      - name: The base clock (from Page.navigate) on the slow load and the slow state, both must fail
+        if: always()
+        run: |
+          git checkout origin/main -- dev/fitcheck.py dev/compara.py
+          python -c "import sys; sys.path.insert(0, 'dev'); import test_fitcheck_ready as t; t.notice_on_slow_load(); t.notice_on_slow_state(); print(f'{len(t.failures)} of 2 failed on the base clock'); sys.exit(0 if len(t.failures) == 2 else 1)"
+          $code = $LASTEXITCODE
+          git checkout HEAD -- dev/fitcheck.py dev/compara.py
+          exit $code
