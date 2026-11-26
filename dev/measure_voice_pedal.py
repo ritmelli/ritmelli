@@ -203,7 +203,7 @@ def main():
     def call(method, path, body=None, timeout=30):
         req = urllib.request.Request(base + path, method=method, headers={"Content-Type": "application/json"},
                                      data=None if body is None else json.dumps(body).encode())
-        with urllib.request.urlopen(req, timeout=timeout) as r:
+        with so_mock.abre(req, espera=timeout) as r:
             return json.load(r)
 
     server_err = work / "server.err"
@@ -224,7 +224,7 @@ def main():
             refusal = mic_refusal(a.mic, call("GET", "/api/state"))
             if refusal:
                 sys.exit(refusal)
-            events = urllib.request.urlopen(base + "/api/events", timeout=30)
+            events = so_mock.abre(base + "/api/events", espera=30)
             record = Record(events)
             try:
                 read = record.until(clock() + UP_S, want=reading)

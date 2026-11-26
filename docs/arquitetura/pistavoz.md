@@ -51,25 +51,26 @@ desligar, mesmo que outra pista suba antes de a seca ser classificada; nunca a d
 do fim dela: cada subida guarda a hora da própria pista, que o `track()` escreve nela, e só aceita uma pista que subiu
 depois de o `liga(True)` dela sair da fila do motor, o `sent()` que a thread do pedal carimba depois de o desligar
 anterior acabar, para a pista atrasada de um processo que ainda está parando não ir para a subida seguinte (a comparação
-é em milissegundos inteiros, a resolução do carimbo, e a pista do mesmo milissegundo do envio não é da subida); a
-latência segue contada da hora do clique; também quando o pedal desliga enquanto a linha da pista é escrita), com a nota
-de que pode ter desligado antes da seca, e a janela dos `AFTER_TRACK_S` vale para o começo desse intervalo, e não para a
-volta da thread; a pista é lida de novo quando a seca aparece, para um carimbo que chegou na mesma volta (só para a
-conta: a mistura da volta segue com o que o `_voz` leu)), até `PEDAL_LINES` linhas por subida do pedal (passou disso, a
-seca sai como as outras, uma linha a cada `QUIET_S`, e a conta segue; o `secas`, o `secas_pedal` e o `volta_max_ms` do
-`/api/state` saem juntos, logo depois de a seca ser classificada (antes de o anel ser enchido de novo) e no fim de cada
-volta). As linhas saem na thread do anel, com `print` no `stderr`, como a outra linha de seca. O `dev/testa_anel.py`
-confere isso com um produtor de verdade (o `injeta.Microfone` que o `pista.py` usa), uma seca que o próprio teste faz
-acontecer, a thread do anel parada quando o teste quer e o relógio dele, e o `dev/testa_pedal_voz.py` confere o que o
-motor guarda quando o pedal liga e desliga. O `dev/measure_voice_pedal.py` mede isso de verdade (manual: o microfone com
-o filtro, a placa de vídeo e os modelos, com o Ritmelli desligado), num servidor de verdade deste checkout, numa porta
-dele e com dados temporários, e só com o runtime do app (o `onnxruntime-directml`): sem o `DmlExecutionProvider`, ou com
-uma versão que não é a que o `instalador/travas.txt` trava, ele se recusa a rodar antes de abrir qualquer coisa, a não
-ser com `--provider cpu`; `--cycles` menor que 1 e um `--on-s` que não é um número positivo também são recusados, e o
-resultado leva a versão que rodou e só as linhas de seca entre o primeiro e o último corte (pelo total que cada uma diz
-e pelo injetor, que cada linha também diz); uma voz que não está no `vozes.json` também é recusada antes. Cada ciclo,
-com o pedal ligado por `--on-s` segundos, precisa da voz de verdade (o processo da voz disse `pronto`, sem `erro`, e o
-`fim` do log dele tem blocos e, com `--provider dml`, as quatro sessões no DirectML: o `fim` traz o
+é em milissegundos inteiros, a resolução do carimbo, que o `track()` reconstrói inteiro, e a pista do mesmo milissegundo
+do envio não é da subida); a latência segue contada da hora do clique; também quando o pedal desliga enquanto a linha da
+pista é escrita), com a nota de que pode ter desligado antes da seca, e a janela dos `AFTER_TRACK_S` vale para o começo
+desse intervalo, e não para a volta da thread; a pista é lida de novo quando a seca aparece, para um carimbo que chegou
+na mesma volta (só para a conta: a mistura da volta segue com o que o `_voz` leu)), até `PEDAL_LINES` linhas por subida
+do pedal (passou disso, a seca sai como as outras, uma linha a cada `QUIET_S`, e a conta segue; o `secas`, o
+`secas_pedal` e o `volta_max_ms` do `/api/state` saem juntos, logo depois de a seca ser classificada (antes de o anel
+ser enchido de novo) e no fim de cada volta). As linhas saem na thread do anel, com `print` no `stderr`, como a outra
+linha de seca. O `dev/testa_anel.py` confere isso com um produtor de verdade (o `injeta.Microfone` que o `pista.py`
+usa), uma seca que o próprio teste faz acontecer, a thread do anel parada quando o teste quer e o relógio dele, e o
+`dev/testa_pedal_voz.py` confere o que o motor guarda quando o pedal liga e desliga. O `dev/measure_voice_pedal.py` mede
+isso de verdade (manual: o microfone com o filtro, a placa de vídeo e os modelos, com o Ritmelli desligado), num
+servidor de verdade deste checkout, numa porta dele e com dados temporários, com quem fala sem proxy e sem seguir
+redirecionamento (o `so_mock.abre`), e só com o runtime do app (o `onnxruntime-directml`): sem o `DmlExecutionProvider`,
+ou com uma versão que não é a que o `instalador/travas.txt` trava, ele se recusa a rodar antes de abrir qualquer coisa,
+a não ser com `--provider cpu`; `--cycles` menor que 1 e um `--on-s` que não é um número positivo também são recusados,
+e o resultado leva a versão que rodou e só as linhas de seca entre o primeiro e o último corte (pelo total que cada uma
+diz e pelo injetor, que cada linha também diz); uma voz que não está no `vozes.json` também é recusada antes. Cada
+ciclo, com o pedal ligado por `--on-s` segundos, precisa da voz de verdade (o processo da voz disse `pronto`, sem
+`erro`, e o `fim` do log dele tem blocos e, com `--provider dml`, as quatro sessões no DirectML: o `fim` traz o
 `Conversor.providers()`), da linha da subida da pista no log do servidor (o tempo dela entra na linha do ciclo, e o
 resultado dá o mais lento, `slowest_track_up_s`; a linha leva também o `--on-s` pedido, `requested_on_s`, e o tempo
 entre as respostas dos dois `POST` do pedal, `on_s_between_responses`, que mostra um pedal ligado por mais tempo quando

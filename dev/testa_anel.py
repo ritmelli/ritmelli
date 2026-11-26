@@ -741,15 +741,16 @@ class TestVoicePedalStart(unittest.TestCase):
         self.assertNotIn("voice pedal:", log.getvalue(), "both tracks came up before the start's liga(True) was sent")
 
     def test_a_stamp_in_the_millisecond_its_start_was_sent_is_not_its(self):
-        for up_at, told in ((2.4996, False), (2.501, True)):
-            with self.subTest(up_at=up_at):
+        for sent_at, up_at, read_at, told in ((2.4999, 2.4996, 2.6, False), (2.4999, 2.501, 2.6, True),
+                                              (2.5043, 2.505, 2.5075, True), (2.5054, 2.505, 2.5065, False)):
+            with self.subTest(sent_at=sent_at, up_at=up_at, read_at=read_at):
                 now = [2.0]
                 pedal = dryouts.VoicePedalStart(clock=lambda: now[0])
                 with mock.patch("sys.stderr", io.StringIO()) as log:
                     start = pedal.pedal(True)
-                    now[0] = 2.4999
+                    now[0] = sent_at
                     pedal.sent(start)
-                    now[0] = 2.6
+                    now[0] = read_at
                     pedal.track(True, stamp(up_at))
                 self.assertEqual("voice pedal:" in log.getvalue(), told)
 

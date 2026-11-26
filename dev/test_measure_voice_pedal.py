@@ -1,8 +1,12 @@
+import http.server
 import io
 import itertools
 import json
+import os
+import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 import urllib.request
 from pathlib import Path
@@ -181,7 +185,7 @@ class Main(unittest.TestCase):
             err.append(kw["stderr"])
             return proc, None
 
-        def urlopen(req, timeout=None):
+        def urlopen(req, espera=None):
             if isinstance(req, str):
                 req = urllib.request.Request(req)
             path = req.full_url.split("8970", 1)[1]
@@ -208,7 +212,9 @@ class Main(unittest.TestCase):
               mock.patch.object(measure.so_mock, "porta_responde", side_effect=[False, True]),
               mock.patch.object(measure.so_mock, "start_job", start_job),
               mock.patch.object(measure.tempfile, "mkdtemp", return_value=str(work)),
-              mock.patch.object(measure.urllib.request, "urlopen", urlopen),
+              mock.patch.object(measure.so_mock, "abre", urlopen),
+              mock.patch.object(measure.urllib.request, "urlopen",
+                                side_effect=AssertionError("urlopen follows the proxy")),
               mock.patch.object(measure, "OFF_S", 0.5),
               mock.patch.object(measure, "clock", lambda: next(ticks)),
               mock.patch.object(sys, "argv", ["measure_voice_pedal.py", asked, "--port", "8970", "--on-s", "0.5",
@@ -220,6 +226,28 @@ class Main(unittest.TestCase):
                 why = str(stop.code)
         out = work / "out.json"
         return why, sent, json.loads(out.read_text(encoding="utf-8")) if out.is_file() else None
+
+    def test_the_tools_opener_reaches_the_local_server_past_a_proxy(self):
+        class Answer(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b'{"here": true}')
+
+            def log_message(self, *args):
+                pass
+
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Answer)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        proxy = "http://127.0.0.1:9"
+        url = f"http://127.0.0.1:{server.server_port}/api/state"
+        child = "\n".join([f"import sys; sys.path.insert(0, {str(Path(__file__).resolve().parent)!r})",
+                           "import json, so_mock", f"print(json.load(so_mock.abre({url!r}, espera=5)))"])
+        env = dict(os.environ, http_proxy=proxy, HTTP_PROXY=proxy, no_proxy="", NO_PROXY="")
+        done = subprocess.run([sys.executable, "-c", child], capture_output=True, text=True, env=env, timeout=30)
+        self.assertEqual(done.stdout.strip(), "{'here': True}", done.stderr[-400:])
 
     def test_a_fallback_microphone_stops_before_the_pedal(self):
         why, sent, _ = self.run_main(state(mic=FALLBACK))

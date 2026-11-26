@@ -14,8 +14,8 @@ def tell(line):
     print(line, file=sys.stderr, flush=True)
 
 
-def up_after(up_at, sent):
-    return sent is not None and round(up_at * 1000) > round(sent * 1000)
+def up_after(up_ms, sent):
+    return sent is not None and up_ms > round(sent * 1000)
 
 
 class VoicePedalStart:
@@ -50,12 +50,14 @@ class VoicePedalStart:
         now = self.clock()
         new = (stamp != self._stamp) if stamp else (live and not self._live)
         if new:
-            up_at = now - (round(now * 1000) - (stamp - 1)) % (2**32 - 1) / 1000 if stamp else now
+            now_ms = round(now * 1000)
+            up_ms = now_ms - (now_ms - (stamp - 1)) % (2**32 - 1) if stamp else now_ms
+            up_at = up_ms / 1000 if stamp else now
             on, ended = self._on, self._ended
-            if on is not None and up_after(up_at, on[3]) and (on[1] is None or up_at <= on[1] + TICK_S):
+            if on is not None and up_after(up_ms, on[3]) and (on[1] is None or up_at <= on[1] + TICK_S):
                 owner = on
             else:
-                owner = next((e for e in reversed(ended) if up_after(up_at, e[3]) and up_at <= e[1] + TICK_S), None)
+                owner = next((e for e in reversed(ended) if up_after(up_ms, e[3]) and up_at <= e[1] + TICK_S), None)
             if owner is not None:
                 tell(f"voice pedal: its voice track came up {up_at - owner[0]:.2f} s after the pedal turned on")
                 owner[2] = up_at
