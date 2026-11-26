@@ -696,6 +696,19 @@ class TestVoicePedalStart(unittest.TestCase):
         self.assertIn("its voice track came up 5.10 s ago, with no fill seen, so which came first is not known",
                       log.getvalue())
 
+    def test_without_a_fill_the_pedal_may_have_turned_on_after_the_ring_ran_dry(self):
+        now = [1.0]
+        pedal = dryouts.VoicePedalStart(clock=lambda: now[0])
+        dry = dryouts.RingDryOuts(pedal)
+        with mock.patch("sys.stderr", io.StringIO()) as log:
+            pedal.sent(pedal.pedal(True))
+            now[0] = 6.0
+            dry.read_ring(lambda: 0)
+            now[0] = 6.2
+            dry.ran_dry(0.2, 1, 0.0)
+        self.assertIn("the pedal turned on 5.20 s ago (with no fill seen, maybe after it ran dry), its voice track "
+                      "isn't up yet", log.getvalue())
+
     def test_without_a_fill_a_track_up_within_a_tick_of_the_empty_read_has_no_order(self):
         for up_at, wording in ((6.01, "with no fill seen, so which came first is not known"),
                                (6.02, "after the ring ran dry")):

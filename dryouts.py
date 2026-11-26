@@ -79,6 +79,8 @@ class VoicePedalStart:
                 pedal += " (before the ring was seen empty, maybe before it ran dry)"
         if lo is not None and on_at > lo:
             pedal += " (after the ring was last filled, maybe after it ran dry)"
+        elif lo is None and empty_at is not None:
+            pedal += " (with no fill seen, maybe after it ran dry)"
         if up_at is None:
             return on_at, f"{pedal}, its voice track isn't up yet"
         if (lo if lo is not None else now if empty_at is None else empty_at) - up_at > AFTER_TRACK_S:
