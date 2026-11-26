@@ -174,11 +174,12 @@ ou do Mix (atribuição, `update`, subscript ou `del`), e o `dev/test_queue_entr
 `App`, as entradas da fila só mudam numa função passada ao `change_queue`, e a própria fila (atribuição, fatia,
 `append`, `remove` e afins, também por um apelido dela ou por quem a recebe como argumento) só muda ali, em qualquer
 módulo. A versão de áudio das parecidas entra pelo `App.apply_audio_version`, que muda a fila pelo `change_queue` e, no
-mesmo trecho do `_qlock`, deixa como estão a entrada da virada pendente (pelo `qid`, a mesma versão que o prato toca) e
-a primeira da fila presa. Os trechos do servidor e dos comandos que precisam do `_qlock` (os do Próximo, da reserva, do
-`concilia`, da troca, do `remember_pos`, do `release_reservation` e do `change_queue`) o pegam pelo
-`Engine.state_section()`, e o `_lock` só pelo `Engine.with_lock`. A falha de preparar a próxima sai do motor pelo
-`take_prepare_failure`, sob o `_qlock`, e o erro da tela entra pelo `set_error` (o `error` do motor só se lê).
+mesmo trecho do `_qlock`, deixa como estão a entrada da virada pendente (pelo `qid`, a mesma versão que o prato toca), a
+primeira da fila presa e a que uma reserva em curso vai tocar (`App.reserva`). Os trechos do servidor e dos comandos que
+precisam do `_qlock` (os do Próximo, da reserva, do `concilia`, da troca, do `remember_pos`, do `release_reservation` e
+do `change_queue`) o pegam pelo `Engine.state_section()`, e o `_lock` só pelo `Engine.with_lock`. A falha de preparar a
+próxima sai do motor pelo `take_prepare_failure`, sob o `_qlock`, e o erro da tela entra pelo `set_error` (o `error` do
+motor só se lê).
 
 Os comandos e o Automático chamam o `App` só pela interface pública dele: `change_queue`, `remove_from_queue`,
 `remove_if_queued`, `save_history`, `release_reservation`, `close_switches`, `with_engine`, `tempo_of`,
