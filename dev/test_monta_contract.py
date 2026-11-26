@@ -89,7 +89,8 @@ def manifest_step(job):
 
 
 def writes_output(run, key):
-    return any(re.search(r"\$env:GITHUB_OUTPUT\b|\$\{env:GITHUB_OUTPUT\}", c, re.I) and f'"{key}=$' in c
+    path = r"""(?:^|\s)-Path\s+("?)(?:\$env:GITHUB_OUTPUT|\$\{env:GITHUB_OUTPUT\})\1(?=\s|$)"""
+    return any(re.match(r"\s*Add-Content\b", c, re.I) and re.search(path, c, re.I) and f'"{key}=$' in c
                for c in code(run).splitlines())
 
 
@@ -349,6 +350,12 @@ def main():
     check(contract_problems(marks) == [], "line comments that mention <# and #> keep the contract")
     migration_first = mutant(doc, lambda d: shown(d, "testa").update(
         needs=["monta", next(k for k, j in d["jobs"].items() if j is shown(d, "testa-migracao"))]))
+    quoted_output = mutant(doc, lambda d: step_by_id(d["jobs"]["monta"], "congela").update(
+        run=step_by_id(d["jobs"]["monta"], "congela")["run"].replace(
+            "-Path $env:GITHUB_OUTPUT -Value \"versao=", '-Path "${env:GITHUB_OUTPUT}" -Value "versao=')))
+    check("${env:GITHUB_OUTPUT}" in step_by_id(quoted_output["jobs"]["monta"], "congela")["run"]
+          and contract_problems(quoted_output) == [], "the output file written as \"${env:GITHUB_OUTPUT}\" keeps the "
+                                                      "contract")
     check(contract_problems(migration_first) == [],
           "testa needing testa-migracao, which runs in every published build, keeps the contract")
     cited = mutant(doc, lambda d: edit_run(d, lambda run: run + "# publica.py also takes '--saida', $other)\n"))
@@ -465,6 +472,15 @@ def main():
         "testa-atualizador gated by anterior without needing monta": lambda d: shown(d, "testa-atualizador").update(
             {"if": shown(d, "testa-migracao")["if"],
              "needs": [next(k for k, j in d["jobs"].items() if j is shown(d, "testa"))]}),
+        "testa-atualizador needing a bridge gated by anterior that does not need monta": lambda d: (
+            d["jobs"].update({free_job(d, "bridge"): {
+                "runs-on": "ubuntu-latest", "if": shown(d, "testa-migracao")["if"], "steps": [{"run": "echo"}],
+                "needs": [next(k for k, j in d["jobs"].items() if j is shown(d, "testa-migracao"))]}}),
+            shown(d, "testa-atualizador").update(
+                needs=["monta", [k for k in d["jobs"] if k.startswith("bridge")][-1]])),
+        "the congela writing versao to another file": lambda d: step_by_id(d["jobs"]["monta"], "congela").update(
+            run=step_by_id(d["jobs"]["monta"], "congela")["run"].replace(
+                "-Path $env:GITHUB_OUTPUT -Value \"versao=", '-Path "$env:GITHUB_OUTPUT.tmp" -Value "versao=')),
         "testa-atualizador only on push": lambda d: shown(d, "testa-atualizador").update(
             {"if": "github.event_name == 'push'"}),
         "testa-atualizador needing a job that runs only on push": lambda d: (
