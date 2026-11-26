@@ -43,6 +43,11 @@ def fields():
 
 if args[:2] == ["pr", "comment"]:
     sys.exit("non-200 OK status code: 502 Bad Gateway" if conf.get("comment_fails") else 0)
+if args[:2] == ["pr", "view"] and flag("--json") == "headRefOid":
+    if conf.get("pr_head") is None or flag("--jq") != ".headRefOid":
+        sys.exit("HTTP 502: the head did not come")
+    print(conf["pr_head"])
+    sys.exit(0)
 if args[:2] == ["pr", "view"]:
     labels = conf.get("labels")
     if labels is None or flag("--json") != "labels":
@@ -76,6 +81,16 @@ if args[0] != "api":
 url = urlparse(args[1])
 if url.path.endswith("/jobs"):
     print("Testes 4 min 10 s")
+    sys.exit(0)
+if url.path.endswith("/actions/workflows/monta.yml/runs"):
+    if conf.get("build_fails"):
+        sys.exit("HTTP 502")
+    query = parse_qs(url.query)
+    if flag("--jq") != ".workflow_runs[0].html_url // empty" or "head_sha" not in query:
+        sys.exit(f"fake gh: a monta.yml query it does not know: {args}")
+    runs = [r for r in conf.get("build_runs", []) if r["head_sha"] == query["head_sha"][0]
+            and (query.get("status") is None or r["conclusion"] == query["status"][0])]
+    print(runs[0]["html_url"] if runs else "")
     sys.exit(0)
 if not url.path.endswith("/actions/workflows/testa.yml/runs"):
     sys.exit(f"fake gh: unexpected call: {args}")
@@ -120,7 +135,8 @@ class Ran:
 def run_step(run, env, fake=None, cwd=None):
     """Runs the run block with env (on top of the os.environ without the GITHUB_ variables) and the fake gh set by the
     dict fake: labels (a list, or None when they do not come), comment_fails, runs, queue_fails, pr ({"id", "queued",
-    "labels"}, or None when it does not come), mutation_refused."""
+    "labels"}, or None when it does not come), mutation_refused, pr_head (the head sha gh pr view gives, or None),
+    build_runs (the monta.yml runs: head_sha, conclusion, html_url) and build_fails."""
     shell = bash()
     if not shell:
         raise RuntimeError("no bash: the Git for Windows one (or bash on the PATH outside Windows) runs the block")

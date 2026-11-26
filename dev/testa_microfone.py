@@ -132,6 +132,9 @@ class MotorFalso:
         self._pista_viva = False
         self._alvo, self._voz_anel_em, self.voz, self.voz_fx = alvo, -1e9, [], []
 
+    def set_error(self, message):
+        self.error = message
+
     def totais_saude(self):  # a janela do evento "audio" (metricas.SaudeAudio)
         return 0, 0.0
 
@@ -697,13 +700,13 @@ class TestaMicrofone(unittest.TestCase):
             # o aviso e uma mensagem traduzida (i18n.msg, desde o #106): a chave dela, com o texto em ingles junto
             self.assertEqual((e.error or {}).get("key"), "server.effect.noVozDll")
             self.assertIn("voz.dll", e.error["text"])
-            e.error = None
+            e.set_error(None)
             e._push_mic(b)
             self.assertIsNone(e.error, "o aviso sai uma vez por efeito")
             e.set_effect("eco")
             e._push_mic(b)
             self.assertEqual((e.error or {}).get("key"), "server.effect.noVozDll", "outro efeito avisa de novo")
-            e.error = None
+            e.set_error(None)
             e._fx_filtro = True
             e._push_mic(b)
             self.assertIsNone(e.error)

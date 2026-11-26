@@ -25,13 +25,15 @@ each in its own process, and exits 1 if any fails. It is what the .github/workfl
     python dev\testa_tudo.py --passo <name>
                                            a step of the testa.yml that runs one script (PASSOS): the "disco" is the
                                            testa_pasta_protegida.py --disco, the "metricas" the fitcheck.py --metricas
-    python dev\testa_tudo.py --areas <base>
+    python dev\testa_tudo.py --areas <base> [--build-base <base>]
                                            (the PR labels come from the ETIQUETAS variable, a JSON list:
                                            $env:ETIQUETAS = '["extracao-tema"]'; in an argument, PowerShell 5.1 would
                                            drop the quotes)
                                            the path filter of the testa.yml: says (and writes to GITHUB_OUTPUT) whether
                                            what changed since the base, or a PR label, triggers the filter job and the
-                                           screen jobs
+                                           screen jobs, and whether what changed since the --build-base (the base when
+                                           there is none) changes the build (monta=, the BUILD_PATHS: the Verdict then
+                                           asks for a passed monta.yml run on the PR head)
     python dev\testa_tudo.py --linhas <base>
                                            the line count of the big files (LINHAS) against the base, for the summary
         [--resumo arquivo.md]              appends the result in markdown (the PR summary)
@@ -57,6 +59,7 @@ Exits 0 if everything passed and 1 if something failed; in the --tela and the --
 changed (the testa.yml decides).
 """
 import argparse
+import fnmatch
 import hashlib
 import importlib.util
 import json
@@ -79,7 +82,7 @@ RAIZ = Path(__file__).resolve().parent.parent
 STDLIB = [f"dev/testa_{n}.py" for n in ("i18n", "metricas", "migra", "mock", "vozes", "pareamento", "grava", "mfx",
                                              "ganchos", "pasta_protegida", "so_mock")] + [
     "dev/test_trusted_author.py", "dev/test_needs_owner.py", "dev/test_ci_workflow.py",
-    "dev/test_forbidden_terms.py"]
+    "dev/test_forbidden_terms.py", "dev/test_music.py", "dev/test_bumbo_grid.py"]
 # o STDLIB mais os que usam as bibliotecas do app (requirements-dev.txt) e o ffmpeg
 COMPLETO = STDLIB + [f"dev/testa_{n}.py" for n in (
     "adianta", "anel", "atualizacao", "atualizador", "automatico", "comandos", "congela", "conversor", "ganho", "musica",
@@ -154,6 +157,9 @@ COMPARA_ENV = {"EXTRACAO": "${{ steps.areas.outputs.extracao }}", "BASE_SHA": "$
 REQUIRED_ENV = {"--compara": COMPARA_ENV, "--capture": COMPARA_ENV}
 BASE_ENV = "${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}"
 AREAS_RUN = "python dev/testa_tudo.py --areas $env:BASE"
+BUILD_AREAS_RUN = "python dev/testa_tudo.py --areas $env:BASE --build-base $env:BUILD_BASE"
+BUILD_BASE_ENV = {"BUILD_BASE": "${{ github.event_name == 'merge_group' && needs.etiquetas.outputs.queue_base || "
+                                "github.event.pull_request.base.sha || github.event.before }}"}
 SCREEN_AREAS_RUN = "\n".join((
     AREAS_RUN,
     "if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }",
@@ -162,7 +168,7 @@ SCREEN_AREAS_RUN = "\n".join((
 LABELS_ENV = {"ETIQUETAS": "${{ needs.etiquetas.outputs.lista }}"}
 SOURCE_STEPS = {
     ("testes", "ruff"): ("ruff", None, "python -m ruff check --output-format github .", None),
-    ("microfone", "areas"): ("O PR mexe no filtro?", None, AREAS_RUN, None),
+    ("microfone", "areas"): ("O PR mexe no filtro?", None, BUILD_AREAS_RUN, BUILD_BASE_ENV),
     ("tela", "areas"): ("O PR mexe na tela?", None, SCREEN_AREAS_RUN, LABELS_ENV),
     ("compara", "areas"): ("O PR mexe na tela?", None, "\n".join((
         """if ($env:GITHUB_EVENT_NAME -eq 'push') { Add-Content -Path $env:GITHUB_OUTPUT -Value "roda=true" -Encoding utf8; """
@@ -219,6 +225,14 @@ TODAS = (".github/workflows/testa.yml", ".github/actions/", "dev/testa_tudo.py",
 # a etiqueta do PR que dispara uma area mesmo sem arquivo dela: a extracao-tema, do PR que leva codigo de
 # renderizacao ou de traducao do tema para outro modulo (posta por quem mantem o repo)
 ETIQUETAS = {"extracao-tema": "tela"}
+
+
+BUILD_PATHS = ("instalador/", "atualiza*.py", "migra.py", "pastas.py", "microfone/microfone.py", "microfone/apo/",
+               "ritmelli.spec", ".github/workflows/monta.yml", ".github/actions/inno-setup/")
+
+
+def touches_build(files):
+    return any(f.startswith(p) if p.endswith("/") else fnmatch.fnmatchcase(f, p) for f in files for p in BUILD_PATHS)
 
 
 def areas(arquivos, etiquetas=()):
@@ -540,18 +554,26 @@ def escreve(resumo, linhas):
             f.write("\n".join(linhas) + "\n\n")
 
 
+def changed_files(base, cwd=RAIZ):
+    cod, saida = executa(["git", "diff", "--name-only", "-z", "--no-renames", base, "HEAD"], limite=60, cwd=cwd)
+    if cod != 0:
+        print(f"o git diff contra {base} falhou ({cod}):\n{saida}")
+        return None
+    return [arq for arq in saida.split(chr(0)) if arq.strip()]
+
+
 def diz_areas(a):
     """O --areas: o git diff --name-only da base ate o HEAD. Sem rename: o arquivo que sai de uma area conta nela. Com o
     -z, o caminho com acento vem inteiro, e nao entre aspas."""
-    cod, saida = executa(["git", "diff", "--name-only", "-z", "--no-renames", a.areas, "HEAD"], limite=60)
-    if cod != 0:
-        print(f"o git diff contra {a.areas} falhou ({cod}):\n{saida}")
+    arquivos = changed_files(a.areas)
+    build_files = arquivos if a.build_base is None else changed_files(a.build_base)
+    if arquivos is None or build_files is None:
         return 1
-    arquivos = [arq for arq in saida.split(chr(0)) if arq.strip()]
     etiquetas = json.loads(os.environ.get("ETIQUETAS") or "[]") or []  # null outside a PR (the push)
     disparadas = areas(arquivos, etiquetas)
     print(f"{len(arquivos)} arquivo(s) mudaram desde {a.areas}; etiquetas: {etiquetas or 'nenhuma'}")
     linhas = [f"{area}={'true' if area in disparadas else 'false'}" for area in AREAS]
+    linhas.append(f"monta={'true' if touches_build(build_files) else 'false'}")
     print("\n".join(linhas))
     if os.environ.get("GITHUB_OUTPUT"):
         with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
@@ -814,6 +836,8 @@ def main():
     modo.add_argument("--areas", metavar="BASE", help="the areas that what changed since BASE triggers")
     modo.add_argument("--linhas", metavar="BASE", help="the line count of the big files against BASE")
     ap.add_argument("--base", help="in the --tela and the --compara: the base of the compara (a commit, a branch)")
+    ap.add_argument("--build-base", help="in the --areas: the base the monta= line compares to (the commit before the "
+                                         "PR in a queue entry), when it is not the BASE of the other areas")
     ap.add_argument("--pasta", default=str(RAIZ / "logs" / "tela"), help="where the prints and the logs go")
     ap.add_argument("--ref-cache", help="a folder with the capture of the base, read and filled (see above)")
     ap.add_argument("--head-cache", help="a folder that gets the capture of the HEAD")
