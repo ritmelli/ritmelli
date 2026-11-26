@@ -50,7 +50,9 @@ a prateleira aos poucos. Todo ffmpeg da medida passa pelo `mede_arquivo`, e o se
 os que ainda medem (`stop_measurements`): nenhum fica segurando um arquivo depois que ele sai (`dev/test_mock_stop.py`). Na prateleira de 14/11, as músicas iam de -19,2 a -5,3 LUFS (mediana
 -9,3); o alvo de -11 (o do modo "Alto" do Spotify, que também sobe com limitador) deixa o Sultans
 of Swing (+3,1 dB) com 0,2% do tempo acima de 3 dB de limitação, e em -10 seriam 2,7%.
-`dev/testa_ganho.py` testa a medida, o limitador e o motor sem som.
+`dev/testa_ganho.py` testa a medida, o limitador e o motor sem som; o custo do `_mixa` com o ganho e o limitador vale
+pela mediana de 400 blocos e pela média sem os 4 mais lentos (uma ou duas chamadas que a máquina segura por dezenas de
+ms mexem na média, não no custo de cada bloco; uma lentidão que volta a cada poucos blocos segue reprovando).
 
 O esticamento da passagem no tempo (o `esticar` e o `esticar_saida`, a velocidade como no vinil e o tom de volta pela
 Rubber Band do pedalboard) fica no processo do motor, na thread do planejador. Ele leva de 2 a 8 s por passagem, e a
