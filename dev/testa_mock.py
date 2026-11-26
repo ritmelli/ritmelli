@@ -170,7 +170,6 @@ TRACK_ROUTES = ((("POST", "/api/queue"), {}, TRACK_FIELDS), (("POST", "/api/libr
                 (("POST", "/api/library"), {}, {"title"}))
 RENAME_ROUTE = ("PATCH", "/api/library/{iid}")
 BODY_READERS = {"read", "text", "json", "post", "multipart", "content"}
-AIOHTTP_REQUEST_METHODS = {"prepare"}
 
 
 class PassedTheCheck(Exception):
@@ -249,6 +248,15 @@ def track_field_routes(sources=None):
     def passed_to(p, node):
         return isinstance(p, ast.Call) and (node in p.args or any(k.value is node for k in p.keywords))
 
+    def prepares_a_stream_response(fn, call):
+        f = call.func
+        if not (isinstance(f, ast.Attribute) and f.attr == "prepare" and isinstance(f.value, ast.Name)):
+            return False
+        stores = [n for n in ast.walk(fn) if isinstance(n, ast.Assign)
+                  and any(isinstance(t, ast.Name) and t.id == f.value.id for t in n.targets)]
+        return bool(stores) and all(isinstance(n.value, ast.Call) and ast.unparse(n.value.func) == "web.StreamResponse"
+                                    for n in stores)
+
     def follow_body(fn, var, path, read, lost):
         if (id(fn), var) in [(id(f), v) for f, v in path]:
             return
@@ -299,7 +307,7 @@ def track_field_routes(sources=None):
                 target, param = parameter_for(fn, p, node)
                 if target is not None:
                     follow_request(target, param, path, lost)
-                elif not (isinstance(p.func, ast.Attribute) and p.func.attr in AIOHTTP_REQUEST_METHODS):
+                elif not prepares_a_stream_response(fn, p):
                     lost.append(where)
             else:
                 lost.append(where)
@@ -353,7 +361,10 @@ TRACKER_CASES = (('b = await body(request)\n    return b.get("title")', "found")
                  ('return await reads(request)', "lost"),
                  ('q = request\n    return await q.json()', "lost"),
                  ('return other.parse(request)', "lost"),
-                 ('await resp.prepare(request)\n    return request.match_info["iid"]', "none"))
+                 ('await other.prepare(request)', "lost"),
+                 ('resp = make()\n    await resp.prepare(request)', "lost"),
+                 ('resp = web.StreamResponse()\n    await resp.prepare(request)\n    return request.match_info["iid"]',
+                  "none"))
 
 
 def check_track_field_routes():
@@ -1121,8 +1132,10 @@ def ao_vivo(srv):
     confere((r.get("item") or {}).get("id") == "d2" and tocando == "d2",
             f"a body with every field right still plays the record from the shelf ({r}, playing {tocando})")
     for bad in BAD_TRACK_BODIES:
-        if "youtube_id" in bad:
-            on_shelf = {**bad, "youtube_id": "djV11Xbc914"}
+        on_shelf = ({**bad, "youtube_id": "djV11Xbc914"} if "youtube_id" in bad
+                    else {**bad, "url": bad["url"].replace("dQw4w9WgXcQ", "djV11Xbc914")}
+                    if isinstance(bad.get("url"), str) else None)
+        if on_shelf:
             queue = answer_of(srv, "POST", "/api/queue", on_shelf)
             library = answer_of(srv, "POST", "/api/library", {**on_shelf, "play": True})
             confere(queue == library and queue[0] == 400, f"the queue and the shelf with play answer alike to "

@@ -1381,7 +1381,7 @@ class App:
         prateleira ou um video do YouTube, com a capa dele: nada de link de outro endereco para o PC baixar, nem de
         capa que o tema abriria."""
         iid = b.get("id")
-        it = self.lib.get(iid or "") if not remoto or isinstance(iid, str) else None
+        it = self.lib.get(iid) if isinstance(iid, str) and iid else None
         j = None
         if not it:
             target, yid = parse_target(b, TRACK_FIELDS)

@@ -16,6 +16,7 @@ ser exata.
 
 Sai 1 se algo falha."""
 import argparse
+import ast
 import base64
 import hashlib
 import inspect
@@ -174,6 +175,28 @@ def _igual(a, b):
     return a == b
 
 
+def engine_takes_the_excerpt_from_transicao():
+    tree = ast.parse((RAIZ / "engine.py").read_text(encoding="utf-8"))
+    plan = next((n for c in tree.body if isinstance(c, ast.ClassDef) and c.name == "Engine" for n in c.body
+                 if isinstance(n, ast.FunctionDef) and n.name == "_plano_dois"), None)
+    if plan is None:
+        return ["engine.py has no Engine._plano_dois"]
+    expected = {"i2": "saida_a(swap)", "i1": "transicao.phase_excerpt_start(saida_a(virar - FASE_ANTES_S), i2)"}
+    stores = {name: [] for name in expected}
+    for node in ast.walk(plan):
+        if isinstance(node, ast.Name) and node.id in stores and not isinstance(node.ctx, ast.Load):
+            stores[node.id].append(node)
+    failures = []
+    for name, source in expected.items():
+        values = [n.value for n in ast.walk(plan) if isinstance(n, ast.Assign) and len(n.targets) == 1
+                  and isinstance(n.targets[0], ast.Name) and n.targets[0].id == name]
+        want = ast.dump(ast.parse(source, mode="eval").body)
+        if len(stores[name]) != 1 or len(values) != 1 or ast.dump(values[0]) != want:
+            failures.append(f"Engine._plano_dois sets {name} only as {name} = {source} "
+                            f"({[ast.unparse(v) for v in values]}, {len(stores[name])} store(s))")
+    return failures
+
+
 def phase_excerpt_stays_after_the_outgoing_ramp():
     virar = 100.0
     failures = []
@@ -223,7 +246,7 @@ def confere():
     sem = [n for n in _publicas() if n not in por_fn]
     if sem:
         falhas.append(f"funcao publica do transicao.py sem caso gravado: {', '.join(sem)}")
-    falhas += phase_excerpt_stays_after_the_outgoing_ramp()
+    falhas += phase_excerpt_stays_after_the_outgoing_ramp() + engine_takes_the_excerpt_from_transicao()
     for f in falhas:
         print(f"FALHA {f}")
     print("ok" if not falhas else f"{len(falhas)} falha(s)")
