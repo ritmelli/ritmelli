@@ -150,18 +150,18 @@ def incoming_level(speed, rng):
         check(False, f"incoming level at speed {speed:.4f}: output {z.shape} and positions {phi.shape}, where "
                      f"{n_overlap + n_ramp} frames were expected")
         return float("nan")
-    d, drops, ok, msg = start_drop(x, z, "incoming level", speed)
+    channels, drops, ok, msg = start_drop(x, z, "incoming level", speed)
     muted, cut = int(INCOMING_MUTED_MS / LEVEL_WINDOW_MS), int(INCOMING_SILENT_MS / LEVEL_WINDOW_MS)
-    symptom = (bool(np.isfinite(d).all()) and d[:muted].max() < -INCOMING_GAP_DB
-               and d[cut:].min() >= -INCOMING_GAP_DB)
+    symptom = (bool(np.isfinite(channels).all()) and channels[:muted].max() < -INCOMING_GAP_DB
+               and channels[cut:].min() >= -INCOMING_GAP_DB)
     if ok:
         check(False, f"{msg}: passed, but it is a known failure (#{INCOMING_ISSUE}): if the fix is on purpose, the "
                      "case leaves the known failures in the same PR")
     elif symptom:
         print(f"known #{INCOMING_ISSUE} {msg}")
     else:
-        check(False, f"{msg}; the loudest window of the first {INCOMING_MUTED_MS:.0f} ms is {d[:muted].max():+.1f} dB, "
-                     f"and from {INCOMING_SILENT_MS:.0f} ms on the quietest is {d[cut:].min():+.1f} dB (a gap is more than "
+        check(False, f"{msg}; the loudest window of the first {INCOMING_MUTED_MS:.0f} ms is {channels[:muted].max():+.1f} dB, "
+                     f"and from {INCOMING_SILENT_MS:.0f} ms on the quietest is {channels[cut:].min():+.1f} dB (a gap is more than "
                      f"{INCOMING_GAP_DB:.0f} dB down): not the silent start of #{INCOMING_ISSUE}")
     return min(drops)
 

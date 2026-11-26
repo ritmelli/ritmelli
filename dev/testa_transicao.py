@@ -10,6 +10,9 @@ transicao.py e o numpy. Toda funcao publica do transicao.py tem de ter ao menos 
 Regravar e para quando uma conta muda de proposito (o PR diz por que) ou quando a banca ganha par: a banca passa antes,
 e os casos novos saem do motor de verdade, nunca escritos a mao.
 
+The JSON keeps a fingerprint of the bench (its syntax tree without the docstrings), and the check fails when the
+bench changed since the recording: a pair that changed has to be recorded again.
+
 O nivel dos blocos (a lista (t0, quadros, rms) do leitor do motor) vai uma vez so, no "niveis", e cada chamada aponta
 para ele; as colunas dele (no "colunas", tambem uma vez cada) e os arrays vao em base64 dos bytes (zlib), para a volta
 ser exata.
@@ -110,6 +113,21 @@ class Gravador:
         setattr(transicao, nome, gravado)
 
 
+class _NoDocstrings(ast.NodeTransformer):
+    def generic_visit(self, node):
+        super().generic_visit(node)
+        body = getattr(node, "body", None)
+        if (isinstance(body, list) and body and isinstance(body[0], ast.Expr)
+                and isinstance(body[0].value, ast.Constant) and isinstance(body[0].value.value, str)):
+            node.body = body[1:] or [ast.Pass()]
+        return node
+
+
+def bench_fingerprint(path=BANCA):
+    tree = _NoDocstrings().visit(ast.parse(path.read_text(encoding="utf-8")))
+    return hashlib.sha1(ast.dump(tree).encode()).hexdigest()
+
+
 def grava():
     g = Gravador()
     for nome in _publicas():
@@ -134,7 +152,7 @@ def grava():
         return 1
     dados = {"sobre": "gerado por: python dev/testa_transicao.py --grava (as chamadas do motor ao transicao.py nos "
                       "pares da banca das passagens)",
-             "colunas": g.colunas, "niveis": g.niveis, "casos": g.casos}
+             "bench": bench_fingerprint(), "colunas": g.colunas, "niveis": g.niveis, "casos": g.casos}
     CASOS.write_text(json.dumps(dados, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     por_fn = {}
     for c in g.casos:
@@ -247,6 +265,9 @@ def confere():
     sem = [n for n in _publicas() if n not in por_fn]
     if sem:
         falhas.append(f"funcao publica do transicao.py sem caso gravado: {', '.join(sem)}")
+    if dados.get("bench") != bench_fingerprint():
+        falhas.append(f"the bench ({BANCA.name}) changed since {CASOS.name} was recorded: python dev/testa_transicao.py "
+                      "--grava")
     falhas += phase_excerpt_stays_after_the_outgoing_ramp() + engine_takes_the_excerpt_from_transicao()
     for f in falhas:
         print(f"FALHA {f}")
