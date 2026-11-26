@@ -36,7 +36,7 @@ from microfone import preset  # o preset do efeito no filtro: importado aqui, nu
 from microfone import voz  # o mesmo motor de efeitos do filtro, para a voz com efeito que sai pelo app
 # as contas da passagem sem audio (o nivel, o fade ou o final seco, a entrada da proxima e os tempos) moram no
 # transicao.py; o motor, e quem le daqui (o andamento.py), segue com os mesmos nomes
-from transicao import (BLOCK, FADE_MIN_S, FASE_ANTES_S, FOLGA_S, RAMPA_MAX_S, RAMPA_MIN_S, RAMPA_TAXA,
+from transicao import (BLOCK, FADE_MIN_S, FASE_ANTES_S, FASE_MIN_S, FOLGA_S, RAMPA_MAX_S, RAMPA_MIN_S, RAMPA_TAXA,
                        SAI_MAX, SR, TEMPO_MAX, TRANS_MAX_S, TRANS_SECO_S, _niveis, medir_fim, medir_inicio)
 
 try:  # o pedal da mina: modulo de fora deste repo, posto ao lado do codigo so onde ela roda
@@ -132,7 +132,6 @@ NIVEIS_MAX = PRONTO_AHEAD + 1500  # o nivel dos ultimos 90 s de cada deck: cobre
 # a batida na passagem: como o DJ, a proxima entra no tempo
 BATIDA_S = 20.0            # o trecho de cada lado medido para achar a grade de batidas
 BATIDA_MIN_S = 12.0        # com menos que isso de um lado, a passagem segue sem alinhar
-FASE_MIN_S = 4.0           # a fase sai do trecho onde as duas soam juntas, de pelo menos isso
 NOTA_MIN = 3.0             # o pente da fase nesse trecho tem de cair nos ataques pelo menos isso acima da media
 SAI_FOLGA_S = 12.0         # a rampa da que sai so vale se ainda falta isso para ela comecar quando o plano comeca
 # a rede (compasso.py) quando o batida.py nao firma: com ela, 35% das passagens da prateleira no tempo em vez de 28%
@@ -2976,7 +2975,7 @@ class Engine:
                   f"before the swap", file=sys.stderr, flush=True)
         return nb, comeco
 
-    def _plano_dois(self, blocos_a, blocos_b, ga, gb, s, sa, a_longa, b_longa, virar, sobrepor, baixo, ini, fase_em):
+    def _plano_dois(self, blocos_a, blocos_b, ga, gb, s, sa, a_longa, b_longa, virar, sobrepor, swap, ini, fase_em):
         """O fade-out no tempo com os andamentos a mais de TEMPO_MAX: a que sai vai devagar (RAMPA_TAXA) para a
         velocidade sa antes da sobreposicao, e a proxima entra esticada em TEMPO_MAX no andamento a que ela
         chegou. Os blocos deste a partir da rampa sao trocados pelos reamostrados, com a posicao do disco no
@@ -3001,11 +3000,8 @@ class Engine:
             return int(np.searchsorted(phi_a, (t - t_r) * SR))
 
         P = pa / sa * SR  # o periodo deste na saida, em amostras
-        # the phase excerpt: from FASE_ANTES_S of the disc before the switch, and at least FASE_MIN_S of this one's
-        # output (#196): sped up (sa > 1), that is more of the disc, and still after its speed ramp, which ends 0.5 s
-        # before FASE_ANTES_S of the disc (transicao.rampa_saida), with sa at most SAI_MAX from 1
-        i2 = saida_a(baixo)  # baixo aqui e a troca (o fim do corpo)
-        i1 = min(saida_a(virar - FASE_ANTES_S), i2 - int(FASE_MIN_S * SR))
+        i2 = saida_a(swap)
+        i1 = transicao.phase_excerpt_start(saida_a(virar - FASE_ANTES_S), i2)
         perto = (saida_a(a_longa + round((virar - a_longa) / pa) * pa) - i1) / SR
         f, motivo = fase_em(None, 0.0, None, P / SR, "the end of this one (already changed)", perto, x=z_a[i1:i2])
         if f is None:
@@ -3029,7 +3025,7 @@ class Engine:
             return None, "the on-beat switch fell after the end of the file"
         v = t_r + phi_a[j * BLOCK] / SR
         # a troca de grave na batida deste mais perto da troca, em amostras da saida dele
-        tm, w0, w1 = transicao.troca_grave(a0, P, saida_a(baixo), t0, pad, sr=1)
+        tm, w0, w1 = transicao.troca_grave(a0, P, saida_a(swap), t0, pad, sr=1)
         segura, entra = w0, w0
         sai = segura + int(DJ_SAI_BATIDAS * P)
         corte = min(len(z), w1 - pad + SR // 2)
@@ -3050,7 +3046,7 @@ class Engine:
         vb, sob, rampa, kr = _visor_rampa(ini, ate, sb, n_sob, n_rampa)
         visor = {"no_tempo": True, "v": v, "t0": disco_a(t0), "ini": ini, "va": sa, "vb": vb, "sob": sob,
                  "rampa": rampa, "k": kr, "sai": sai / SR, "entra": entra / SR, "segura": segura / SR,
-                 "nivel": DJ_NIVEL_ANTES, "cheia": w1 / SR, "grave": [w0 / SR, w1 / SR], "grade_de": _visor_grade(ga, disco_a(a0), a_longa - ga.fase, baixo),
+                 "nivel": DJ_NIVEL_ANTES, "cheia": w1 / SR, "grave": [w0 / SR, w1 / SR], "grade_de": _visor_grade(ga, disco_a(a0), a_longa - ga.fase, swap),
                  "grade_para": _visor_grade(gb, ini + sb * tau, ini, ini + BATIDA_S)}
         return {"cabeca": cabeca, "ate": ate, "virar": v, "silencio": 0, "sai": sai, "entra": entra, "segura": segura,
                 "nivel": DJ_NIVEL_ANTES, "cheia": w1, "grave": (w0, w1), "sai_q": (t_r, novos), "periodo_saida": P / SR,

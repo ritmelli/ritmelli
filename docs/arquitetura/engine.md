@@ -5,10 +5,10 @@ nível dos blocos, a escolha entre fade e final seco, a entrada do próximo na p
 grades e fases já medidas (a velocidade de cada lado, a batida em que o próximo cai, a virada e a troca de grave). O
 motor lê o áudio, mede a fase antes e depois de esticar, estica, põe o eco, filtra o grave e monta os blocos. Quando
 a que sai acelera para casar com a próxima, o trecho em que a fase dela é medida começa mais cedo no disco, para durar
-pelo menos `FASE_MIN_S` na saída já acelerada (#196). O
-`dev/testa_transicao.py` roda o `transicao.py` sobre as chamadas que o motor gravou nos pares da banca das passagens e
-confere que esse trecho, com a que sai a `1 + SAI_MAX`, não entra na rampa dela (`FASE_MIN_S·(1+SAI_MAX) ≤
-FASE_ANTES_S + 0,5`, com a folga de 0,5 s lida do `transicao.rampa_saida`, #208).
+pelo menos `FASE_MIN_S` na saída já acelerada (#196): o começo dele é o `transicao.phase_excerpt_start`, que o motor
+chama. O `dev/testa_transicao.py` roda o `transicao.py` sobre as chamadas que o motor gravou nos pares da banca das
+passagens e roda o `phase_excerpt_start` com a que sai a `1 ± SAI_MAX`, conferindo que o trecho não entra na rampa
+dela (`transicao.rampa_saida`) e dura pelo menos `FASE_MIN_S` (#208).
 
 `engine.py`: mistura em WASAPI 48 kHz, blocos de 10 ms; ffmpeg decodifica; voz com no
 máximo ~80 ms de atraso; `MockEngine` sem áudio para teste (o relógio de 10 ms dele chama o `_mixa`; com o
