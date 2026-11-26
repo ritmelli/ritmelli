@@ -201,11 +201,19 @@ def measurement_stopped_by_the_given_kill():
     name = rf"\\.\pipe\ritmelli-measure-stop-{os.getpid()}"
     pipe = _winapi.CreateNamedPipe(name, _winapi.PIPE_ACCESS_DUPLEX | _winapi.FILE_FLAG_OVERLAPPED, 0, 1, 65536, 65536,
                                    0, _winapi.NULL)
-    result, kills, connected, broken = [], [], False, False
+    result, kills, waited_by, connected, broken = [], [], [], False, False
     measuring = threading.Thread(target=lambda: result.append(sonoridade.mede_arquivo(Path(name), engine.FFMPEG)))
 
     def kill(p):
         kills.append(p)
+        wait = p.wait
+
+        def watched_wait(*args, **kwargs):
+            code = wait(*args, **kwargs)
+            waited_by.append(threading.current_thread())
+            return code
+
+        p.wait = watched_wait
         engine.mata(p)
 
     stopping = threading.Thread(target=sonoridade.stop_measurements, args=(kill,))
@@ -229,10 +237,11 @@ def measurement_stopped_by_the_given_kill():
         measuring.join()
         if connected:
             stopping.join()
-    check(connected and len(kills) == 1 and result == [None] and broken,
+    stop_waited = stopping in waited_by
+    check(connected and len(kills) == 1 and stop_waited and result == [None] and broken,
           f"stop_measurements ends a measurement still reading its track through the kill it is given (the engine's "
           f"mata) and waits for it: the ffmpeg is gone when it returns (opened {connected}, {len(kills)} kill, "
-          f"{result}, gone {broken})")
+          f"waited by the stop {stop_waited}, {result}, gone {broken})")
 
 
 def stop(srv):
