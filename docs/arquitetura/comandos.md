@@ -133,7 +133,7 @@ da tela entra pelo `set_error` (o `error` do motor só se lê).
 
 Os comandos e o Automático chamam o `App` só pela interface pública dele: `change_queue`, `remove_from_queue`,
 `remove_if_queued`, `save_history`, `release_reservation`, `close_switches`, `with_engine`, `tempo_of`,
-`search_songs`, `run_helper`, `yt_error` e os outros; o que eles ainda escrevem direto no estado do `App` é contado
+`search_songs`, `run_helper` e os outros; o que eles ainda escrevem direto no estado do `App` é contado
 abaixo. O servidor chama o Automático pela dele (`ligar_auto`,
 `fetch_mix`, `auto_round`, `run_auto_watcher` e `run_tempo_watcher`), e a prateleira grava pelo `Library.save`.
 

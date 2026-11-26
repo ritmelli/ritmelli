@@ -418,6 +418,8 @@ def instance_state(tree, classes):
             for s in class_level(c.body):
                 if isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     out |= set(instance_stores(s))
+                    if any(attr_function(d, ("property",)) for d in s.decorator_list):
+                        out.add(s.name)
     return {n for n in out if not n.startswith("_")}
 
 
@@ -570,6 +572,7 @@ CAUGHT = [
     ("getattr with the name unpacked", OWNER, "def f(o):\n    return getattr(o, *('_x',))\n"),
     ("object.__getattribute__", OWNER, "def f(o):\n    return object.__getattribute__(o, '_x')\n"),
     ("object.__setattr__", OWNER, "def f(o):\n    object.__setattr__(o, '_x', 0)\n"),
+    ("object.__delattr__", OWNER, "def f(o):\n    object.__delattr__(o, '_x')\n"),
     ("set by object.__setattr__", "class Owner:\n    def __init__(self):\n        object.__setattr__(self, '_x', 0)\n",
      "o._x\n"),
     ("a subclass of a class whose base is object", OWNER,
@@ -635,7 +638,7 @@ MODULE_KNOWN_MISSES = [
     ("sys.modules", MODULE_OWNER, "import sys\n\n\ndef f():\n    return sys.modules['owner']._x\n"),
     ("the module bound to another name", MODULE_OWNER, "import owner\n\nm = owner\nm._x\n"),
 ]
-STATE_OWNER = "class App:\n    def __init__(self):\n        self.x = []\n"
+STATE_OWNER = "class App:\n    def __init__(self):\n        self.x = []\n\n    @property\n    def p(self):\n        return 1\n"
 WRITES_CAUGHT = [
     ("an assignment", APP_NAMES, "def f(A):\n    A.x = 1\n"),
     ("an augmented assignment", APP_NAMES, "def f(A):\n    A.x += [1]\n"),
@@ -647,6 +650,8 @@ WRITES_CAUGHT = [
     ("a del", APP_NAMES, "def f(A):\n    del A.x\n"),
     ("a container method", APP_NAMES, "def f(app):\n    app.x.append(1)\n"),
     ("setattr", APP_NAMES, "def f(A):\n    setattr(A, 'x', 1)\n"),
+    ("a read-only property", APP_NAMES, "def f(A):\n    A.p = 1\n"),
+    ("object.__setattr__", APP_NAMES, "def f(A):\n    object.__setattr__(A, 'x', 1)\n"),
     ("delattr in a loop", APP_NAMES, "def f(A):\n    for k in ('x',):\n        delattr(A, k)\n"),
     ("the engine through the App", ENGINE_NAMES, "def f(A):\n    A.engine.x = 1\n"),
     ("the engine in a local", ENGINE_NAMES, "def f(A):\n    E = A.engine\n    E.x = None\n"),

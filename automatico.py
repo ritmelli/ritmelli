@@ -7,10 +7,10 @@ O estado do Automatico mora no App (auto, semente, mix, mix_base, ponte, mix_bus
 fora_musica, andamentos, andamentos_versao, versoes), porque a leitura do estado, o save_cfg e o _recusar o leem: o
 Automatico o le e o muda pelo app, sob a app.fila_lock, na ordem das travas do comandos.py, e a fila muda pelo
 App.change_queue. O mix_do chega resolvido a cada chamada (o teste troca o do App). Its constants live here and the
-music functions (chaves_musica, autores, mesma_faixa, busca_de) and the YT_ID regex in music.py; the shelf's folder
-(pastas.LIB, read when it is used) and save_json come from pastas.py. What is still the server's (the YouTube
-process, the helper process, the error text) comes through the App's public interface (search_songs, run_helper,
-yt_error), like the queue changes."""
+music functions (chaves_musica, autores, find_track, track_artists) in music.py; the shelf's folder (pastas.LIB,
+read when it is used) and save_json come from pastas.py, and the error text (yt_msg) from yt_erros.py. What is still
+the server's (the YouTube process, the helper process) comes through the App's public interface (search_songs,
+run_helper), like the queue changes."""
 import json
 import sys
 import threading
@@ -22,8 +22,8 @@ import comandos as cmd
 import engine as eng
 import music
 import pastas
-from music import YT_ID
 from pastas import save_json
+from yt_erros import yt_msg
 
 AUTO_FILA = 5  # o Automatico mantem tantas parecidas no fim do A seguir
 AUTO_LOTE = 50  # quantas parecidas cada busca traz (o radio do YouTube Music da 50 em ~1 s, 21/10)
@@ -53,7 +53,7 @@ class Automatico:
         try:
             lista = self.mix_do(base)
         except Exception as ex:  # sem Mix, o Automatico espera e tenta de novo
-            print(f"auto: the Mix of {base} failed: {A.yt_error(ex)}", file=sys.stderr, flush=True)
+            print(f"auto: the Mix of {base} failed: {yt_msg(ex)}", file=sys.stderr, flush=True)
             lista = None
         with A.fila_lock:
             A.mix_buscando = False
@@ -231,13 +231,11 @@ class Automatico:
         """A versao so de audio (a faixa do album no YouTube Music) da parecida que veio como video, pela busca de
         musicas com nome e artista: {"youtube_id", "duration", "title", "channel"} da primeira das 3 que e a mesma
         faixa (mesma_faixa), ou None (musica so do YouTube, ou a busca so traz outras)."""
-        for r in self.app.search_songs(music.busca_de(x)):
-            if r.get("videoId") and YT_ID.match(r["videoId"]) and music.mesma_faixa(x, r):
-                artistas = ", ".join(a["name"] for a in r.get("artists") or [] if a.get("name"))
-                return {"youtube_id": r["videoId"],
-                        "duration": r.get("duration_seconds") or music.segundos(r.get("duration")),
-                        "title": r.get("title") or x.get("title"), "channel": artistas or x.get("channel")}
-        return None
+        r = music.find_track(x, self.app.search_songs)
+        if r is None:
+            return None
+        return {"youtube_id": r["videoId"], "duration": r.get("duration_seconds") or music.segundos(r.get("duration")),
+                "title": r.get("title") or x.get("title"), "channel": music.track_artists(r) or x.get("channel")}
 
     def _troca_audio(self, vid, v):
         """Com fila_lock: a parecida do video vid (no Mix e na fila; a primeira da fila fica se ja esta presa)
@@ -319,7 +317,7 @@ class Automatico:
                 try:
                     v = self.versao_audio(x)
                 except Exception as ex:  # sem a busca, a parecida toca o video
-                    print(f"audio: couldn't look up {x.get('title')!r}: {A.yt_error(ex)}", file=sys.stderr, flush=True)
+                    print(f"audio: couldn't look up {x.get('title')!r}: {yt_msg(ex)}", file=sys.stderr, flush=True)
                     with A.fila_lock:
                         A.andamento_falhou[f"audio:{vid}"] = time.time()
                     continue
@@ -347,7 +345,7 @@ class Automatico:
                 r = self._mede_andamento(x)
             except Exception as ex:  # sem medida, a parecida fica sem andamento (vai para o salto)
                 r = None
-                print(f"tempo: couldn't measure {x.get('title')!r}: {A.yt_error(ex)}", file=sys.stderr, flush=True)
+                print(f"tempo: couldn't measure {x.get('title')!r}: {yt_msg(ex)}", file=sys.stderr, flush=True)
             with A.fila_lock:
                 if r is None:
                     A.andamento_falhou[c] = time.time()

@@ -50,9 +50,9 @@ import permissao as perm
 import pastas
 import sonoridade
 from pastas import save_json
-from music import YT_ID, busca_de, chaves_musica, mesma_faixa, segundos, thumb
+from music import YT_ID, chaves_musica, find_track, segundos, thumb, track_artists
 from versao import VERSAO
-from yt_erros import erro_do_video
+from yt_erros import erro_do_video, yt_msg
 
 HERE = Path(__file__).resolve().parent
 LIB = pastas.LIB  # audio baixado; library.json e config.json moram em --data-dir
@@ -1639,7 +1639,7 @@ class App:
             eid, dur = t.get("videoId"), segundos(t.get("length"))
             if not eid or not YT_ID.match(eid) or eid == yid or not dur or not fits_auto(dur):
                 continue
-            artistas = ", ".join(a["name"] for a in t.get("artists") or [] if a.get("name"))
+            artistas = track_artists(t)
             tipo = (t.get("videoType") or "")[-3:]  # ATV: a faixa so de audio; OMV: o clipe; UGC: video de alguem
             out.append({"youtube_id": eid, "title": t.get("title") or eid, "duration": dur,
                         "channel": artistas or None, "thumb": thumb(eid), "tipo": tipo, "audio": tipo == "ATV"})
@@ -1684,21 +1684,17 @@ class App:
                               errors="replace", timeout=timeout, cwd=str(HERE),
                               creationflags=eng.NO_WINDOW | ABAIXO_DO_NORMAL, startupinfo=eng.sem_cursor())
 
-    @staticmethod
-    def yt_error(ex):
-        return yt_msg(ex)
-
     # capa do album dos discos da prateleira ---------------------------
     @staticmethod
     def capa_musica(it):
         """A faixa do YouTube Music do disco da prateleira que veio de um video do YouTube, a da busca de musicas que e a
         mesma (mesma_faixa, a regra das parecidas): {"thumb": a capa do album ou None, "ytm_titulo": o nome da musica,
         "ytm_artista": os artistas}, ou None (musica so do YouTube, ou a busca so traz outras)."""
-        for r in fora.pede("musicas", q=busca_de(it)):
-            if r.get("videoId") and YT_ID.match(r["videoId"]) and mesma_faixa(it, r):
-                artistas = ", ".join(a["name"] for a in r.get("artists") or [] if a.get("name"))
-                return {"thumb": capa_da_musica(r), "ytm_titulo": r.get("title") or None, "ytm_artista": artistas or None}
-        return None
+        r = find_track(it, App.search_songs)
+        if r is None:
+            return None
+        return {"thumb": capa_da_musica(r), "ytm_titulo": r.get("title") or None,
+                "ytm_artista": track_artists(r) or None}
 
     def _vigia_capas(self):
         """(07/11, pedido do dono) A capa do album no lugar da miniatura do video nos discos da prateleira, como as
@@ -1799,12 +1795,6 @@ class App:
             it = self.lib.get(tr["id"]) or (self.lib.by_youtube(yid) if yid else None)
             if it:
                 self.lib.update(it["id"], plays=it.get("plays", 0) + 1)
-
-
-def yt_msg(ex):
-    """Erro do yt_dlp sem o prefixo 'ERROR:' nem o id entre colchetes."""
-    m = re.sub(r"^(ERROR:\s*)?(\[[^\]]+\]\s*)*", "", str(ex)).strip()
-    return m[:160] or type(ex).__name__
 
 
 class Voltas:

@@ -2608,9 +2608,27 @@ def engine_seams(A, E):
     A.passagem_falhou = None
     with E.state_section():
         E._pronto_falhou = "failed-qid"
-    A._volta_passagem()
-    confere(A.passagem_falhou == (id(E.track), "failed-qid") and E.take_prepare_failure() is None,
+    engine_class, uses = type(E), []
+
+    class Watched(engine_class):
+        @property
+        def _pronto_falhou(self):
+            uses.append(self._qlock.locked())
+            return self.__dict__["_pronto_falhou"]
+
+        @_pronto_falhou.setter
+        def _pronto_falhou(self, value):
+            uses.append(self._qlock.locked())
+            self.__dict__["_pronto_falhou"] = value
+    E.__class__ = Watched
+    try:
+        A._volta_passagem()
+        again = E.take_prepare_failure()
+    finally:
+        E.__class__ = engine_class
+    confere(A.passagem_falhou == (id(E.track), "failed-qid") and again is None,
             f"the passage watcher takes the prepare failure out of the engine, once ({A.passagem_falhou})")
+    confere(uses and all(uses), f"and reads and clears it under the engine's _qlock ({uses})")
 
     real, holding, release, waiting = E._lock, threading.Event(), threading.Event(), threading.Event()
 

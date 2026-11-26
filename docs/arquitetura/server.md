@@ -115,9 +115,11 @@ um texto que o UTF-8 não codifica não quebra a volta, que é montada uma vez p
   ele e sobe os dois vigias pelo `run_auto_watcher` e pelo `run_tempo_watcher`. As constantes do Automático (`AUTO_FILA`, `AUTO_JANELA_S`,
   `ANDAMENTO_APOS_S` e as outras) moram no `automatico.py`, e as funções puras de música que ele e o servidor usam
   (`chaves_musica`, `autores`, `mesma_faixa`, `busca_de`, `segundos`, `thumb`) no `music.py`, onde também mora a
-  expressão regular `YT_ID`. A pasta da prateleira (`LIB`) e o `save_json` ele importa do `pastas.py`; o que ainda é
-  do servidor (o processo do YouTube, o processo auxiliar e o texto do erro) chega pela interface pública do `App`
-  (`search_songs`, `run_helper`, `yt_error`), como as mudanças da fila (`change_queue`, `remove_from_queue`) e o
+  expressão regular `YT_ID`. A busca da faixa do YouTube Music que é a mesma música de um vídeo (a versão só de áudio
+  da parecida e a capa do álbum do disco da prateleira) é uma só, o `music.find_track` (o `dev/test_music.py` falha se
+  outro módulo volta a casar a faixa por conta própria). A pasta da prateleira (`LIB`) e o `save_json` ele importa do
+  `pastas.py`, e o texto do erro do YouTube (`yt_msg`) do `yt_erros.py`; o que ainda é do servidor (o processo do
+  YouTube e o processo auxiliar) chega pela interface pública do `App` (`search_songs`, `run_helper`), como as mudanças da fila (`change_queue`, `remove_from_queue`) e o
   andamento medido (`tempo_of`). O `dev/testa_automatico.py` confere a fila montada no `App` de verdade, com um
   `mix_do` falso e andamentos conhecidos.
 - Versão só de áudio: o rádio traz de tudo, inclusive o que só existe no
