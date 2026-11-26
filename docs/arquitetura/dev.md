@@ -32,7 +32,11 @@ e as bibliotecas sem versão no `instalador/travas.txt` (as conhecidas, da issue
 `dev/test_compara_not_ready.py` roda o `compara` com um sinal de pronto que nunca fecha e confere o
 diagnóstico, no celular e na mesa, e o `dev/test_capture.py` roda o `--capture` de verdade (os prints,
 a chave e o `head_cache` que o workflow lê para salvar). O `dev/test_compara_push_steps.py` roda os
-passos do Compara que, no push, capturam sem calcular as áreas nem resolver a base. O `--tela` junta o `fitcheck` e o `compara` do jeito do PR (no
+passos do Compara que, no push, capturam sem calcular as áreas nem resolver a base. O
+`dev/test_release_workflow.py` lê os workflows e as ações locais como YAML: toda action fixada num
+commit (as duas da SignPath no mesmo), o `sparse-checkout` de cada job da `monta.yml` com o que os
+scripts dele leem, a conferência do recurso de versão das DLLs depois da montagem e no job do
+filtro, e o Inno Setup só pela ação `.github/actions/inno-setup`. O `--tela` junta o `fitcheck` e o `compara` do jeito do PR (no
 `testa.yml` o `compara` roda num job à parte, pelo `--compara`, com a referência da base no
 cache do Actions), e o `--areas` é o filtro por caminho do `.github/workflows/testa.yml`, que
 roda tudo isso em todo PR e na fila de merge. A fila leva a `main` ao mesmo commit que testou,

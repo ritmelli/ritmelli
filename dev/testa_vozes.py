@@ -80,6 +80,19 @@ class Instalador(unittest.TestCase):
     def test_texto_da_licenca(self):
         self.assertEqual(vozes_iss.texto("# Titulo\n\n## 1. Parte\n- **Voz:** a Mina\n"), "Titulo\n\n1. Parte\n- Voz: a Mina\n")
 
+    def test_previous_voice_is_hashed_on_its_copy(self):
+        iss = (RAIZ / "instalador" / "ritmelli.iss").read_text(encoding="utf-8-sig")
+        body = re.search(r"^function CopyPreviousVoice\(.*?^end;$", iss, re.M | re.S).group(0)
+        self.assertEqual(hashed_outside_the_copy(body), [])
+        self.assertEqual(hashed_outside_the_copy(body.replace("GetSHA256OfFile(TmpCopy)", "GetSHA256OfFile(Source)")),
+                         ["Source"])
+
+
+def hashed_outside_the_copy(body):
+    copies = set(re.findall(r"FileCopy\(\w+, (\w+),", body))
+    hashed = re.findall(r"GetSHA256OfFile\((\w+)\)", body)
+    return [h for h in hashed if h not in copies] if copies and hashed else ["(no FileCopy or no GetSHA256OfFile)"]
+
 
 class Baixa(unittest.TestCase):
     def setUp(self):

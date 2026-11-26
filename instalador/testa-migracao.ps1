@@ -13,9 +13,6 @@
 # - dir-refused: the new setup with /DIR=C:\Ritmelli on a clean machine exits with 7 and installs nothing;
 # - writable-folder: the 0.6.0 in Program Files\Ritmelli, made writable by Users, then the new setup: the app ends up in
 #   Program Files\Ritmelli-2, and the old ritmelli.exe is renamed as above.
-# In both scenarios that change folders, the voice files (vozes.json) the old folder has with the right sha256 are
-# copied from it, and only the missing or mismatching ones are downloaded; in writable-folder one of the copiable files
-# is changed in the old folder first, and the setup has to refuse it and download it.
 # Precisa de administrador e de uma maquina sem o app. Roda no job testa-migracao da esteira e numa maquina de teste.
 # Uso: testa-migracao.ps1 -Setup <Ritmelli-X.Y.Z-setup.exe> -Versao <X.Y.Z> [-Scenario <name>] [-Vozes <vozes.json>]
 param([Parameter(Mandatory = $true)][string]$Setup, [Parameter(Mandatory = $true)][string]$Versao,
@@ -90,32 +87,31 @@ if ($Scenario -eq 'outside-program-files' -or $Scenario -eq 'writable-folder') {
     if ($LASTEXITCODE -ne 0) { throw "icacls couldn't make $velha writable by Users" }
   }
   "the 0.6.0 is installed in $velha"
-  # the voices (vozes.json) come from the old folder, checked by their sha256: what the 0.6.0 put there with the hash
-  # of the current vozes.json is copied, and the rest (a voice that changed since) is downloaded. In writable-folder,
-  # one of the copiable files is changed there first, as anyone could in a folder Users can write to: the setup has to
-  # refuse it and download it
-  $listaVozes = Get-Content $Vozes -Raw -Encoding UTF8 | ConvertFrom-Json
-  $esperadas = @(foreach ($r in @($listaVozes.engine) + @($listaVozes.vozes)) { foreach ($a in $r.arquivos) { [pscustomobject]@{ Caminho = "$($r.tag)\$($a.nome)"; Sha = $a.sha256 } } })
-  $copiaveis = @($esperadas | Where-Object { (Test-Path "$velha\vozes\$($_.Caminho)") -and (Get-FileHash "$velha\vozes\$($_.Caminho)" -Algorithm SHA256).Hash -eq $_.Sha } | ForEach-Object { $_.Caminho })
-  if (-not $copiaveis.Count) { throw "none of the voice files of the current vozes.json is in $velha\vozes: there is nothing to copy" }
-  $mexida = $null
+  $voiceList = Get-Content $Vozes -Raw -Encoding UTF8 | ConvertFrom-Json
+  $expected = @(foreach ($r in @($voiceList.engine) + @($voiceList.vozes)) { foreach ($a in $r.arquivos) { [pscustomobject]@{ Path = "$($r.tag)\$($a.nome)"; Sha = $a.sha256 } } })
+  $copiable = @($expected | Where-Object { (Test-Path "$velha\vozes\$($_.Path)") -and (Get-FileHash "$velha\vozes\$($_.Path)" -Algorithm SHA256).Hash -eq $_.Sha } | ForEach-Object { $_.Path })
+  if ($copiable.Count -lt 2) { throw "$($copiable.Count) voice files of the current vozes.json are in $velha\vozes: the test needs one to lock and one to copy" }
+  $changed = $null
   if ($Scenario -eq 'writable-folder') {
-    $mexida = $copiaveis | Sort-Object { $_ -notlike '*\voz.json' } | Select-Object -First 1
-    Add-Content "$velha\vozes\$mexida" ' ' -Encoding ascii
+    $changed = $copiable | Sort-Object { $_ -notlike '*\voz.json' } | Select-Object -First 1
+    Add-Content "$velha\vozes\$changed" ' ' -Encoding ascii
   }
-  $copiar = @($copiaveis | Where-Object { $_ -ne $mexida })
-  $baixar = @($esperadas | ForEach-Object { $_.Caminho } | Where-Object { $copiar -notcontains $_ })
-  Roda $Setup "setup-$Versao"
+  $locked = $copiable | Where-Object { $_ -ne $changed } | Sort-Object | Select-Object -Last 1
+  $toCopy = @($copiable | Where-Object { $_ -ne $changed -and $_ -ne $locked })
+  $toDownload = @($expected | ForEach-Object { $_.Path } | Where-Object { $toCopy -notcontains $_ })
+  $lock = [IO.File]::Open("$velha\vozes\$locked", 'Open', 'Read', 'None')
+  try { Roda $Setup "setup-$Versao" } finally { $lock.Dispose() }
   $log = Get-Content (Join-Path $temp "setup-$Versao.log")
-  $copiadas = @($log | Select-String -Pattern 'vozes: copied (\S+) from' | ForEach-Object { $_.Matches[0].Groups[1].Value })
-  $baixadas = @($log | Select-String -Pattern 'vozes: downloading (\S+)$' | ForEach-Object { $_.Matches[0].Groups[1].Value })
-  Confere ((($copiar | Sort-Object) -join '|') -eq (($copiadas | Sort-Object) -join '|')) "the setup copied the $($copiar.Count) matching voice files from $velha with their sha256 checked ($($copiadas.Count) copied)"
-  Confere ((($baixar | Sort-Object) -join '|') -eq (($baixadas | Sort-Object) -join '|')) "the setup downloaded only the $($baixar.Count) voice files it couldn't copy ($($baixadas -join ', '))"
-  if ($mexida) {
-    Confere ($log | Select-String -Pattern "$([regex]::Escape("$velha\vozes\$mexida")) does not match its sha256" -Quiet) "the changed $mexida was refused"
+  $copied = @($log | Select-String -Pattern 'vozes: copied (\S+) from' | ForEach-Object { $_.Matches[0].Groups[1].Value })
+  $downloaded = @($log | Select-String -Pattern 'vozes: downloading (\S+)$' | ForEach-Object { $_.Matches[0].Groups[1].Value })
+  Confere ((($toCopy | Sort-Object) -join '|') -eq (($copied | Sort-Object) -join '|')) "the setup copied the $($toCopy.Count) matching voice files from $velha with their sha256 checked ($($copied.Count) copied)"
+  Confere ((($toDownload | Sort-Object) -join '|') -eq (($downloaded | Sort-Object) -join '|')) "the setup downloaded only the $($toDownload.Count) voice files it couldn't copy ($($downloaded -join ', '))"
+  Confere ($log | Select-String -Pattern "vozes: could not copy $([regex]::Escape("$velha\vozes\$locked")), downloading it" -Quiet) "the $locked it couldn't read was logged and downloaded"
+  if ($changed) {
+    Confere ($log | Select-String -Pattern "$([regex]::Escape("$velha\vozes\$changed")) does not match its sha256" -Quiet) "the changed $changed was refused"
   }
-  $erradas = @($esperadas | Where-Object { -not (Test-Path "$nova\vozes\$($_.Caminho)") -or (Get-FileHash "$nova\vozes\$($_.Caminho)" -Algorithm SHA256).Hash -ne $_.Sha })
-  Confere ($erradas.Count -eq 0) "every voice file in $nova\vozes has its sha256 ($($erradas.Caminho -join ', '))"
+  $wrong = @($expected | Where-Object { -not (Test-Path "$nova\vozes\$($_.Path)") -or (Get-FileHash "$nova\vozes\$($_.Path)" -Algorithm SHA256).Hash -ne $_.Sha })
+  Confere ($wrong.Count -eq 0) "every voice file in $nova\vozes has its sha256 ($($wrong.Path -join ', '))"
   $exe = "$nova\ritmelli.exe"
   Confere ((Test-Path $exe) -and (Get-Item $exe).VersionInfo.ProductVersion -eq $Versao) "the ritmelli.exe in $nova is the $Versao"
   $u = Uninstall
