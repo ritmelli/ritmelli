@@ -10,9 +10,9 @@ tracks stretched, on its own, through the real Rubber Band:
   - short: an input shorter than the warm-up and the crossfade (SHORT_MS) comes back whole, one output frame per
     position;
   - incoming level: the same level check on esticar, the next track's stretch, which still starts silent (#264). It is
-    a known failure: it runs and its result is shown, and a drop only in the first INCOMING_SILENT_MS, with no gap
-    (more than INCOMING_GAP_DB down) after it, does not count. A gap after it counts, and passing does too, so the fix
-    takes the case off the list.
+    a known failure: it runs and its result is shown, and the #264 symptom does not count: the first INCOMING_MUTED_MS
+    all more than INCOMING_GAP_DB down, and no gap that deep from INCOMING_SILENT_MS on. Any other drop counts, a wrong
+    output shape counts, and passing does too, so the fix takes the case off the list.
 
 Position, pitch and level run at a speed below and one above 1 (A slowed down and sped up, as in the dois and dois-106
 pairs); both short inputs run at SHORT_SPEED; the incoming level runs at 1 - TEMPO_MAX and 1 + TEMPO_MAX.
@@ -52,6 +52,7 @@ INCOMING_SPEEDS = (1 - transicao.TEMPO_MAX, 1 + transicao.TEMPO_MAX)
 INCOMING_OVERLAP_S = 4.0
 INCOMING_RAMP_S = 8.0
 INCOMING_ISSUE = 264
+INCOMING_MUTED_MS = 15.0
 INCOMING_SILENT_MS = 60.0
 INCOMING_GAP_DB = 6.0
 
@@ -141,19 +142,25 @@ def level(speed, rng):
 def incoming_level(speed, rng):
     x = stereo(0.1 * rng.standard_normal(int(DURATION_S * SR)))
     n_overlap, n_ramp = int(INCOMING_OVERLAP_S * SR), int(INCOMING_RAMP_S * SR)
-    z, _ = engine.esticar(x, speed, n_overlap, n_ramp, int(speed * n_overlap + n_ramp * (1 + speed) / 2))
+    z, phi = engine.esticar(x, speed, n_overlap, n_ramp, int(speed * n_overlap + n_ramp * (1 + speed) / 2))
+    if z.shape != (n_overlap + n_ramp, 2) or phi.shape != (n_overlap + n_ramp,):
+        check(False, f"incoming level at speed {speed:.4f}: output {z.shape} and positions {phi.shape}, where "
+                     f"{n_overlap + n_ramp} frames were expected")
+        return float("nan")
     drops, ok, msg = start_drop(x, z, "incoming level", speed)
-    cut = int(INCOMING_SILENT_MS / LEVEL_WINDOW_MS)
+    muted, cut = int(INCOMING_MUTED_MS / LEVEL_WINDOW_MS), int(INCOMING_SILENT_MS / LEVEL_WINDOW_MS)
     d = np.array(drops)
-    symptom = bool(np.isfinite(d).all()) and d[:cut].min() < -LEVEL_DROP_DB and d[cut:].min() >= -INCOMING_GAP_DB
+    symptom = (bool(np.isfinite(d).all()) and d[:muted].max() < -INCOMING_GAP_DB
+               and d[cut:].min() >= -INCOMING_GAP_DB)
     if ok:
         check(False, f"{msg}: passed, but it is a known failure (#{INCOMING_ISSUE}): if the fix is on purpose, the "
                      "case leaves the known failures in the same PR")
     elif symptom:
         print(f"known #{INCOMING_ISSUE} {msg}")
     else:
-        check(False, f"{msg}, and from {INCOMING_SILENT_MS:.0f} ms on the quietest window is {d[cut:].min():+.1f} dB "
-                     f"(a gap is more than {INCOMING_GAP_DB:.0f} dB down): more than the silent start of #{INCOMING_ISSUE}")
+        check(False, f"{msg}; the loudest window of the first {INCOMING_MUTED_MS:.0f} ms is {d[:muted].max():+.1f} dB, "
+                     f"and from {INCOMING_SILENT_MS:.0f} ms on the quietest is {d[cut:].min():+.1f} dB (a gap is more than "
+                     f"{INCOMING_GAP_DB:.0f} dB down): not the silent start of #{INCOMING_ISSUE}")
     return min(drops)
 
 
