@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import collections
 import difflib
 import importlib
 import re
@@ -17,28 +18,31 @@ USAGE = """Proof that a change to a theme only moves code: the page put back tog
 The page is the index.html of the theme with every <script src>, <link rel="stylesheet"> and <!-- inline-script: -->
 replaced by the text of its file (a stylesheet after a line with the tag's other attributes as the parser read them,
 when it has any), without the block marks (/* NAME-INICIO */, /* NAME-FIM */, /* name:inicio */, /* name:fim */), the
-blank lines and the bare <style> and </style> tags, and with each 'use strict'; line as [strict]. Every script, from a
-file or inline, sits between a line that opens it ([script NAME], [inline-script NAME] or [script], with the tag's
-other attributes when it has any) and a [/script] line, so merging two scripts or splitting one shows. <base> and
-<head> are git commits (the head defaults to the working tree).
+trailing spaces, the blank lines and the bare <style> and </style> tags. Every script, from a file or inline, sits
+between a line that opens it ([script NAME], [inline-script NAME] or [script], with the tag's other attributes when it
+has any) and a [/script] line. <base> and <head> are git commits (the head defaults to the working tree).
 
-Exit 0 when the head only moves code: the two pages are the same, or every line of the base is in the head, in the
-same order and in the script that matches its own (the one that holds most of its lines, with the same attributes and
-the same [strict]), except blocks that only declare functions, which may go anywhere between scripts of the same
-[strict]. Anything else is a change, printed, and the exit is 1: a block moved out of order or to another script, a
-line with a new indentation (into a function), a line gone or new, a script whose attributes changed. Whether a block
-only declares functions, and whether a new indentation falls inside a template literal (where the spaces are part of
-the string, so the line is gone and new rather than moved), are asked of V8, in a headless Chrome."""
+Exit 0 when the head only moves code: the two pages are the same, or
+- the head has the same scripts in the same order, each with the same attributes and the same strict mode;
+- each script declares the same functions at its top level (they may move inside it: a script's function declarations
+  exist before any of its lines runs, and only there);
+- every other line of the base is in the head, in the same order and in the same script.
+Anything else is a change, printed, and the exit is 1: a script more or less, a function declaration that went to
+another script, a line moved out of order or to another script, a line with a new indentation (into a function), a line
+gone or new. V8, in a headless Chrome, tells what a line diff cannot: a script's strict mode, its top-level function
+declarations, and whether a line starts inside a template literal, where the spaces, a blank line and a block mark are
+part of the string and are kept as they are."""
 
 MARK = re.compile(r"/\*\s*(?:[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-(?:INICIO|FIM)|[a-z]+:(?:inicio|fim))\b[^*]*\*/")
 INLINE_SCRIPT = re.compile(r"<!-- inline-script: ([\w-]+\.js) -->")
 TAG = re.compile(r"^\s*</?(?:script|style)>\s*$")
 SENTINEL = re.compile(r"^\x00(open (\d+)|close)\x00$")
+END_OF_DECLARATION = re.compile(r"\s*;?\s*$")
 JS_TYPES = (None, "", "text/javascript")
 MIN_PIECE = 2
 SUSPENDED = "(function* () {%s\n;eval('');\n})()"
-COMMENT = re.compile(r"/\*.*?\*/|//[^\n]*", re.S)
 SOURCE = "function () { return Function.prototype.toString.call(this); }"
+SLOPPY_ONLY = "\n;with ({}) {}"
 
 
 def reader(rev, theme):
@@ -59,52 +63,33 @@ class Script:
     header: str
     others: tuple
     js: bool
-    code: list = field(default_factory=list)
+    raw: list = field(default_factory=list)
+
+    @property
+    def text(self):
+        return "\n".join(self.raw)
 
 
 @dataclass
 class Page:
-    lines: list
-    code: list
-    owner: list
+    items: list
     scripts: list
 
-    def strict(self, s):
-        first = self.scripts[s].code[:1]
-        return bool(first) and self.code[first[0]] == "[strict]"
-
-    def text(self, s):
-        return "\n".join("'use strict';" if self.code[i] == "[strict]" else self.code[i] for i in self.scripts[s].code)
-
-
-class _FileTags(HTMLParser):
-    def __init__(self):
-        super().__init__(convert_charrefs=False)
-        self.found, self.in_src = [], False
-
-    def handle_starttag(self, tag, attrs):
-        first = {}
-        for name, value in attrs:
-            first.setdefault(name, value)
-        if tag == "script" and first.get("src"):
-            self.in_src = True
-            self.found.append(("script", first.pop("src"), first, self.getpos(), self.get_starttag_text()))
-        elif tag == "script":
-            self.found.append(("open", None, first, self.getpos(), self.get_starttag_text()))
-        elif tag == "link" and (first.get("rel") or "").lower() == "stylesheet" and first.get("href"):
-            first.pop("rel")
-            self.found.append(("link", first.pop("href"), first, self.getpos(), self.get_starttag_text()))
-
-    def handle_endtag(self, tag):
-        if tag == "script" and self.in_src:
-            self.in_src = False
-        elif tag == "script":
-            self.found.append(("close", None, {}, self.getpos(), None))
-
-    def handle_comment(self, data):
-        inlined = INLINE_SCRIPT.fullmatch(f"<!--{data}-->")
-        if inlined:
-            self.found.append(("inline-script", inlined.group(1), {}, self.getpos(), f"<!--{data}-->"))
+    def view(self, keep=frozenset(), skip=frozenset()):
+        lines, content = [], []
+        for item in self.items:
+            if item[0] == "open":
+                lines.append(self.scripts[item[1]].header)
+                continue
+            if item[0] == "close":
+                lines.append("[/script]")
+                continue
+            _, raw, s, k = item
+            text = None if (s, k) in skip else shown(raw, (s, k) in keep)
+            if text is not None:
+                lines.append(text)
+                content.append((text, s, k))
+        return lines, content
 
 
 def header(kind, name, others):
@@ -141,27 +126,52 @@ def assemble(read):
         else:
             body = f"\n\x00open {number[id(found)]}\x00\n{read(name)}\n\x00close\x00\n"
         page = page[:begin] + body + page[end:]
-    lines, code, owner, current = [], [], [], None
+    items, current = [], None
     for line in page.split("\n"):
         sentinel = SENTINEL.match(line)
         if sentinel:
             current = int(sentinel.group(2)) if sentinel.group(2) else None
-            lines.append(scripts[current].header if current is not None else "[/script]")
-            continue
-        line = MARK.sub("", line).rstrip()
-        if not line.strip() or TAG.match(line):
-            continue
-        line = "[strict]" if line.strip() == "'use strict';" else line
-        lines.append(line)
-        if current is not None:
-            scripts[current].code.append(len(code))
-        code.append(line)
-        owner.append(current)
-    return Page(lines, code, owner, scripts)
+            items.append(("open", current) if current is not None else ("close", None))
+        elif current is not None:
+            items.append(("line", line, current, len(scripts[current].raw)))
+            scripts[current].raw.append(line)
+        else:
+            items.append(("line", line, None, None))
+    return Page(items, scripts)
 
 
 def rebuild(read):
-    return assemble(read).lines
+    return assemble(read).view()[0]
+
+
+class _FileTags(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=False)
+        self.found, self.in_src = [], False
+
+    def handle_starttag(self, tag, attrs):
+        first = {}
+        for name, value in attrs:
+            first.setdefault(name, value)
+        if tag == "script" and first.get("src"):
+            self.in_src = True
+            self.found.append(("script", first.pop("src"), first, self.getpos(), self.get_starttag_text()))
+        elif tag == "script":
+            self.found.append(("open", None, first, self.getpos(), self.get_starttag_text()))
+        elif tag == "link" and (first.get("rel") or "").lower() == "stylesheet" and first.get("href"):
+            first.pop("rel")
+            self.found.append(("link", first.pop("href"), first, self.getpos(), self.get_starttag_text()))
+
+    def handle_endtag(self, tag):
+        if tag == "script" and self.in_src:
+            self.in_src = False
+        elif tag == "script":
+            self.found.append(("close", None, {}, self.getpos(), None))
+
+    def handle_comment(self, data):
+        inlined = INLINE_SCRIPT.fullmatch(f"<!--{data}-->")
+        if inlined:
+            self.found.append(("inline-script", inlined.group(1), {}, self.getpos(), f"<!--{data}-->"))
 
 
 def split_moves(a, b):
@@ -230,110 +240,160 @@ class V8:
         made = await self.tab.cmd("Runtime.compileScript", expression=text, sourceURL="", persistScript=False)
         return "exceptionDetails" not in made
 
-    async def indentation_matters(self, text, line):
+    async def starts_inside(self, text, line):
         lines = text.split("\n")
 
         def marked(mark):
             return "\n".join(lines[:line] + [mark + lines[line]] + lines[line + 1:])
-        if not await self.compiles(text):
-            return True
-        if not await self.compiles(marked("#1")):
-            return False
-        return await self.compiles(marked("*/#1"))
+        return await self.compiles(marked("#1")) and await self.compiles(marked("*/#1"))
 
-    async def declares_only(self, text, strict):
-        made = await self.tab.cmd("Runtime.evaluate",
-                                  expression=SUSPENDED % (("'use strict';\n" if strict else "") + text))
+    async def strict(self, text):
+        return not await self.compiles(text + SLOPPY_ONLY)
+
+    async def declarations(self, text):
+        made = await self.tab.cmd("Runtime.evaluate", expression=SUSPENDED % text)
         if "exceptionDetails" in made:
-            return False
+            return []
         internal = (await self.tab.cmd("Runtime.getProperties", objectId=made["result"]["objectId"],
                                        ownProperties=True)).get("internalProperties", [])
         scopes = next(p["value"]["objectId"] for p in internal if p["name"] == "[[Scopes]]")
         chain = (await self.tab.cmd("Runtime.getProperties", objectId=scopes, ownProperties=True))["result"]
         local = next(s["value"]["objectId"] for s in chain if s.get("value", {}).get("description") == "Local")
         names = (await self.tab.cmd("Runtime.getProperties", objectId=local, ownProperties=True))["result"]
-        rest = text
-        for p in names:
-            value = p.get("value", {})
-            if value.get("type") != "function" or p["name"] == "arguments":
-                continue
-            source = (await self.tab.cmd("Runtime.callFunctionOn", objectId=value["objectId"],
-                                         functionDeclaration=SOURCE, returnByValue=True))["result"]["value"]
-            if source not in rest:
-                return False
-            rest = rest.replace(source, "", 1)
-        return not COMMENT.sub("", rest).strip(" \t\n;")
+        return [(await self.tab.cmd("Runtime.callFunctionOn", objectId=p["value"]["objectId"],
+                                    functionDeclaration=SOURCE, returnByValue=True))["result"]["value"]
+                for p in names if p.get("value", {}).get("type") == "function" and p["name"] != "arguments"]
+
+
+@dataclass
+class Facts:
+    strict: object = None
+    spans: list = field(default_factory=list)
+    inside: dict = None
+
+
+async def facts_of(v8, script):
+    text = script.text
+    if not script.js:
+        return Facts(inside={})
+    if not await v8.compiles(text):
+        return Facts(strict="a script that does not compile")
+    spans = []
+    for source in await v8.declarations(text):
+        if text.count(source) != 1:
+            continue
+        start = text.index(source)
+        end = start + len(source)
+        line_end = text.find("\n", end)
+        if text[text.rfind("\n", 0, start) + 1:start].strip() \
+                or not END_OF_DECLARATION.fullmatch(text[end:line_end if line_end >= 0 else len(text)]):
+            continue
+        spans.append((text.count("\n", 0, start), text.count("\n", 0, end)))
+    return Facts(await v8.strict(text), sorted(spans), {})
+
+
+async def starts_inside(v8, script, facts, line):
+    if facts.inside is None:
+        return True
+    if not script.js or line >= len(script.raw):
+        return False
+    if line not in facts.inside:
+        facts.inside[line] = await v8.starts_inside(script.text, line)
+    return facts.inside[line]
+
+
+async def kept_lines(v8, page, facts):
+    keep = set()
+    for s, script in enumerate(page.scripts):
+        for k, raw in enumerate(script.raw):
+            if (not raw.strip() or raw != raw.rstrip() or MARK.search(raw)) \
+                    and (await starts_inside(v8, script, facts[s], k) or await starts_inside(v8, script, facts[s], k + 1)):
+                keep.add((s, k))
+    return keep
+
+
+def declared(page, facts, keep):
+    found = collections.defaultdict(collections.Counter)
+    for s, f in enumerate(facts):
+        for first, last in f.spans:
+            found[s][tuple(text for k in range(first, last + 1)
+                           if (text := shown(page.scripts[s].raw[k], (s, k) in keep)) is not None)] += 1
+    return found
+
+
+def shown(raw, kept):
+    if kept:
+        return raw
+    text = MARK.sub("", raw).rstrip()
+    return text if text.strip() and not TAG.match(text) else None
 
 
 @dataclass
 class Report:
     moved: list = field(default_factory=list)
-    declarations: list = field(default_factory=list)
+    declarations: int = 0
     changes: list = field(default_factory=list)
 
 
-def segments(page_a, page_b, pairs):
-    run = []
-    for i, j in pairs:
-        if run and (page_a.owner[i], page_b.owner[j]) != (page_a.owner[run[-1][0]], page_b.owner[run[-1][1]]):
-            yield run
-            run = []
-        run.append((i, j))
-    if run:
-        yield run
+def title(page, s):
+    return page.scripts[s].header if s is not None else "the page"
 
 
 async def compare(a, b, v8):
     report = Report()
-    moved, removed, added = split_moves(a.code, b.code)
+    facts = ([await facts_of(v8, x) for x in a.scripts], [await facts_of(v8, x) for x in b.scripts])
+    keep = (await kept_lines(v8, a, facts[0]), await kept_lines(v8, b, facts[1]))
+    skip = tuple({(s, k) for s, f in enumerate(side) for first, last in f.spans for k in range(first, last + 1)}
+                 for side in facts)
+    ca, cb = a.view(keep[0], skip[0])[1], b.view(keep[1], skip[1])[1]
+    if len(a.scripts) != len(b.scripts):
+        report.changes.append(("scripts", f"the base has {len(a.scripts)} and the head {len(b.scripts)}", []))
+    for s, (x, y) in enumerate(zip(a.scripts, b.scripts)):
+        if (x.others, facts[0][s].strict) != (y.others, facts[1][s].strict):
+            report.changes.append(("attributes or strict mode", f"script {s + 1}: {x.header} (strict: "
+                                   f"{facts[0][s].strict}) -> {y.header} (strict: {facts[1][s].strict})", []))
+    ours, theirs = declared(a, facts[0], keep[0]), declared(b, facts[1], keep[1])
+    report.declarations = sum(sum(c.values()) for c in ours.values())
+    for s in sorted(set(ours) | set(theirs)):
+        for lines in (ours[s] - theirs[s]).elements():
+            report.changes.append(("declaration left its script", title(a, s), list(lines)))
+        for lines in (theirs[s] - ours[s]).elements():
+            report.changes.append(("declaration came into the script", title(b, s), list(lines)))
+    moved, removed, added = split_moves([x[0] for x in ca], [x[0] for x in cb])
     kept = (set(), set())
     others = ({line.strip() for _, line in added}, {line.strip() for _, line in removed})
-    for side, page, rows in ((0, a, removed), (1, b, added)):
+    for side, page, lines, rows in ((0, a, ca, removed), (1, b, cb, added)):
         for index, line in rows:
-            s = page.owner[index]
-            if s is not None and page.scripts[s].js and line.strip() in others[side] and line != line.strip():
-                if await v8.indentation_matters(page.text(s), page.scripts[s].code.index(index)):
-                    kept[side].add(index)
+            _, s, k = lines[index]
+            if s is not None and line.strip() in others[side] and line != line.strip() \
+                    and await starts_inside(v8, page.scripts[s], facts[side][s], k):
+                kept[side].add(index)
     reindented, removed, added = split_reindented(removed, added, kept)
     blocks = [("equal", list(zip(range(i1, i2), range(j1, j2))))
-              for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, a.code, b.code, autojunk=False).get_opcodes()
-              if tag == "equal"]
+              for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, [x[0] for x in ca], [x[0] for x in cb],
+                                                                 autojunk=False).get_opcodes() if tag == "equal"]
     blocks += [("moved", [(i + k, j + k) for k in range(len(run))]) for run, i, j in moved]
-    pieces = [(kind, run) for kind, pairs in blocks for run in segments(a, b, pairs)]
-    weight = {}
-    for kind, run in pieces:
-        edge = (a.owner[run[0][0]], b.owner[run[0][1]])
-        if kind == "equal" and None not in edge:
-            weight[edge] = weight.get(edge, 0) + len(run)
-    main = {edge for edge in weight
-            if edge == max((e for e in weight if e[0] == edge[0]), key=lambda e: (weight[e], -e[1]))
-            and edge == max((e for e in weight if e[1] == edge[1]), key=lambda e: (weight[e], -e[0]))}
-    for kind, run in pieces:
-        sa, sb = a.owner[run[0][0]], b.owner[run[0][1]]
-        lines = [a.code[i] for i, _ in run]
-        where = f"base line {run[0][0] + 1} -> head line {run[0][1] + 1}"
-        if kind == "equal" and (sa, sb) in main | {(None, None)}:
-            continue
+    for kind, pairs in blocks:
         if kind == "moved":
-            report.moved.append((lines, where))
-        title = "moved out of order" if kind == "moved" else "moved to another script"
-        if sa is not None and sb is not None and a.scripts[sa].js and b.scripts[sb].js \
-                and a.strict(sa) == b.strict(sb) \
-                and await v8.declares_only("\n".join("'use strict';" if x == "[strict]" else x for x in lines),
-                                           a.strict(sa)):
-            report.declarations.append((lines, where))
-        else:
-            report.changes.append((f"{title}, {where}" + (f" ({a.scripts[sa].header if sa is not None else 'markup'}"
-                                                          f" -> {b.scripts[sb].header if sb is not None else 'markup'})"
-                                                          if kind != "moved" else ""), lines))
-    for sa, sb in sorted(main):
-        if (a.scripts[sa].others, a.strict(sa)) != (b.scripts[sb].others, b.strict(sb)):
-            report.changes.append((f"a script changed its attributes or [strict]: {a.scripts[sa].header} -> "
-                                   f"{b.scripts[sb].header}", []))
-    report.changes += [(f"moved with a new indentation, base line {i + 1} -> head line {j + 1}", run)
+            report.moved.append(pairs)
+            report.changes.append(("moved out of order", f"base line {pairs[0][0] + 1} -> head line {pairs[0][1] + 1}",
+                                   [ca[i][0] for i, _ in pairs]))
+            continue
+        run = []
+        for i, j in pairs + [(None, None)]:
+            if run and (i is None or (ca[i][1], cb[j][1]) != (ca[run[0][0]][1], cb[run[0][1]][1])):
+                sa, sb = ca[run[0][0]][1], cb[run[0][1]][1]
+                if sa != sb:
+                    report.changes.append(("moved to another script", f"base line {run[0][0] + 1} -> head line "
+                                           f"{run[0][1] + 1}, {title(a, sa)} -> {title(b, sb)}",
+                                           [ca[x][0] for x, _ in run]))
+                run = []
+            if i is not None:
+                run.append((i, j))
+    report.changes += [("moved with a new indentation", f"base line {i + 1} -> head line {j + 1}", run)
                        for run, i, j in reindented]
-    report.changes += [(f"gone, base line {i + 1}", [line]) for i, line in removed]
-    report.changes += [(f"new, head line {j + 1}", [line]) for j, line in added]
+    report.changes += [("gone", f"base line {i + 1}", [line]) for i, line in removed]
+    report.changes += [("new", f"head line {j + 1}", [line]) for j, line in added]
     return report
 
 
@@ -352,23 +412,18 @@ def main(argv=None):
     ap.add_argument("base")
     ap.add_argument("head", nargs="?")
     ap.add_argument("--theme", default="ritmelli")
-    ap.add_argument("--show", action="store_true", help="print the moved blocks too")
     args = ap.parse_args(argv)
     a = assemble(reader(args.base, args.theme))
     b = assemble(reader(args.head, args.theme))
-    print(f"{args.base}: {len(a.lines)} lines; {args.head or 'working tree'}: {len(b.lines)} lines")
-    if a.lines == b.lines:
+    print(f"{args.base}: {len(a.view()[0])} lines; {args.head or 'working tree'}: {len(b.view()[0])} lines")
+    if a.items == b.items and a.scripts == b.scripts:
         print("the pages are equal")
         return 0
     report = with_v8(lambda v8: compare(a, b, v8))
-    print(f"{len(report.moved)} block(s) moved ({sum(len(r) for r, _ in report.moved)} lines), "
-          f"{len(report.declarations)} of them only declaring functions; {len(report.changes)} change(s)")
-    if args.show:
-        for lines, where in report.declarations:
-            print(f"\nonly declares functions, {where}:")
-            print("\n".join("  " + x for x in lines))
-    for title, lines in report.changes:
-        print(f"\n{title}:")
+    print(f"{report.declarations} top-level function declaration(s) compared by script; {len(report.moved)} block(s) "
+          f"moved out of order; {len(report.changes)} change(s)")
+    for kind, where, lines in report.changes:
+        print(f"\n{kind}, {where}:")
         print("\n".join("  " + x for x in lines))
     print("\nthe head only moves code" if not report.changes else
           f"\nthe head does more than move code: {len(report.changes)} change(s)")

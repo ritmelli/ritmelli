@@ -316,7 +316,7 @@ def check_theme_rebuild():
     files = {"index.html": '<script src="a.js" title="x > y" defer></script>\n<link rel="stylesheet" href="b.css">\n',
              "a.js": "/* A-JS-INICIO */\n'use strict';\nconst a = 1;\n/* A-JS-FIM */\n", "b.css": "b { }\n"}
     lines = theme_rebuild.rebuild(files.__getitem__)
-    if lines != ["[script a.js: [('title', 'x > y'), ('defer', None)]]", "[strict]", "const a = 1;", "[/script]",
+    if lines != ["[script a.js: [('title', 'x > y'), ('defer', None)]]", "'use strict';", "const a = 1;", "[/script]",
                  "b { }"]:
         falha(f"theme_rebuild.rebuild: {lines}")
     files["a.js"] = "/* A-JS-INICIO */\nconst a = 1;\n/* A-JS-FIM */\n"

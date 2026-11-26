@@ -79,17 +79,19 @@ confere também que os ouvintes da busca e da gaveta são dos arquivos delas e s
 e que o `queue.js` vê o toque que fecha a busca na mesa.
 
 Para provar que um PR só mudou código de lugar, o `dev/theme_rebuild.py <base>` monta a página de novo nos dois
-commits: cada `<script src>`, `<link>` e `<!-- inline-script: -->` trocado pelo texto do arquivo, sem as marcas, com
-cada `'use strict'` como `[strict]` e cada script entre uma linha que o abre (`[script NOME]`, `[inline-script NOME]` ou
-`[script]`, com os outros atributos da tag) e uma `[/script]`, de modo que juntar dois scripts ou partir um aparece. Ela
-sai 0 quando o head só muda código de lugar: toda linha da base está no head, na mesma ordem e no script que
-corresponde ao dela (o que fica com a maior parte das linhas dele, com os mesmos atributos e o mesmo `[strict]`), menos
-os blocos que só declaram funções, que podem ir para qualquer lugar entre scripts do mesmo `[strict]`. O resto é
-mudança e sai 1: um bloco fora de ordem ou noutro script, uma linha com outra indentação (que entrou numa função), uma
-linha nova ou que sumiu, um script com outros atributos. Quem diz se um bloco só declara funções, e se a indentação
-nova cai dentro de um template literal (onde os espaços são parte do texto, e a linha conta como nova), é o V8, num
-Chrome sem tela. O `dev/test_theme_rebuild.py`, que o `--tela` roda, confere o veredito em páginas pequenas e no tema com
-o `notice.js` trocado com o `covers.js` e com o `desk-buttons.js` e o `start.js` antes do `ui-events.js`. O `dev/theme_listeners.py <base>` prova o outro lado: abre o tema
+commits: cada `<script src>`, `<link>` e `<!-- inline-script: -->` trocado pelo texto do arquivo, sem as marcas, os
+espaços do fim e as linhas em branco, e cada script entre uma linha que o abre (`[script NOME]`, `[inline-script NOME]`
+ou `[script]`, com os outros atributos da tag) e uma `[/script]`. Ela sai 0 quando o head só muda código de lugar: os
+mesmos scripts, na mesma ordem, cada um com os mesmos atributos e o mesmo modo estrito; as mesmas declarações de função
+no alto de cada script (elas podem mudar de lugar dentro dele, porque existem antes de qualquer linha dele rodar, e só
+nele); e toda outra linha da base no head, na mesma ordem e no mesmo script. O resto é mudança e sai 1: um script a mais
+ou a menos (juntar dois ou partir um), uma declaração que foi para outro script, uma linha fora de ordem ou noutro
+script, uma linha com outra indentação (que entrou num bloco), uma linha nova ou que sumiu. O V8, num Chrome sem tela,
+diz o que uma comparação de linhas não diz: o modo estrito de cada script, as declarações de função do alto dele e se
+uma linha começa dentro de um template literal, onde os espaços, a linha em branco e a marca são parte do texto e
+ficam como estão. O `dev/test_theme_rebuild.py`, que o `--tela` roda, confere o veredito em páginas pequenas e no tema
+com o `notice.js` trocado com o `covers.js`, com o `desk-buttons.js` e o `start.js` antes do `ui-events.js` e com o
+`bindShelfClick` levado do `shelf.js` para o fim do `start.js`. O `dev/theme_listeners.py <base>` prova o outro lado: abre o tema
 dos dois commits num Chrome sem tela, contra um `--mock` de cada, no tamanho do PC (a mesa) e no de um celular, e
 compara três tabelas. A primeira tem os ouvintes ligados no fim da carga, na ordem em que entraram (o
 `getEventListeners` do DevTools), com as opções e o texto de cada função: os de cada nó, do `document`, da `window` e do
