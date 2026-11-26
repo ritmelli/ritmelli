@@ -42,7 +42,7 @@ compile, or that tree-sitter does not parse, is a change. Anything else is a cha
 INLINE_SCRIPT = re.compile(r"<!-- inline-script: ([\w-]+\.js) -->")
 INLINED = "data-theme-rebuild-inline-script"
 RAW_TEXT = re.compile(r"<!--.*?-->|<(script|style)\b[^>]*>", re.I | re.S)
-CSS_SPACE = " \t\n\r\f"
+CSS_SPACES = re.compile(r"[ \t\n\r\f]+")
 MARK = re.compile(r"/\*\s*(?:[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-(?:INICIO|FIM)|[a-z]+:(?:inicio|fim))\b[^*]*\*/")
 SENTINEL = re.compile(r"^\x00(open (\d+)|close)\x00$")
 JS_TYPES = (None, "", "text/javascript")
@@ -75,6 +75,7 @@ class Block:
     code: bool
     folder: str = ""
     source: tuple = ()
+    ignored: str = ""
     raw: list = field(default_factory=list)
 
     @property
@@ -178,8 +179,10 @@ def assemble(read):
             page = page[:begin] + "\n\x00close\x00\n" + page[end:]
             continue
         end = begin + len(text)
-        if kind == "script" and page.startswith("</script>", end):
-            end += len("</script>")
+        if kind == "script":
+            close = page.find("</script>", end)
+            blocks[number[id(found)]].ignored = (page[end:close] if close >= 0 else page[end:]).strip()
+            end = close + len("</script>") if close >= 0 else len(page)
         body = f"\n\x00open {number[id(found)]}\x00\n"
         if kind in ("script", "link"):
             body += f"{read(name)}\n\x00close\x00\n"
@@ -265,8 +268,8 @@ def token(kind, start, end, src, spaced):
         return kind, text
     gap = src[spaced[0]:start].decode("utf-8")
     spaced[0] = end
-    bare = CSS_COMMENT.sub("", gap)
-    return kind, text, "space" if any(x in CSS_SPACE for x in bare) else bare or ("comment" if gap else "")
+    bare = CSS_SPACES.sub(" ", CSS_COMMENT.sub("", gap))
+    return kind, text, bare or ("comment" if gap else "")
 
 
 def own(start, end, src, spaced):
@@ -390,7 +393,7 @@ def compare(a, b, compiles):
     for k, (x, y) in enumerate(zip(scripts_a, scripts_b)):
         bx, by = a.blocks[x], b.blocks[y]
         sx, sy = parsed_a[x].strict if x in parsed_a else None, parsed_b[y].strict if y in parsed_b else None
-        if (bx.source, bx.others, sx) != (by.source, by.others, sy):
+        if (bx.source, bx.others, bx.ignored, sx) != (by.source, by.others, by.ignored, sy):
             report.changes.append(("script tag or strict mode", f"script {k + 1}: {bx.header} (strict: {sx}) -> "
                                    f"{by.header} (strict: {sy})", []))
         if not bx.code and [r.strip() for r in bx.raw if r.strip()] != [r.strip() for r in by.raw if r.strip()]:

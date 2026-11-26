@@ -10,7 +10,8 @@ CALL, DECLARATION = "globalThis.result = f();", "function f() { return 1; }"
 FOUR_LINES = "function f() {\n  const x = 1;\n  return x;\n}"
 NESTED = "@media (min-width: 1px) {\n  a { color: red; }\n  @container (max-width: 1rem) { .b::after { content: %s; } }\n}\n"
 FONT = "@font-face { font-family: 'A'; src: url(fonts/a.woff2) format('woff2'); }\n"
-LEFT, CAME = "declaration left its script", "declaration came into the script"
+PEDAL = '<script src="pedal.js" onerror="scriptFailed(this)"></script>'
+LEFT, CAME ="declaration left its script", "declaration came into the script"
 
 
 def inline(*scripts):
@@ -117,6 +118,8 @@ SAMPLES = (
      ["new", "new", "gone"]),
     ("a vertical tab in place of the space before + in a calc()", styled("a { padding: calc(14px + 1px); }\n"),
      styled("a { padding: calc(14px\v+ 1px); }\n"), ["gone", "new"]),
+    ("a vertical tab after the space before + in a calc()", styled("a { padding: calc(14px + 1px); }\n"),
+     styled("a { padding: calc(14px \v+ 1px); }\n"), ["gone", "new"]),
     ("a comment in place of the space before + in a calc()", styled("a { padding: calc(14px + 1px); }\n"),
      styled("a { padding: calc(14px/* c */+ 1px); }\n"), ["gone", "new"]),
     ("a stylesheet with a font moved to another folder", {"index.html": "<link rel='stylesheet' href='base.css'>\n",
@@ -174,6 +177,9 @@ def main():
         ("start.js loaded from its file instead of inline",
          {"index.html": lambda html, _: html.replace("<!-- inline-script: start.js -->", '<script src="start.js"></script>')
           if "<!-- inline-script: start.js -->" in html else ""}, "script tag or strict mode"),
+        ("the </script> of pedal.js taken out",
+         {"index.html": lambda html, _: html.replace(PEDAL, PEDAL.removesuffix("</script>")) if PEDAL in html else ""},
+         "script tag or strict mode"),
         ("transporte.js renamed",
          {"index.html": lambda html, _: html.replace('src="transporte.js"', 'src="transporte-new.js"')
           if 'src="transporte.js"' in html else "",
