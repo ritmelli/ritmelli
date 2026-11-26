@@ -85,10 +85,12 @@ Python do venv e o `throw` do `$LASTEXITCODE`, como o server lê, com um `#requi
 passos das saídas `anterior` e `parcial` não podem ter `if:`; nenhum outro passo cita `build_manifest` ou
 `publica`, em qualquer campo, comentário ou passo desligado (como o server lê); e, nas saídas, o que está em
 comentário do PowerShell não conta. A chamada do `publica.py` que o `build_manifest.py` monta (o `--setup` e o
-`--url` do setup da versão, a `--saida` igual à `OUTPUT`, o `--notas` e o `--notas-en` com as linhas do `NOTAS` e do
-`NOTAS_EN`, ausentes quando vazios, e o `--parcial` e o `--parcial-info` só com o setup parcial, e o código de saída
-do `publica.py`) o `instalador/atualizacao/testa_parcial.py` confere rodando o script numa pasta de mentira, com um
-`publica.py` que grava o que recebeu; cada caso traz os mutantes do script que ele reprova. O
+`--url` do setup da versão do `versao.py`, a `--saida` igual à `OUTPUT`, o `--notas` e o `--notas-en` com as linhas do
+`NOTAS` e do `NOTAS_EN`, cada língua por si, e nenhuma nota com as duas ausentes, vazias ou em branco, o `--parcial` e
+o `--parcial-info` só com o setup parcial, e o código de saída do `publica.py`) o
+`instalador/atualizacao/testa_parcial.py` confere rodando o script numa pasta de mentira, com um `publica.py` que passa
+a linha de comando pelo parser do `publica.py` de verdade e grava o que ele leu (os caminhos resolvidos e as notas como
+o `publica.py` as lê); cada caso traz os mutantes do script que ele reprova. O
 `atualizacao/test_contract.py` do `ritmelli-server` roda o mesmo script num build de mentira, até a assinatura de
 ensaio e as notas da versão. O
 `--tela` junta o `fitcheck` e o `compara` do jeito do PR (no `testa.yml` o `compara` roda em três jobs:

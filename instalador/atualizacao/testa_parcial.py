@@ -221,15 +221,33 @@ for form in ("from Cryptodome.Signature import eddsa", "import Cryptodome.Signat
 
 print("--- build_manifest.py builds the publica.py call")
 BUILD_MANIFEST = (AQUI / "build_manifest.py").read_text(encoding="utf-8")
-SETUP_URL = "https://github.com/ritmelli/ritmelli-releases/releases/download/v0.3.4/Ritmelli-0.3.4-setup.exe"
-NOTE_OPTIONS = ("--notas", "--notas-en")
-RECORDER = f"""import json
+RELEASES = "https://github.com/ritmelli/ritmelli-releases/releases/download"
+RECORDER = f"""import argparse
+import json
+import runpy
 import sys
 from pathlib import Path
 
-args = sys.argv[1:]
-notes = {{o: Path(args[i + 1]).read_text(encoding="utf-8-sig") for i, o in enumerate(args) if o in {NOTE_OPTIONS!r}}}
-Path("publica-call.json").write_text(json.dumps({{"args": args, "notes": notes}}), encoding="utf-8")
+parse = argparse.ArgumentParser.parse_args
+
+
+def effective(value):
+    if isinstance(value, list):
+        return [effective(v) for v in value]
+    return Path(value).resolve().as_posix() if isinstance(value, Path) else value
+
+
+def record(self, *args, **kwargs):
+    options = parse(self, *args, **kwargs)
+    notes = {{n: [line.strip() for line in getattr(options, n).read_text(encoding="utf-8-sig").splitlines()
+                  if line.strip()] for n in ("notas", "notas_en") if getattr(options, n)}}
+    call = {{"options": {{k: effective(v) for k, v in vars(options).items()}}, "notes": notes}}
+    Path("publica-call.json").write_text(json.dumps(call), encoding="utf-8")
+    sys.exit(0)
+
+
+argparse.ArgumentParser.parse_args = record
+runpy.run_path({str(AQUI / "publica.py")!r}, run_name="__main__")
 """
 
 
@@ -240,70 +258,74 @@ def script_output(script):
     return module.OUTPUT
 
 
-def manifest_call(source, notas="", notas_en="", partial=False, publica=RECORDER):
-    root = Path(tempfile.mkdtemp(prefix="manifest-", dir=tmp))
+def manifest_call(source, version="0.3.4", notas=None, notas_en=None, partial=False, partial_info=False,
+                  publica=RECORDER):
+    root = Path(tempfile.mkdtemp(prefix="manifest-", dir=tmp)).resolve()
     scripts = root / "instalador" / "atualizacao"
     scripts.mkdir(parents=True)
     (scripts / "build_manifest.py").write_text(source, encoding="utf-8")
     (scripts / "publica.py").write_text(publica, encoding="utf-8")
-    (root / "versao.py").write_text('VERSAO = "0.3.4"\n', encoding="utf-8")
+    (root / "versao.py").write_text(f'VERSAO = "{version}"\n', encoding="utf-8")
     (root / "instalador" / "vendor" / "deno-2.0.0").mkdir(parents=True)
-    output = script_output(scripts / "build_manifest.py")
-    (root / output).mkdir(parents=True, exist_ok=True)
+    output = root / script_output(scripts / "build_manifest.py")
+    output.mkdir(parents=True, exist_ok=True)
+    (output / f"Ritmelli-{version}-setup.exe").write_bytes(b"setup completo")
     if partial:
-        (root / output / "Ritmelli-0.3.4-parcial.exe").write_bytes(b"setup parcial")
+        (output / f"Ritmelli-{version}-parcial.exe").write_bytes(b"setup parcial")
+    if partial_info:
+        (output / f"PARCIAL-{version}.json").write_text("{}", encoding="utf-8")
+    env = {k: v for k, v in os.environ.items() if k.upper() not in ("NOTAS", "NOTAS_EN")}
+    env.update({k: v for k, v in (("NOTAS", notas), ("NOTAS_EN", notas_en)) if v is not None})
     p = subprocess.run([sys.executable, str(scripts / "build_manifest.py")], cwd=root, capture_output=True, text=True,
-                       env={**os.environ, "NOTAS": notas, "NOTAS_EN": notas_en})
+                       env=env)
     record = root / "publica-call.json"
-    call = json.loads(record.read_text(encoding="utf-8")) if record.exists() else {"args": [], "notes": {}}
-    options = {}
-    for i, a in enumerate(call["args"][:-1]):
-        if a.startswith("--"):
-            options.setdefault(a, []).append(call["args"][i + 1])
-    return p.returncode, options, call["notes"], output, p.stdout + p.stderr
-
-
-def paths(options, option):
-    return [Path(v).as_posix() for v in options.get(option, [])]
+    call = json.loads(record.read_text(encoding="utf-8")) if record.exists() else {"options": {}, "notes": {}}
+    return p.returncode, call["options"], call["notes"], output, p.stdout + p.stderr
 
 
 def setup_case(source):
-    code, options, _, output, log = manifest_call(source)
-    return code == 0 and paths(options, "--setup") == [(output / "Ritmelli-0.3.4-setup.exe").as_posix()], \
-        (options, log)
+    results = [(version, manifest_call(source, version=version)) for version in ("0.3.4", "1.20.0")]
+    return all(code == 0 and options.get("setup") == (output / f"Ritmelli-{version}-setup.exe").as_posix()
+               for version, (code, options, _, output, _) in results), results
 
 
 def url_case(source):
-    code, options, _, _, log = manifest_call(source)
-    return code == 0 and options.get("--url") == [SETUP_URL], (options, log)
+    code, options, _, _, log = manifest_call(source, version="1.20.0")
+    return code == 0 and options.get("url") == f"{RELEASES}/v1.20.0/Ritmelli-1.20.0-setup.exe", (options, log)
 
 
 def output_case(source):
     code, options, _, output, log = manifest_call(source)
-    return code == 0 and paths(options, "--saida") == [output.as_posix()], (options, log)
+    return code == 0 and options.get("saida") == output.as_posix(), (options, log)
 
 
 def notes_case(source):
-    code, options, notes, _, log = manifest_call(source, notas=" Correção do áudio | Nota dois |",
-                                                  notas_en="Audio fix|| Note two ")
-    return code == 0 and notes == {"--notas": "Correção do áudio\nNota dois\n", "--notas-en": "Audio fix\nNote two\n"} \
-        and all(len(options.get(o, [])) == 1 for o in NOTE_OPTIONS), (notes, log)
+    runs = [(dict(notas=" Correção do áudio | Nota dois |"), {"notas": ["Correção do áudio", "Nota dois"]}),
+            (dict(notas_en="Audio fix|| Note two ", partial=True, partial_info=True),
+             {"notas_en": ["Audio fix", "Note two"]}),
+            (dict(notas="Só uma", notas_en="Just one"), {"notas": ["Só uma"], "notas_en": ["Just one"]})]
+    results = [(manifest_call(source, **inputs), expected) for inputs, expected in runs]
+    return all(code == 0 and notes == expected for (code, _, notes, _, _), expected in results), results
 
 
-def blank_notes_case(source):
-    code, options, _, _, log = manifest_call(source, notas="", notas_en=" | ")
-    return code == 0 and "--setup" in options and not set(NOTE_OPTIONS) & set(options), (options, log)
+def no_notes_case(source):
+    results = [manifest_call(source, **inputs) for inputs in ({}, dict(notas="", notas_en=" | "))]
+    return all(code == 0 and options.get("setup") and not any(notes.values())
+               for code, options, notes, _, _ in results), results
 
 
 def no_partial_case(source):
-    code, options, _, _, log = manifest_call(source)
-    return code == 0 and "--setup" in options and not {"--parcial", "--parcial-info"} & set(options), (options, log)
+    code, options, _, _, log = manifest_call(source, partial_info=True)
+    return code == 0 and options.get("setup") and options.get("parcial") is None \
+        and options.get("parcial_info") is None, (options, log)
 
 
 def partial_case(source):
-    code, options, _, output, log = manifest_call(source, partial=True)
-    return code == 0 and paths(options, "--parcial") == [(output / "Ritmelli-0.3.4-parcial.exe").as_posix()] \
-        and paths(options, "--parcial-info") == [(output / "PARCIAL-0.3.4.json").as_posix()], (options, log)
+    code, options, _, output, log = manifest_call(source, partial=True, partial_info=True)
+    return code == 0 and options.get("parcial") == (output / "Ritmelli-0.3.4-parcial.exe").as_posix() \
+        and options.get("parcial_info") == (output / "PARCIAL-0.3.4.json").as_posix() \
+        and options.get("setup") == (output / "Ritmelli-0.3.4-setup.exe").as_posix() \
+        and options.get("saida") == output.as_posix(), (options, log)
 
 
 def exit_case(source):
@@ -312,27 +334,36 @@ def exit_case(source):
 
 
 MANIFEST_CASES = {
-    "--setup is Ritmelli-<version>-setup.exe in the output folder": (setup_case, [
+    "--setup is Ritmelli-<version>-setup.exe in the output folder, for the version in versao.py": (setup_case, [
         ('f"Ritmelli-{version}-setup.exe"', 'f"Ritmelli-{version}.exe"'),
-        ('"--setup", setup,', '"--setup", setup.name,')]),
+        ('"--setup", setup,', '"--setup", setup.name,'),
+        ("return ast.literal_eval(node.value)", 'return "0.3.4"')]),
     "--url is the setup on the release v<version> of ritmelli-releases": (url_case, [
         ('/v{version}/', '/{version}/'),
         ('ritmelli-releases/releases', 'ritmelli/releases')]),
     "--saida is OUTPUT, the folder test_monta_contract.py ties to the Ritmelli-<version> artifact": (output_case, [
-        ('"--saida", OUTPUT,', '"--saida", OUTPUT.parent,')]),
-    "--notas and --notas-en carry the lines of NOTAS and NOTAS_EN, split on |": (notes_case, [
-        ('("NOTAS", "--notas"), ("NOTAS_EN", "--notas-en")', '("NOTAS", "--notas-en"), ("NOTAS_EN", "--notas")'),
-        ('[n.strip() for n in', '[n for n in'),
-        ('.split("|")', '.split(",")'),
-        ('encoding="utf-8-sig"', 'encoding="cp1252"')]),
-    "an empty or blank NOTAS or NOTAS_EN passes no notes option": (blank_notes_case, [
-        ("        if lines:\n", "        if True:\n")]),
-    "no --parcial or --parcial-info without the partial setup": (no_partial_case, [
-        ("if partial.exists():", "if True:")]),
+        ('"--saida", OUTPUT,', '"--saida", OUTPUT.parent,'),
+        ("*notes_options(notes_folder)]", '*notes_options(notes_folder), "--saida", APP]')]),
+    "--notas and --notas-en give publica.py the lines of NOTAS and NOTAS_EN, split on |, each on its own": (
+        notes_case, [
+            ('("NOTAS", "--notas"), ("NOTAS_EN", "--notas-en")', '("NOTAS", "--notas-en"), ("NOTAS_EN", "--notas")'),
+            ("if n.strip()]", "if n.strip()][:1]"),
+            ('.split("|")', '.split(",")'),
+            ('encoding="utf-8-sig"', 'encoding="cp1252"'),
+            ("        if lines:\n", '        if lines and os.environ.get("NOTAS_EN"):\n'),
+            ("        if lines:\n", "        if not lines:\n            return []\n        if True:\n"),
+            ("*notes_options(notes_folder)]", '*(notes_options(notes_folder) if not any(OUTPUT.glob("*-parcial.exe")) '
+                                              'else [])]')]),
+    "NOTAS and NOTAS_EN absent, empty or blank give publica.py no notes": (no_notes_case, [
+        ('(os.environ.get(variable) or "")', "os.environ[variable]")]),
+    "no --parcial or --parcial-info without the partial setup, even with a PARCIAL-<version>.json": (no_partial_case, [
+        ("if partial.exists():", "if True:"),
+        ("if partial.exists():", 'if partial.exists() or (OUTPUT / f"PARCIAL-{version}.json").exists():')]),
     "--parcial and --parcial-info with the partial setup": (partial_case, [
         ("if partial.exists():", "if not partial.exists():"),
         ('f"Ritmelli-{version}-parcial.exe"', 'f"Ritmelli-{version}-partial.exe"'),
-        ('f"PARCIAL-{version}.json"', 'f"parcial-{version}.json"')]),
+        ('f"PARCIAL-{version}.json"', 'f"PARCIAL.json"'),
+        ('arguments += ["--parcial"', 'arguments = ["--parcial"')]),
     "a publica.py failure fails the step with its exit code": (exit_case, [
         ("sys.exit(result.returncode)", "sys.exit(0)")]),
 }
