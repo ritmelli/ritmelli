@@ -152,7 +152,7 @@ a ordem da cascata: o `base.css` (as letras, as cores e o reset) primeiro, as pa
 `top-bar.css`, `phone.css`, ...), a pele por cima delas (`skin-vars.css`, as folhas geradas, `skin-top.css`,
 `skin-case.css`, ...), os arranjos do computador e da mesa de DJ (`desktop-library.css`, `dj-desk.css`, ...) e o
 `reduced-motion.css` perto do fim, antes do `deck.css`, do `mix.css` e do `pedal.css` da mesa. No `index.html` só fica a
-linha que esconde a página até os textos estarem no lugar. O `dev/testa_i18n.py` guarda o número de linhas de CSS e JS
-inline que ainda restam no `index.html` (o `INLINE_CEILING`): ele só desce, código novo do tema vai num arquivo da
+linha que esconde a página até os textos estarem no lugar. O `dev/garden.py` guarda o número de linhas de CSS e JS
+inline que ainda restam no `index.html` (o teto `theme_inline_lines` do `dev/garden.json`): ele só desce, código novo do tema vai num arquivo da
 pasta, e a contagem vai para o resumo do PR. A contagem abaixo do número também falha: o PR que tira código da página
 baixa o número junto.

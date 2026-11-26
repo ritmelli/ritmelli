@@ -12,9 +12,13 @@ pt.Mudos=O Windows parou de receber som do dispositivo "%1". Desconecte o cabo U
 en.Mudos=Windows stopped receiving sound from the device "%1". Unplug its USB cable and plug it back in.
 
 [Code]
+const
+  MicFilterFailedExitCode = 9;
+
 var
   MudosLidos: Boolean;
   MudosAparelhos: String;
+  MicFilterOk: Boolean;
 
 // o texto JSON que comeca na aspa em Json[I], sem as aspas e com os escapes desfeitos: o \uXXXX volta a ser a letra (o
 // JSON vem em ASCII), e o \b, \f, \n, \r e \t viram espaco. I termina depois da aspa do fim
@@ -94,6 +98,14 @@ begin
   end;
 end;
 
+function MicFilterOkInJson(Json: String): Boolean;
+var
+  I: Integer;
+begin
+  I := MudosValor(Json, 'ok');
+  Result := (I > 0) and (Copy(Json, I, 4) = 'true');
+end;
+
 // o {tmp}\microfone.json, lido uma vez so e posto no log: o resumo da conferencia e os aparelhos mudos, ou ''
 function MudosLe: String;
 var
@@ -110,6 +122,11 @@ begin
       MudosAparelhos := MudosDoJson(String(Json), 'aparelhos');
       if MudosAparelhos <> '' then
         Log('aparelhos mudos: "' + MudosAparelhos + '"');
+      MicFilterOk := MicFilterOkInJson(String(Json));
+      if MicFilterOk then
+        Log('mic filter: ok')
+      else
+        Log('mic filter: failed: ' + MudosTextoDoJson(String(Json), 'erro'));
     end else
       Log('aparelhos: sem o microfone.json');
   end;
@@ -152,4 +169,15 @@ procedure MudosNoLog(CurStep: TSetupStep);
 begin
   if CurStep = ssDone then
     MudosLe;
+end;
+
+function GetCustomSetupExitCode: Integer;
+begin
+  MudosLe;
+  if MicFilterOk then
+    Result := 0
+  else begin
+    Log('mic filter: the setup exits with ' + IntToStr(MicFilterFailedExitCode));
+    Result := MicFilterFailedExitCode;
+  end;
 end;
