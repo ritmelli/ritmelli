@@ -49,6 +49,7 @@ LEVEL_DROP_DB = 3.0
 PITCH_TOLERANCE_HZ = 5.0
 SHORT_MS = (30.0, 75.0)
 SHORT_SPEED = 1.01
+END_TOLERANCE_FRAMES = 5
 INCOMING_SPEEDS = (1 - transicao.TEMPO_MAX, 1 + transicao.TEMPO_MAX)
 INCOMING_OVERLAP_S = 4.0
 INCOMING_RAMP_S = 8.0
@@ -89,6 +90,14 @@ def attacks_input(rng):
     return stereo(x), starts * SR
 
 
+def last_position(phi):
+    return float(phi[-1]) if len(phi) else float("nan")
+
+
+def reaches_end(x, phi):
+    return len(x) - END_TOLERANCE_FRAMES <= last_position(phi) < len(x)
+
+
 def ramp_samples(speed):
     return transicao.rampa_saida(speed, 100.0)[0]
 
@@ -97,9 +106,8 @@ def position(speed, rng):
     x, starts = attacks_input(rng)
     ramp = ramp_samples(speed)
     z, phi = engine.esticar_saida(x, speed, ramp)
-    whole = len(phi) > 0 and len(x) - 5 <= phi[-1] < len(x)
-    check(whole and z.shape == (len(phi), 2), f"output at speed {speed:.4f}: {z.shape} for {len(phi)} positions, the "
-                                              f"last at {phi[-1] if len(phi) else float('nan'):.1f} of {len(x)}")
+    check(reaches_end(x, phi) and z.shape == (len(phi), 2), f"output at speed {speed:.4f}: {z.shape} for {len(phi)} "
+                                                            f"positions, the last at {last_position(phi):.1f} of {len(x)}")
     xb, zb = band(x[:, 0], ATTACK_BAND), band(z[:, 0], ATTACK_BAND)
     attack, search = int(0.1 * SR), int(SEARCH_MS / 1000 * SR)
     errors = []
@@ -171,10 +179,9 @@ def incoming_level(speed, rng):
 def short(ms, rng):
     x = stereo(0.1 * rng.standard_normal(int(ms / 1000 * SR)))
     z, phi = engine.esticar_saida(x, SHORT_SPEED, len(x) // 2)
-    whole = len(phi) > 0 and len(x) - 5 <= phi[-1] < len(x)
-    check(whole and z.shape == (len(phi), 2) and bool(np.isfinite(z).all()),
+    check(reaches_end(x, phi) and z.shape == (len(phi), 2) and bool(np.isfinite(z).all()),
           f"short input of {ms:.0f} ms ({len(x)} frames): output {z.shape} for {len(phi)} positions, the last at "
-          f"{phi[-1] if len(phi) else float('nan'):.1f}")
+          f"{last_position(phi):.1f}")
 
 
 def main():

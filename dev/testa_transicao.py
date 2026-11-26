@@ -10,9 +10,9 @@ transicao.py e o numpy. Toda funcao publica do transicao.py tem de ter ao menos 
 Regravar e para quando uma conta muda de proposito (o PR diz por que) ou quando a banca ganha par: a banca passa antes,
 e os casos novos saem do motor de verdade, nunca escritos a mao.
 
-The JSON keeps a fingerprint of the bench (its tokens, without comments and docstrings, the same on every Python
-version), and the check fails when the bench changed since the recording: a pair that changed has to be recorded
-again.
+The JSON keeps a fingerprint of the bench (its tokens, without comments and docstrings: unlike ast.dump, the same on
+Python 3.12 and 3.13), and the check fails when the bench changed since the recording: a pair that changed has to be
+recorded again.
 
 O nivel dos blocos (a lista (t0, quadros, rms) do leitor do motor) vai uma vez so, no "niveis", e cada chamada aponta
 para ele; as colunas dele (no "colunas", tambem uma vez cada) e os arrays vao em base64 dos bytes (zlib), para a volta
@@ -116,25 +116,30 @@ class Gravador:
         setattr(transicao, nome, gravado)
 
 
-def _docstring_starts(tree):
-    return {(n.body[0].value.lineno, n.body[0].value.col_offset) for n in ast.walk(tree)
+def _docstring_starts(source):
+    lines = source.splitlines()
+    return {(v.lineno, len(lines[v.lineno - 1].encode()[:v.col_offset].decode())) for n in ast.walk(ast.parse(source))
             if isinstance(n, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and n.body
-            and isinstance(n.body[0], ast.Expr) and isinstance(n.body[0].value, ast.Constant)
-            and isinstance(n.body[0].value.value, str)}
+            and isinstance(n.body[0], ast.Expr) and isinstance(v := n.body[0].value, ast.Constant)
+            and isinstance(v.value, str)}
 
 
 def bench_fingerprint(path=BANCA):
     source = path.read_text(encoding="utf-8")
-    docstrings = _docstring_starts(ast.parse(source))
+    docstrings = _docstring_starts(source)
     skip = {tokenize.COMMENT, tokenize.NL, tokenize.ENCODING, tokenize.ENDMARKER}
     kept, in_docstring = [], False
     for t in tokenize.generate_tokens(io.StringIO(source).readline):
-        if t.type == tokenize.STRING and t.start in docstrings:
+        if t.type in skip:
+            continue
+        if t.type == tokenize.STRING and (in_docstring or t.start in docstrings):
             in_docstring = True
-        elif in_docstring and t.type == tokenize.NEWLINE:
+            continue
+        if in_docstring:
             in_docstring = False
-        elif t.type not in skip and not in_docstring:
-            kept.append(f"{tokenize.tok_name[t.type]} {t.string}")
+            if t.type == tokenize.NEWLINE or t.exact_type == tokenize.SEMI:
+                continue
+        kept.append(f"{tokenize.tok_name[t.type]} {t.string}")
     return hashlib.sha1("\n".join(kept).encode()).hexdigest()
 
 
