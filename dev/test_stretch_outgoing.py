@@ -10,8 +10,9 @@ tracks stretched, on its own, through the real Rubber Band:
   - short: an input shorter than the warm-up and the crossfade (SHORT_MS) comes back whole, one output frame per
     position;
   - incoming level: the same level check on esticar, the next track's stretch, which still starts silent (#264). It is
-    a known failure: it runs and its result is shown, but its failure does not count, and passing does, so the fix
-    takes it off the list.
+    a known failure: it runs and its result is shown, and a drop only in the first INCOMING_SILENT_MS, with no gap
+    (more than INCOMING_GAP_DB down) after it, does not count. A gap after it counts, and passing does too, so the fix
+    takes the case off the list.
 
 Position, pitch and level run at a speed below and one above 1 (A slowed down and sped up, as in the dois and dois-106
 pairs); both short inputs run at SHORT_SPEED; the incoming level runs at 1 - TEMPO_MAX and 1 + TEMPO_MAX.
@@ -51,6 +52,8 @@ INCOMING_SPEEDS = (1 - transicao.TEMPO_MAX, 1 + transicao.TEMPO_MAX)
 INCOMING_OVERLAP_S = 4.0
 INCOMING_RAMP_S = 8.0
 INCOMING_ISSUE = 264
+INCOMING_SILENT_MS = 60.0
+INCOMING_GAP_DB = 6.0
 
 failures = []
 
@@ -124,28 +127,33 @@ def start_drop(x, z, what, speed):
     msg = (f"{what} at speed {speed:.4f}: the quietest {LEVEL_WINDOW_MS:.0f} ms window of the first "
            f"{LEVEL_CHECKED_S * 1000:.0f} ms, at {worst * LEVEL_WINDOW_MS:.0f} ms, is {drops[worst]:+.1f} dB from the "
            f"input (at least -{LEVEL_DROP_DB} dB)")
-    return drops[worst], drops[worst] >= -LEVEL_DROP_DB, msg
+    return drops, drops[worst] >= -LEVEL_DROP_DB, msg
 
 
 def level(speed, rng):
     x = stereo(0.1 * rng.standard_normal(int(DURATION_S * SR)))
     z, _ = engine.esticar_saida(x, speed, ramp_samples(speed))
-    drop, ok, msg = start_drop(x, z, "level", speed)
+    drops, ok, msg = start_drop(x, z, "level", speed)
     check(ok, msg)
-    return drop
+    return min(drops)
 
 
 def incoming_level(speed, rng):
     x = stereo(0.1 * rng.standard_normal(int(DURATION_S * SR)))
     n_sob, n_ramp = int(INCOMING_OVERLAP_S * SR), int(INCOMING_RAMP_S * SR)
     z, _ = engine.esticar(x, speed, n_sob, n_ramp, int(speed * n_sob + n_ramp * (1 + speed) / 2))
-    drop, ok, msg = start_drop(x, z, "incoming level", speed)
+    drops, ok, msg = start_drop(x, z, "incoming level", speed)
+    cut = int(INCOMING_SILENT_MS / LEVEL_WINDOW_MS)
+    symptom = min(drops[:cut]) < -LEVEL_DROP_DB and min(drops[cut:]) >= -INCOMING_GAP_DB
     if ok:
         check(False, f"{msg}: passed, but it is a known failure (#{INCOMING_ISSUE}): if the fix is on purpose, the "
                      "case leaves the known failures in the same PR")
-    else:
+    elif symptom:
         print(f"known #{INCOMING_ISSUE} {msg}")
-    return drop
+    else:
+        check(False, f"{msg}, and from {INCOMING_SILENT_MS:.0f} ms on the quietest window is {min(drops[cut:]):+.1f} dB "
+                     f"(a gap is more than {INCOMING_GAP_DB:.0f} dB down): more than the silent start of #{INCOMING_ISSUE}")
+    return min(drops)
 
 
 def short(ms, rng):
