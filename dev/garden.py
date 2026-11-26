@@ -926,7 +926,9 @@ def check(counts, ceilings, base, added=None):
         n = count_of(value)
         ceiling = ceilings.get(name)
         before = base.get(name) if base else None
-        if before is not None and n != before:
+        if before is None:
+            summary.append(f"-- summary: garden {name}: {n} (new, no ceiling on the base)")
+        elif n != before:
             summary.append(f"-- summary: garden {name}: {n} ({n - before:+d} against the base)")
         if ceiling is None:
             failures.append(f"{name}: {n}, with no ceiling in dev/garden.json: add \"{name}\": {n}")

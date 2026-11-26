@@ -206,7 +206,7 @@ CASES = {
     ],
 }
 
-KNOWN_MISSES_ISSUE = "garden: count the catch-all handlers of PowerShell and JavaScript"
+KNOWN_MISSES_ISSUE = "https://github.com/ritmelli/ritmelli/issues/254"
 KNOWN_MISSES = [
     ("broad_excepts", "a PowerShell catch with no type", {"a.ps1": "try { f } catch { }\n"}),
     ("broad_excepts", "a JavaScript catch", {"a.js": "try { f(); } catch (e) { }\n"}),
@@ -261,6 +261,9 @@ def test_check():
                               {"a": 4, "b": 2, "c": 4})
     check(summary == ["-- summary: garden a: 3 (-1 against the base)", "-- summary: garden c: 5 (+1 against the base)"],
           f"one summary line per counter that changed, against the base ({summary})")
+    _, first = garden.check({"a": 1}, {"a": 1}, None)
+    check(first == ["-- summary: garden a: 1 (new, no ceiling on the base)"],
+          f"with no garden.json on the base, every counter goes to the summary ({first})")
     _, quiet = garden.check({"a": 1}, {"a": 1}, {"a": 1})
     check(quiet == ["-- summary: garden: no counter changed against the base (1 counters)"],
           f"with no change, one line says so ({quiet})")
