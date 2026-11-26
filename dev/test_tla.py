@@ -1,4 +1,5 @@
 import hashlib
+import itertools
 import os
 import re
 import shutil
@@ -40,6 +41,27 @@ RENAME_SWITCH = RENAME + (("WithTheJobSwitch", "TRUE"), ("DownloadEndsBeforeTheS
                           ("WithTheJobOnThePlatter", "FALSE"))
 RENAME_PLAY = (("WithTheRename", "TRUE"), ("WithTheJobOnThePlatter", "FALSE"), ("WithTheMoves", "FALSE"),
                ("WithTheSeek", "FALSE"), ("WithTheForget", "FALSE"))
+PART_CONSTANTS = ("DownloadOutcomes", "StreamReaderStartsWith", "QueueLengths")
+RENAME_PARTS = (
+    ("the download failing", ("error",), ("done", "st_reading"), (1, 2)),
+    ("the download putting it on the shelf and the stream with audio", ("shelved",), ("done",), (1, 2)),
+    ("the download putting it on the shelf, the stream silent and one entry in the queue", ("shelved",),
+     ("st_reading",), (1,)),
+    ("the download putting it on the shelf, the stream silent and two entries in the queue", ("shelved",),
+     ("st_reading",), (2,)),
+)
+
+
+def tla_set(values):
+    return "{" + ", ".join(f'"{v}"' if isinstance(v, str) else str(v) for v in values) + "}"
+
+
+def rename_part(title, *choices):
+    return Run(f"Races211, the code as it is: the download, the stream and the swap, with the record renamed on the "
+               f"shelf, {title}", "Races211",
+               constants=RENAME + tuple((n, tla_set(c)) for n, c in zip(PART_CONSTANTS, choices)))
+
+
 RUNS = (
     Run("Races211, the code as it is: the download, the stream and the swap, with another record played", "Races211",
         constants=(("WithTheMoves", "FALSE"), ("WithTheSeek", "FALSE"), ("WithTheForget", "FALSE"))),
@@ -56,19 +78,7 @@ RUNS = (
     Run("Races211, the code as it is: the job with one queue move", "Races211",
         constants=(("TwoMoves", "FALSE"), ("WithThePlay", "FALSE"),
                    ("WithTheForget", "FALSE"), ("WithTheSeek", "FALSE"))),
-    Run("Races211, the code as it is: the download, the stream and the swap, with the record renamed on the shelf "
-        "and the download failing", "Races211", constants=RENAME + (("DownloadOutcomes", '{"error"}'),)),
-    Run("Races211, the code as it is: the download, the stream and the swap, with the record renamed on the shelf, "
-        "the download putting it on the shelf and the stream with audio", "Races211",
-        constants=RENAME + (("DownloadOutcomes", '{"shelved"}'), ("StreamReaderStartsWith", '{"done"}'))),
-    Run("Races211, the code as it is: the download, the stream and the swap, with the record renamed on the shelf, "
-        "the download putting it on the shelf, the stream silent and one entry in the queue", "Races211",
-        constants=RENAME + (("DownloadOutcomes", '{"shelved"}'), ("StreamReaderStartsWith", '{"st_reading"}'),
-                            ("QueueLengths", "{1}"))),
-    Run("Races211, the code as it is: the download, the stream and the swap, with the record renamed on the shelf, "
-        "the download putting it on the shelf, the stream silent and two entries in the queue", "Races211",
-        constants=RENAME + (("DownloadOutcomes", '{"shelved"}'), ("StreamReaderStartsWith", '{"st_reading"}'),
-                            ("QueueLengths", "{2}"))),
+    *(rename_part(*part) for part in RENAME_PARTS),
     Run("Races211, the code as it is: a passage to the job's shelf file, with the record renamed on the shelf",
         "Races211", constants=RENAME_SWITCH),
     Run("Races211, the code as it is: the job's record played from the shelf, with the record renamed on the shelf",
@@ -335,7 +345,32 @@ def report(run, got, text, took):
         print("\n".join(text.splitlines()[-80:]), flush=True)
 
 
+def cfg_choices(cfg_text):
+    constants = dict(c.split(" = ", 1) for c in parse_cfg(cfg_text).get("CONSTANTS", []))
+    return [{text or int(number) for text, number in re.findall(r'"([^"]*)"|(\d+)', constants.get(name, ""))}
+            for name in PART_CONSTANTS]
+
+
+def rename_part_failures(parts, cfg_text):
+    whole = set(itertools.product(*cfg_choices(cfg_text)))
+    covered = [c for _, *choices in parts for c in itertools.product(*choices)]
+    out = [f"the rename parts leave out {sorted(whole - set(covered), key=str)}"] if whole - set(covered) else []
+    out += [f"the rename parts choose {sorted(set(covered) - whole, key=str)}, which the cfg does not"
+            ] if set(covered) - whole else []
+    out += ["the rename parts overlap"] if len(covered) != len(set(covered)) else []
+    return out
+
+
 def main():
+    cfg = (MODELS / "Races211.cfg").read_text(encoding="utf-8")
+    found = rename_part_failures(RENAME_PARTS, cfg)
+    check(found == [], f"the {len(RENAME_PARTS)} rename runs together are the whole configuration of the cfg, each "
+                       f"choice once ({found})")
+    check(rename_part_failures(RENAME_PARTS[:-1], cfg) != [], "the mutant without the last rename part fails")
+    wider = cfg.replace('StreamReaderStartsWith = {"done", "st_reading"}',
+                        'StreamReaderStartsWith = {"done", "st_reading", "sr_dropped"}')
+    check(wider != cfg and rename_part_failures(RENAME_PARTS, wider) != [],
+          "the mutant whose cfg gains a choice the rename parts do not run fails")
     java = shutil.which("java")
     check(java is not None, "java is on the PATH")
     if java is None:

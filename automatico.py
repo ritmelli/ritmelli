@@ -139,9 +139,9 @@ class Automatico:
         e, q = A.engine, A.fila[0]["qid"]
         tr = e.track
         dur = tr.get("duration") if tr else None
-        r = A.reserva
+        r, p = A.reserva, A.preparando
         return bool((dur and dur - e.pos <= eng.TRANS_PREP_S + 15) or e.pronto_tag == q
-                    or (A.preparando is not None and A.preparando[1] == q)
+                    or (p is not None and p[1] == q)
                     or (r is not None and not r.feita.is_set() and r.x is A.fila[0]))
 
     def _ordena_auto(self):

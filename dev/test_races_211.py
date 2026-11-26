@@ -770,12 +770,13 @@ def stream_renamed_while_it_opens(A, E, readers):
     target = "uuuuuuuuuuu"
     j = A.new_job("downloading", True, target)
     info = {"url": "https://stream.invalid/u", "id": target, "title": "the old name", "duration": 200.0}
-    swap = E.trocar_fonte
+    swap, renamed = E.trocar_fonte, []
 
     def renamed_first(atual, novo):
-        if not callable(novo) and str(novo.get("path", "")).startswith("http"):
+        if not atual.get("path") and not renamed:
             A.lib.add(dict(A.lib.get("d2"), id=atual["id"], youtube_id=target, title="the old name"))
             cmd.update_record(A, atual["id"], title="the new name")
+            renamed.append(atual["id"])
         return swap(atual, novo)
     stream = StreamThread(A)
     with (contextlib.redirect_stderr(io.StringIO()), mock.patch.object(E, "trocar_fonte", renamed_first),
@@ -783,6 +784,9 @@ def stream_renamed_while_it_opens(A, E, readers):
         check(cmd.play_downloading(A, j, target, {"youtube_id": target, "title": "the old name"})
               and stream.ended.wait(WAIT_S), "the job's record is on the platter and its stream opened")
     del A._abre_stream
+    check(len(renamed) == 1 and (A.lib.get(renamed[0]) or {}).get("title") == "the new name",
+          f"the rename ran once, when the waiting record handed over to its stream, and the shelf has the new name "
+          f"({renamed})")
     check(str((E.track or {}).get("path", "")).startswith("https://"), "the job's stream is on the platter")
     check(shown_title(A) == "the old name",
           f"known failure #303: a rename on the shelf while the stream opens is undone by the stream's record, built "

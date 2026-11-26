@@ -132,6 +132,27 @@ def automatico(A, E):
     confere([m["youtube_id"] for m in A.automatico._mix] == ["aaaaaaaaaa5"] and pedidos == ["sssssssssss"],
             "o Mix e o mesmo, sem busca nova")
 
+    app_class, racing = type(A), iter([(E.track, "another"), None])
+
+    class Racing(app_class):
+        @property
+        def preparando(self):
+            return next(racing, None)
+
+        @preparando.setter
+        def preparando(self, value):
+            pass
+    A.__class__ = Racing
+    try:
+        with A.fila_lock:
+            held = A.automatico.head_held()
+    except TypeError as ex:
+        held = ex
+    finally:
+        A.__class__ = app_class
+    confere(held is False, f"a preparation that ends while head_held reads it is read once: another entry's key, so the "
+                           f"head is free ({held!r})")
+
     removed = next(x for x in A.fila if x["youtube_id"] == "aaaaaaaaaa6")
     A.tirar_da_fila(removed["qid"], recusar=True)
     visto, sinal = A.automatico.auto_round(visto, sinal)
