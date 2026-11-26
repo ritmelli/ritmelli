@@ -43,8 +43,8 @@ def sha(dados):
 tmp = Path(tempfile.mkdtemp(prefix="ritmelli-parcial-"))
 chave = ECC.generate(curve="Ed25519")
 outra = ECC.generate(curve="Ed25519")
-segunda = ECC.generate(curve="Ed25519")
-pub, pub2 = (base64.b64encode(k.public_key().export_key(format="raw")).decode() for k in (chave, segunda))
+key_two = ECC.generate(curve="Ed25519")
+pub, pub2 = (base64.b64encode(k.public_key().export_key(format="raw")).decode() for k in (chave, key_two))
 app_py = tmp / "atualizacao.py"
 app_py.write_text(f'MANIFESTO = "x"\nCHAVES = {{1: "{pub}", 2: "{pub2}"}}\n', encoding="utf-8")
 arq_chave = tmp / "teste.key"
@@ -136,12 +136,12 @@ for nome, pasta in (("o manifesto anterior mexido depois de assinado",
                     ("o manifesto assinado por outra chave", manifesto_anterior(tmp / "a2", antes, k=outra)),
                     ("a chave que o app nao conhece", manifesto_anterior(tmp / "a3", antes, numero=3)),
                     ("a signature of key 1 labelled as key 2", manifesto_anterior(tmp / "a4", antes, numero=2)),
-                    ("a signature of key 2 labelled as key 1", manifesto_anterior(tmp / "a5", antes, k=segunda))):
+                    ("a signature of key 2 labelled as key 1", manifesto_anterior(tmp / "a5", antes, k=key_two))):
     cod, out = roda("parcial.py", "--anterior", pasta, "--app-py", app_py, "--app", dist, "--bin", binf,
                     "--saida", saida)
     caso(f"recusa {nome}", cod != 0 and "nao confere" in out, out)
 
-cod, out = roda("parcial.py", "--anterior", manifesto_anterior(tmp / "a6", antes, k=segunda, numero=2), "--app-py", app_py,
+cod, out = roda("parcial.py", "--anterior", manifesto_anterior(tmp / "a6", antes, k=key_two, numero=2), "--app-py", app_py,
                 "--app", dist, "--bin", binf, "--saida", saida)
 caso("a previous manifest signed by key 2, labelled 2, is accepted", cod == 0 and (saida / "parcial.json").exists(), out)
 
@@ -158,7 +158,12 @@ base = ["--setup", setup, "--url", url, "--app", dist, "--bin", binf, "--saida",
 cod, out = roda("publica.py", *base, "--parcial", parc, "--parcial-info", saida / "parcial.json")
 m = json.loads((saida_m / "manifest.json").read_text(encoding="utf-8")) if cod == 0 else {}
 p = m.get("parcial", {})
-caso("the manifest is written, and no .sig", cod == 0 and m and not list(saida_m.glob("*.sig")), out)
+caso("the manifest with the partial is written, and no .sig", cod == 0 and m and not list(saida_m.glob("*.sig")), out)
+full_only = tmp / "saida-full-only"
+full_only.mkdir()
+cod, out = roda("publica.py", *base[:-1], full_only)
+caso("the manifest without a partial is written, and no .sig",
+     cod == 0 and (full_only / "manifest.json").exists() and not list(full_only.glob("*.sig")), out)
 caso("o manifesto leva a parcial", cod == 0 and p.get("sha256") == sha(b"setup parcial") and p.get("tamanho") == 13
      and p.get("de") == "0.3.3" and p.get("apaga") == ["_internal/sai.pyd"], out)
 caso("a parcial no mesmo endereco do setup",
@@ -187,7 +192,6 @@ for flag in (["--chave", arq_chave], ["--assina", saida_m / "manifest.json"]):
          cod != 0 and "unrecognized arguments" in out and not (saida_m / "manifest.json.sig").exists(), out)
 
 
-
 def signature_imports(source):
     found = []
     for node in ast.walk(ast.parse(source)):
@@ -207,7 +211,7 @@ caso("publica.py imports nothing from Cryptodome.Signature", signature_imports(p
      signature_imports(publica))
 for form in ("from Cryptodome.Signature import eddsa", "import Cryptodome.Signature.eddsa",
              "from Cryptodome import Signature", "def main():\n    from Cryptodome.Signature import eddsa"):
-    caso(f"the check catches {form!r}",signature_imports(f"{publica}\n{form}\n") != [])
+    caso(f"the check catches {form!r}", signature_imports(f"{publica}\n{form}\n") != [])
 
 shutil.rmtree(tmp, ignore_errors=True)
 print("tudo certo" if not falhas else f"FALHAS: {', '.join(falhas)}")

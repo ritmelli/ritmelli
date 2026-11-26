@@ -60,8 +60,8 @@ atu.MANIFESTO = f"{base}/manifest.json"
 
 chave = ECC.generate(curve="Ed25519")
 outra = ECC.generate(curve="Ed25519")
-segunda = ECC.generate(curve="Ed25519")
-atu.CHAVES = {n: base64.b64encode(k.public_key().export_key(format="raw")).decode() for n, k in ((1, chave), (2, segunda))}
+key_two = ECC.generate(curve="Ed25519")
+atu.CHAVES = {n: base64.b64encode(k.public_key().export_key(format="raw")).decode() for n, k in ((1, chave), (2, key_two))}
 
 setup = os.urandom(3 << 20)
 (www / "setup.exe").write_bytes(setup)
@@ -104,11 +104,11 @@ recusa("manifesto mexido depois de assinado", d.replace(b"Uma coisa", b"Outra co
 recusa("assinado por outra chave", d, assina(d, outra))
 recusa("chave que o app nao conhece", d, assina(d, chave, 3))
 try:
-    caso("signed by key 2, labelled 2: accepted", atu.confere(d, assina(d, segunda, 2))["versao"] == mais(VERSAO))
+    caso("signed by key 2, labelled 2: accepted", atu.confere(d, assina(d, key_two, 2))["versao"] == mais(VERSAO))
 except atu.Recusado as e:
     caso("signed by key 2, labelled 2: accepted", False, str(e))
 recusa("signed by key 1, labelled 2", d, assina(d, chave, 2))
-recusa("signed by key 2, labelled 1", d, assina(d, segunda, 1))
+recusa("signed by key 2, labelled 1", d, assina(d, key_two, 1))
 recusa("assinatura que nao e base64", d, b'{"chave": 1, "assinatura": "@@@"}')
 # os dois nomes do app (#58): o de antes, que o publica.py segue publicando, e o de agora, para o manifesto poder
 # trocar quando nenhuma versao que ainda atualiza conferir so o de antes

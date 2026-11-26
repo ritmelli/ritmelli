@@ -87,6 +87,18 @@ class Instalador(unittest.TestCase):
         self.assertEqual(hashed_outside_the_copy(body.replace("GetSHA256OfFile(TmpCopy)", "GetSHA256OfFile(Source)")),
                          ["Source"])
 
+    def test_previous_voice_has_no_except(self):
+        iss = (RAIZ / "instalador" / "ritmelli.iss").read_text(encoding="utf-8-sig")
+        body = re.search(r"^function CopyPreviousVoice\(.*?^end;$", iss, re.M | re.S).group(0)
+        self.assertFalse(swallows_errors(body))
+        line = "  Result := CompareText(GetSHA256OfFile(TmpCopy), Sha) = 0;\n"
+        self.assertIn(line, body + "\n")
+        self.assertTrue(swallows_errors(body.replace(line, f"  try\n  {line}  except\n    Result := False;\n  end;\n")))
+
+
+def swallows_errors(body):
+    return re.search(r"^\s*except\b", body, re.M | re.I) is not None
+
 
 def hashed_outside_the_copy(body):
     copies = set(re.findall(r"FileCopy\(\w+, (\w+),", body))
