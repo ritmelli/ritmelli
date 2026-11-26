@@ -138,7 +138,8 @@ ini = som[0] / SR if len(som) else 0.0
 xb = cab[int(ini * SR):int((ini + 20) * SR)]
 gb = batida.medir(xb, SR)
 if not gb.firme:  # a regua do motor quando o batida.py nao firma: a rede (a primeira batida no comeco do som, se ali)
-    gr = eng._grade_rede(xb)
+    gr = (eng.batida.network_beat_grid(xb, eng.SR) if hasattr(eng.batida, "network_beat_grid")
+          else eng._grade_rede(xb))
     if gr is not None:
         gb = gr._replace(fase=gr.fase - gr.periodo if gr.fase - gr.periodo >= -0.06 else gr.fase)
 pb = gb.periodo

@@ -115,13 +115,15 @@ um texto que o UTF-8 não codifica não quebra a volta, que é montada uma vez p
   stream, sem encher a prateleira; o ⊕ da busca, na ponta da linha do canal do disco no prato, baixa a que agradar (o ✓ tira de novo).
   Contrato no `API.md`. A lógica mora no `automatico.py` (a classe `Automatico`, em `App.automatico`): o vigia das
   parecidas, a ordem por andamento, a versão só de áudio e o vigia da medida. O estado (a semente, o Mix, o que fica
-  de fora, os andamentos e as versões) e a busca de rede (o `mix_do`) seguem no `App`, e o `App` repassa o
-  `ligar_auto`, o `_busca_mix` e a `_volta_auto()` a ele. As constantes do Automático (`AUTO_FILA`, `AUTO_JANELA_S`,
+  de fora, os andamentos e as versões) e a busca de rede (o `mix_do`) seguem no `App`, que repassa o `ligar_auto` a
+  ele e sobe os dois vigias pelo `run_auto_watcher` e pelo `run_tempo_watcher`. As constantes do Automático (`AUTO_FILA`, `AUTO_JANELA_S`,
   `ANDAMENTO_APOS_S` e as outras) moram no `automatico.py`, e as funções puras de música que ele e o servidor usam
   (`chaves_musica`, `autores`, `mesma_faixa`, `busca_de`, `segundos`, `thumb`) no `music.py`, onde também mora a
-  expressão regular `YT_ID`. A pasta da prateleira (`LIB`) e o `save_json` ele importa do `pastas.py`; o que ainda é
-  do servidor (o processo do YouTube, o processo auxiliar e o texto do erro) chega pela interface pública do `App`
-  (`search_songs`, `run_helper`, `yt_error`), como as mudanças da fila (`change_queue`, `remove_from_queue`) e o
+  expressão regular `YT_ID`. A busca da faixa do YouTube Music que é a mesma música de um vídeo (a versão só de áudio
+  da parecida e a capa do álbum do disco da prateleira) é uma só, o `music.find_track` (o `dev/test_music.py` falha se
+  outro módulo volta a casar a faixa por conta própria). A pasta da prateleira (`LIB`) e o `save_json` ele importa do
+  `pastas.py`, e o texto do erro do YouTube (`yt_msg`) do `yt_erros.py`; o que ainda é do servidor (o processo do
+  YouTube e o processo auxiliar) chega pela interface pública do `App` (`search_songs`, `run_helper`), como as mudanças da fila (`change_queue`, `remove_from_queue`) e o
   andamento medido (`tempo_of`). O `dev/testa_automatico.py` confere a fila montada no `App` de verdade, com um
   `mix_do` falso e andamentos conhecidos.
 - Versão só de áudio: o rádio traz de tudo, inclusive o que só existe no
