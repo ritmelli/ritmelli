@@ -102,7 +102,7 @@ def read_import_map(body):
                    if re.fullmatch(MODULE_NAME, name) and url.startswith(MODULE_SOURCE)}
         modules = {name: text.removesuffix(source_url(name)) for name, text in decoded.items()}
         texts = list(modules.values())
-        if (modules and len(modules) == len(imports) and len(set(texts)) == len(texts)
+        if (modules and len(modules) == len(imports)
                 and all(text.startswith("\n") and not text.startswith("\n#!") and "\r" not in text for text in texts)
                 and import_map(modules) == body):
             return modules
@@ -316,9 +316,6 @@ def inline_files(html, folder, places=None):
         except ThemePageError as ex:
             raise ThemePageError(str(ex), places[n] if places else place(html, start)) from ex
         parts.append(html[done:start])
-        if tag == "module" and (twin := next((other for other, seen in modules.items() if seen == text), None)):
-            raise ThemePageError(f"{name} has the same text as {twin}, and the browser runs one module per address: "
-                                 f"keep one of them", places[n] if places else place(html, start))
         if tag == "module":
             slot = len(parts) if slot is None else slot
             modules[name] = text

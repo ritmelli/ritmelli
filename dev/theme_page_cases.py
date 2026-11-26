@@ -267,9 +267,6 @@ REFUSED = {
                               '<script type="module" src="first.js"></script>', {}, "is tagged twice"),
     "a module that starts with #!": ('<script type="module" src="bang.js"></script>', {"bang.js": "#!x\n"},
                                      "starts with #!"),
-    "two modules with the same text": ('<script type="module" src="twin-a.js"></script>\n'
-                                       '<script type="module" src="twin-b.js"></script>',
-                                       {"twin-a.js": "x;\n", "twin-b.js": "x;\n"}, "has the same text as twin-a.js"),
     "an import map in the template":('<script type="importmap">{"imports":{}}</script>', {},
                                       "has a type the build does not read"),
     "a module written in the template": ('<script type="module">import "first.js";</script>', {},

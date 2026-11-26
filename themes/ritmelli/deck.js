@@ -702,7 +702,7 @@ export const deckGlyphs = { gl, larg, ready: () => fontesOk };
       d.bctx = d.base.getContext('2d'); d.bimg = d.bctx.createImageData(W, H); d.bU = new Uint32Array(d.bimg.data.buffer);
       d.arm = document.createElement('canvas'); d.arm.width = W; d.arm.height = H;
       d.actx = d.arm.getContext('2d'); d.aimg = d.actx.createImageData(W, H);
-      d.armP = { u: new Uint32Array(d.aimg.data.buffer), W, H, cx0: 0, cy0: 0, cx1: W, cy1: H, dim: 1 };
+      d.armP = pincel(W, H, new Uint32Array(d.aimg.data.buffer));
       d.chaveE = chaveE; d.chaveC = ''; d.th = NaN; d.rot = NaN;
       // o nosso angulo para cada raio do sulco: pelo ponto no eixo do tubo (o de antes do #50) e pela ponta da cabeca
       const gg = d.g, eixo = th => Math.hypot(gg.Px - gg.L * Math.sin(th) - gg.cx, gg.Py + gg.L * Math.cos(th) - gg.cy);

@@ -155,7 +155,7 @@ export function glyphs(extra = {}) {
   return { gl, larg, texto };
 }
 
-export function pincel(W, H) { return { u: new Uint32Array(W * H), W, H, cx0: 0, cy0: 0, cx1: W, cy1: H, dim: 1 }; }
+export function pincel(W, H, u = new Uint32Array(W * H)) { return { u, W, H, cx0: 0, cy0: 0, cx1: W, cy1: H, dim: 1 }; }
 export function px(P, x, y, c) {
   x |= 0; y |= 0;
   if (x < P.cx0 || y < P.cy0 || x >= P.cx1 || y >= P.cy1 || !c) return;

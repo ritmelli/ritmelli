@@ -38,8 +38,8 @@ folha, sem outros atributos. O servidor (o `build` do `theme_page.py`, que o `se
 servidor nenhum script nem nenhuma folha: não existe página com um arquivo faltando. Um módulo entra por
 `<script type="module" src="nome.js"></script>`, com o nome em minúsculas, algarismos, `-` e `/`. A montagem põe, no
 lugar da primeira tag de módulo, um `<script type="importmap">` com cada módulo da página num endereço `data:` (o texto
-do arquivo em base64, que o Chrome decodifica em metade do tempo do percent-encoding, com uma linha
-`//# sourceURL=nome.js` no fim, para o erro de um módulo apontar o arquivo e a linha, e não o endereço inteiro), e
+do arquivo em base64, com uma linha `//# sourceURL=nome.js` no fim, para o erro de um módulo apontar o arquivo e a
+linha, e não o endereço inteiro, e para dois módulos de texto igual terem cada um o seu endereço), e
 troca cada tag de módulo por um
 `<script type="module">import "nome.js";</script>`, o primeiro logo depois do mapa.
 Um módulo importa o outro pelo nome (`import { glyphs } from "pixel.js";`), que o mapa resolve dentro da própria
@@ -73,8 +73,7 @@ Depois da gramática, a montagem ainda recusa, e o que escrever no lugar:
   que o segura;
 - a tag de arquivo com outro atributo, outra ordem, maiúsculas ou algo antes do fim: exatamente
   `<script src="arquivo.js"></script>`, `<script type="module" src="nome.js"></script>` ou
-  `<link rel="stylesheet" href="arquivo.css">`; e o mesmo módulo em duas tags, ou dois módulos de texto igual (o
-  navegador roda um módulo por endereço): um só;
+  `<link rel="stylesheet" href="arquivo.css">`; e o mesmo módulo em duas tags: uma só;
 - um `&` no `src` ou no `href` de um `<script>`, de um `<style>` ou de um `<link>` que não abre uma referência nomeada
   inteira, e toda referência numérica: o nome sem `&`, ou com `&amp;`; e um `&` no `rel`, no `type` ou no `as`: o valor
   escrito por extenso;
@@ -103,21 +102,24 @@ sem tela, com os scripts bloqueados pelo cabeçalho `Content-Security-Policy: sc
 como com o JavaScript ligado, e o `<noscript>` como texto), o tema, a galeria e cada caso que a montagem aceita, e
 reprova quando os `<script>`, `<style>` e `<link>` do DOM, com o `src`, o `href`, o `rel` e o `type`, não são, na mesma
 ordem, os que a montagem leu: uma forma que a gramática aceita e o navegador lê de outro jeito vira falha de teste.
-Ele abre também uma página montada com módulos, um importando o outro, dois que só diferem por um espaço no fim e um
-que lê a própria pilha, com os scripts da página e os `data:` liberados, e reprova se eles não rodam todos, se a pilha
+Ele abre também uma página montada com módulos, um importando o outro, dois que só diferem por um espaço no fim, dois
+de texto igual e um que lê a própria pilha, com os scripts da página e os `data:` liberados, e reprova se eles não rodam todos, se a pilha
 não traz o nome do arquivo ou se o Chrome pede ao servidor qualquer coisa além da página. O
 `dev/missing_script.py`, que o `--tela` também roda, lê a página e a galeria como o servidor as manda, nas duas línguas,
 de um `--mock` como o PC e de outro como o celular, pela mesma gramática da montagem (o `strict` do `theme_page.py`), e
 reprova com um `<script src>` ou um `<link rel="stylesheet">` nelas ou com um pedido de script ou de folha que o Chrome
 faça ao servidor. O `dev/test_theme_modules.py` lê o tema pela árvore de sintaxe:
-- cada import e reexportação de um módulo nomeia um módulo da página e um nome que ele exporta (o `export *` conta);
-- cada nome importado é usado e não é declarado de novo;
+- cada import e reexportação de um módulo nomeia um módulo da página e um nome que ele exporta (o `export *` conta, e
+  um nome que dois `export *` trazem de módulos diferentes não vale);
+- cada nome importado é usado e não é declarado de novo, e um módulo não escreve no import nem num nome que ninguém
+  declara (o modo estrito lança erro nos dois); cada nome se resolve pelos escopos em volta dele, e uma atribuição por
+  desestruturação não declara nada;
 - cada export é importado por outro arquivo do tema;
 - um módulo que exporta função não exporta um dado que ele não usa e que um arquivo só importa (o dado fica nesse
   arquivo);
 - nenhum script, clássico ou módulo, usa `import()`, e nenhum clássico lê um nome que só um módulo declara;
-- nenhum arquivo escreve de novo uma função que um módulo exporta, e só o `pixel.js` carrega as fontes do motor (o
-  `fontesProntas`);
+- nenhum arquivo escreve de novo uma função que um módulo exporta (com os nomes ligados dentro dela trocados) nem
+  monta à mão o objeto que ela devolve, e só o `pixel.js` carrega as fontes do motor (o `fontesProntas`);
 - nenhuma sequência de 8 linhas não triviais aparece em dois `.js` do tema.
 
 O `dev/garden.py` conta as linhas de CSS e

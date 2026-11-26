@@ -1199,7 +1199,6 @@ def a_built_page_reads_only_its_own_modules(folder):
         "a classic script between the map and the first import": built.replace(
             f"</script>{first}", f"</script><script>go();</script>{first}", 1),
         "a line break between the map and the first import": built.replace(f"</script>{first}", f"</script>\n{first}", 1),
-        "two modules at one address": mapped({"first.js": "\nconst first = 1;\n", "second.js": "\nconst first = 1;\n"}),
         "a module without the line break the build puts first": mapped({"first.js": "const first = 1;\n"}),
         "a module that starts with #!": mapped({"first.js": "\n#!x\n"}),
         "a map without imports": '<script type="importmap">{}</script>',
