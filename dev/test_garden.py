@@ -758,6 +758,22 @@ def test_description():
     check(garden.description_problems(good + "\nThe rest stays for now, tracked in\n"
                                              "**[#250](https://github.com/o/r/issues/250)**.\n") == [],
           "a prose phrase with its issue in bold on the next line of the paragraph passes")
+    for label, line in [("a closing line", "Closes #280"), ("a closing list item", "- Fixes #12"),
+                        ("closing lines joined", "Closes #1, fixes #2 and resolves o/r#3"),
+                        ("a closing line that goes on", "Closes #272: the per-file cases that failed now and then"),
+                        ("a closing line with another issue after it", "Closes #196. #197, the pair, stays open."),
+                        ("a reference with no closing word", "It leaves the cause of #276 open."),
+                        ("a reference to keep", "Refs #276"), ("a closing word in code", "The `fixes #3` text."),
+                        ("a closing word with no issue", "It fixes the loop."), ("a word that ends in fix", "prefixes #4")]:
+        check(garden.description_problems(good + "\n" + line + "\n") == [], f"{label} passes")
+    check(garden.description_problems(good + "\n```\nIt does not fix #9.\n```\n") == [], "a closing word in a code block passes")
+    for label, line in [("the closing word after a negation (#290)", "This PR adds that diagnostic. It does not fix #276."),
+                        ("a closing word after a closing line", "Closes #1. It does not fix #2."),
+                        ("a closing word in a sentence", "This might fix #12 too."),
+                        ("a closing word with a colon and another repo", "It is fixed: o/r#5 in passing."),
+                        ("a closing word with the issue link", "Nothing here resolves https://github.com/o/r/issues/7.")]:
+        problems = garden.description_problems(good + "\n" + line + "\n")
+        check(len(problems) == 1 and "closes the issue" in problems[0], f"{label} fails ({problems})")
     check(garden.pr_number("pull_request", {"pull_request": {"number": 7}}) == 7, "the PR number of a pull_request")
     check(garden.pr_number("merge_group", {"merge_group": {"head_ref": "refs/heads/gh-readonly-queue/main/pr-246-"
                                                            + "a" * 40}}) == 246, "the PR number of a merge_group entry")
