@@ -27,6 +27,7 @@ SETUP, EXE = f"Ritmelli-{MARK}", f"ritmelli-exe-{MARK}"
 NOTES = {"NOTAS": ("${{ inputs.notas }}", "--notas"), "NOTAS_EN": ("${{ inputs.notas_en }}", "--notas-en")}
 STEP_OUTPUTS = {"anterior": r"steps\.([\w-]+)\.outputs\.([\w-]+)\s*!=\s*''",
                 "parcial": r"steps\.([\w-]+)\.outputs\.(parcial)"}
+RESERVED = ("Ritmelli-", "ritmelli-exe-")
 OTHER_VERSION = re.compile(
     r"(?:Ritmelli|ritmelli-exe)-(?:[0-9]|<version>|\$\{\{.*?\}\})(?:[0-9.]|<version>|\$\{\{.*?\}\})*", re.S)
 
@@ -73,6 +74,11 @@ def uploads(jobs):
                 conditional = "if" in job or "if" in s or not all(runs(jobs, job_id, b) for b in BUILDS)
                 out.append((mark(w.get("name", ""), versions), w, conditional))
     return out
+
+
+def could_be_reserved(name):
+    head = name.split("${{", 1)[0]
+    return "${{" in name and head not in RESERVED and any(r.startswith(head) for r in RESERVED)
 
 
 def normal_path(path):
@@ -222,6 +228,9 @@ def contract_problems(doc):
                  "pipeline expects" for n, _, c in run_uploads if n in found and c]
     fixed = [n for n, _, _ in run_uploads
              if n not in (SETUP, EXE) and OTHER_VERSION.fullmatch(n.replace("<written version>", MARK))]
+    open_names = [n for n, _, _ in run_uploads if could_be_reserved(n)]
+    if open_names:
+        problems.append(f"the run uploads {open_names}, whose expression could make a Ritmelli- or ritmelli-exe- name")
     if fixed:
         problems.append(f"the run uploads {fixed}, which the pipeline would take for the version or for the {EXE} "
                         "artifact of the build")
@@ -580,6 +589,13 @@ def main():
         "a later empty VERSAO= in capitals": lambda d: step_by_id(d["jobs"]["monta"], "congela").update(
             run=step_by_id(d["jobs"]["monta"], "congela")["run"].rstrip("\n")
             + '\nAdd-Content -Path $env:GITHUB_OUTPUT -Value "VERSAO=" -Encoding ascii\n'),
+        "the assinar-app upload named by a whole format expression": lambda d: next(
+            s for s in d["jobs"]["monta"]["steps"]
+            if str((s.get("with") or {}).get("name", "")).startswith("assinar-app-"))["with"].update(
+                name="${{ format('Ritmelli-{0}', github.run_number) }}"),
+        "an upload whose expression completes the Ritmelli- prefix": lambda d: d["jobs"]["monta"]["steps"].append(
+            {"uses": upload(d, setup)["uses"], "with": {"name": "Rit${{ format('melli-{0}', github.run_number) }}",
+                                                        "path": "x"}}),
         "a parcial=false in a one-line if block": lambda d: source_step(d, "parcial").update(
             run=source_step(d, "parcial")["run"].rstrip("\n")
             + '\nif ($env:ANTERIOR) { Add-Content -Path $env:GITHUB_OUTPUT -Value "parcial=false" -Encoding ascii }\n'),
