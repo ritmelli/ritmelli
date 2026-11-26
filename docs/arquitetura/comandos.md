@@ -168,7 +168,7 @@ https://github.com/ritmelli/ritmelli/issues/316, que guarda as travas na mão de
 ## O modelo das travas (`dev/tla/`)
 
 O modelo TLA+ descreve as travas e o estado que elas guardam, e o TLC confere todos os caminhos dele. O tempo e a
-posição do disco viram escolha não determinística, e os `qid` são simétricos (`SYMMETRY`). São duas configurações:
+posição do disco viram escolha não determinística, e os `qid` são simétricos (`SYMMETRY`). São três configurações:
 
 - `Races211`: o download, o stream, a troca, o mixer, a preparação da passagem, a troca pela versão de áudio, o vigia da
   passagem, o tocar de outro disco, o esquecer da prateleira, uma reserva de avanço em curso, duas trocas de lugar na
@@ -211,8 +211,16 @@ posição do disco viram escolha não determinística, e os `qid` são simétric
   avanço depois; uma execução em que todo tocar falha, a `PlaysCanSucceed` desligada, mostra o mutante sem o agrupamento
   tirando duas); que o Anterior recebe cada disco que saiu do prato uma vez, na ordem em que saiu, e nenhum fica de
   fora; e que toda reserva resolve, com justiça fraca.
+- `PassageFailure`: o vigia da passagem, o preparo que ele começa (que escolhe a fonte depois, como o `_prepara` com o
+  `fonte_de`) e o motor que falha o deck preparado, com duas entradas, a cabeça que muda, a versão de áudio e o arquivo
+  que chega à prateleira a qualquer hora. A falha leva a chave do preparo que a gerou (o disco, a entrada, a fonte e o
+  arquivo que ele escolheu: o `_prepara` a passa ao `Engine.preparar`, e o motor a devolve pelo `take_prepare_failure`),
+  e o vigia só guarda essa chave, sem rotular a falha pelo que viu. Confere que uma falha só bloqueia o preparo que a
+  gerou (`FailureBlocksOnlyItsPrepare`) e que a fonte que falhou não começa de novo (`NoRetryOfTheFailedSource`), com
+  três mutantes: a falha só com a entrada, a falha com a chave da cabeça da fila e o preparo com a chave que o vigia
+  pediu em vez da fonte que ele escolheu.
 
-O `dev/test_tla.py` roda o TLC (o `tla2tools.jar` da versão fixada, conferido pelo sha256) nas duas, cada execução em
+O `dev/test_tla.py` roda o TLC (o `tla2tools.jar` da versão fixada, conferido pelo sha256) nas três, cada execução em
 menos de 60 s (a que passa disso é parada ali e falha; a `Races211` em cinco com todas as propriedades, além das onze
 acima (as três da #294 e do controle, a da parecida que a prateleira já tem, as seis da troca de nome e a do acerto na
 prateleira; a troca de nome com o download, o stream e a troca roda em quatro partes, que juntas são a configuração
@@ -277,8 +285,8 @@ em curso vai tocar (`App.reserva`); o `tocar_da_fila` e a preparação da passag
 `fila_lock`, e uma versão de áudio que chega no meio não mistura o alvo de antes com os dados de depois. Os trechos do
 servidor e dos comandos que precisam do `_qlock` (os do Próximo, da reserva, do `concilia`, da troca, do `remember_pos`,
 do `release_reservation` e do `change_queue`) o pegam pelo `Engine.state_section()`, e o `_lock` só pelo
-`Engine.with_lock`. A falha de preparar a próxima sai do motor pelo `take_prepare_failure`, sob o `_qlock`, e o erro da
-tela entra pelo `set_error` (o `error` do motor só se lê).
+`Engine.with_lock`. A falha de preparar a próxima sai do motor pelo `take_prepare_failure`, sob o `_qlock`, com a chave
+que o preparo passou ao `preparar`, e o erro da tela entra pelo `set_error` (o `error` do motor só se lê).
 
 Os comandos e o Automático chamam o `App` só pela interface pública dele: `change_queue`, `remove_from_queue`,
 `remove_if_queued`, `save_history`, `release_reservation`, `close_switches`, `with_engine`,

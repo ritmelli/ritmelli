@@ -50,6 +50,7 @@ REQUIRED = {
                  "PlatterHasTheCurrentName"},
     "LocksAndSwitch": {"TypeOK", "LockOrderKept", "SwitchOnlyToHead", "SwitchClosesOnce", "OneAdvance",
                        "HistoryOnceInOrder", "QuiescentReservationsResolved"},
+    "PassageFailure": {"TypeOK", "FailureBlocksOnlyItsPrepare", "NoRetryOfTheFailedSource"},
 }
 RENAME_PARTS = (
     ("the download failing", ("error",), ("done", "st_reading"), (1, 2)),
@@ -241,6 +242,14 @@ RUNS = (
     Run("mutant: a Next whose play raised after a Stop resolved its group raises anyway", "LocksAndSwitch",
         "invariant OneAdvance", invariants=("OneAdvance",),
         constants=(("RaisingNextTakesTheResolvedResult", "FALSE"),)),
+    Run("PassageFailure, the code as it is: a failed prepare's key is the source it picked, and the engine hands it "
+        "back", "PassageFailure"),
+    Run("mutant: the engine's failure carries only the entry, which blocks that entry's every source",
+        "PassageFailure", "invariant FailureBlocksOnlyItsPrepare", constants=(("FailureCarriesTheKey", "FALSE"),)),
+    Run("mutant: the watcher keys the failure by the head of the queue when it takes it", "PassageFailure",
+        "invariant FailureBlocksOnlyItsPrepare", constants=(("FailureLabelledByTheHead", "TRUE"),)),
+    Run("mutant: the prepare carries the key the watcher asked for, not the source it picked", "PassageFailure",
+        "invariant NoRetryOfTheFailedSource", constants=(("PrepareKeysItsPick", "FALSE"),)),
 )
 
 failures = []

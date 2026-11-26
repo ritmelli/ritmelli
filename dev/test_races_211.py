@@ -670,7 +670,7 @@ def prepared_similar(A, E, readers, qid):
         A.change_queue(lambda: A.fila.append(x))
     cap = E.captura()
     with contextlib.redirect_stderr(io.StringIO()):
-        A._prepara(cap.track, x, dict(x), (id(cap.track), x["qid"], A.passage_source(x)), cap)
+        A._prepara(cap.track, x, dict(x), cap)
     check(E.pronto_tag == x["qid"] and readers.wait("d3"), "the similar track is prepared on the second deck, read")
     return x
 
@@ -697,7 +697,7 @@ def download_done_while_its_stream_is_prepared(A, E, readers):
     cap = E.captura()
     info = {"url": "https://stream.invalid/p", "id": target, "title": "prepared", "duration": 600.0}
     with contextlib.redirect_stderr(io.StringIO()), mock.patch.object(A, "stream_info", return_value=(info, {})):
-        A._prepara(cap.track, x, dict(x), (id(cap.track), x["qid"], A.passage_source(x)), cap)
+        A._prepara(cap.track, x, dict(x), cap)
     check(E.pronto_tag == x["qid"], "the downloading entry's stream is prepared on the second deck")
     with (contextlib.redirect_stderr(io.StringIO()),
           mock.patch.object(A, "download", side_effect=lambda *a: A.lib.add(item) or item)):
@@ -729,7 +729,7 @@ def finished_download_after_a_passage_switched_to_its_file(A, E, readers):
     def download(*a):
         A.lib.add(item)
         cap = E.captura()
-        A._prepara(cap.track, x, dict(x), (id(cap.track), x["qid"], A.passage_source(x)), cap)
+        A._prepara(cap.track, x, dict(x), cap)
         if E.virou is not None or mix_until_the_switch(E):
             switched.append(E.track)
         return item
@@ -757,7 +757,7 @@ def passage_to_a_shelf_file_renamed_on_the_way(A, E, readers, before_the_publish
     cap = E.captura()
     with (contextlib.redirect_stderr(io.StringIO()),
           mock.patch.object(E, "preparar", renamed_first if before_the_publish else prepare)):
-        A._prepara(cap.track, x, dict(x), (id(cap.track), x["qid"], A.passage_source(x)), cap)
+        A._prepara(cap.track, x, dict(x), cap)
     check(E.pronto_tag == x["qid"], "the shelf file is prepared on the second deck")
     if not before_the_publish:
         cmd.update_record(A, iid, title="the new name")
@@ -845,7 +845,7 @@ def prepared_stream_renamed_before_it_is_published(A, E, readers):
     cap = E.captura()
     with (contextlib.redirect_stderr(io.StringIO()), mock.patch.object(A, "stream_info", return_value=(info, {})),
           mock.patch.object(A, "canal_depois", shelved_and_renamed_after_the_build)):
-        A._prepara(cap.track, x, dict(x), (id(cap.track), x["qid"], A.passage_source(x)), cap)
+        A._prepara(cap.track, x, dict(x), cap)
     check(E.pronto_tag == x["qid"], "the job's stream is prepared on the second deck")
     check(E.virou is not None or mix_until_the_switch(E), "the engine switched to the prepared stream")
     check((E.track or {}).get("id") == target, "the job's prepared stream is on the platter after the switch")
@@ -988,8 +988,9 @@ def engine_prepare_failure_before_the_audio_version(A, E, readers):
             A._volta_passagem()
             started.wait(WAIT_S)
         A.preparando = None
+        key = carried_key(A, x)
         with E.state_section():
-            E._prepare_failure_tag = x["qid"]
+            E._prepare_failure = key
         cmd.mover_na_fila(A, y["qid"], 0)
         with A.fila_lock:
             A.automatico._troca_audio("aaaaaaaaaaa", v)
@@ -1025,6 +1026,10 @@ def two_entries(A, n):
     return x, y
 
 
+def carried_key(A, x):
+    return id(A.engine.captura().track), x["qid"], A.passage_source(x)
+
+
 def watch(A, launches):
     with mock.patch.object(server.threading, "Thread", launches):
         A._volta_passagem()
@@ -1037,8 +1042,9 @@ def engine_prepare_failure_read_with_another_head(A, E, readers):
     launches = Launches()
     with mock.patch.object(eng, "TRANS_PREP_S", 1e6):
         watch(A, launches)
+        key = carried_key(A, x)
         with E.state_section():
-            E._prepare_failure_tag = x["qid"]
+            E._prepare_failure = key
         cmd.mover_na_fila(A, y["qid"], 0)
         watch(A, launches)
         cmd.mover_na_fila(A, y["qid"], 1)
@@ -1055,9 +1061,9 @@ def engine_prepare_failure_right_after_the_poll(A, E, readers):
     launches, take = Launches(), E.take_prepare_failure
 
     def fails_after_the_take():
-        found = take()
+        found, key = take(), carried_key(A, x)
         with E.state_section():
-            E._prepare_failure_tag, E.pronto_tag = x["qid"], None
+            E._prepare_failure, E.pronto_tag = key, None
         return found
     with mock.patch.object(eng, "TRANS_PREP_S", 1e6):
         watch(A, launches)
@@ -1104,7 +1110,7 @@ def stream_prepare_failed_then_the_file_reached_the_shelf(A, E, readers):
     launches = Launches()
     with mock.patch.object(eng, "TRANS_PREP_S", 1e6):
         watch(A, launches)
-        A.passagem_falhou = A.last_prepare_key
+        A.passagem_falhou = carried_key(A, x)
         watch(A, launches)
         A.lib.add({"id": "shelf11", "title": "similar", "file": "shelf11.m4a", "duration": 600.0, "lufs": -14.0,
                    "youtube_id": "kkkkkkkkkkk"})

@@ -2769,15 +2769,15 @@ def engine_seams(A, E):
 
     class Watched(engine_class):
         @property
-        def _prepare_failure_tag(self):
+        def _prepare_failure(self):
             uses.append(self._qlock.locked())
             reads.append(("failure", self._qlock.taken, self._qlock.locked()))
-            return self.__dict__["_prepare_failure_tag"]
+            return self.__dict__["_prepare_failure"]
 
-        @_prepare_failure_tag.setter
-        def _prepare_failure_tag(self, value):
+        @_prepare_failure.setter
+        def _prepare_failure(self, value):
             uses.append(self._qlock.locked())
-            self.__dict__["_prepare_failure_tag"] = value
+            self.__dict__["_prepare_failure"] = value
 
         @property
         def pronto_tag(self):
@@ -2793,8 +2793,9 @@ def engine_seams(A, E):
                 "inside the preparation window, the head of the queue is prepared")
         A.preparando = None
         prepara.reset_mock()
+        failed_key = (id(E.track), x["qid"], A.passage_source(x))
         with E.state_section():
-            E._prepare_failure_tag = x["qid"]
+            E._prepare_failure = failed_key
         qlock, E.__class__ = E._qlock, Watched
         E._qlock = Counted(qlock)
         try:
@@ -2804,14 +2805,32 @@ def engine_seams(A, E):
             E.__class__, E._qlock = engine_class, qlock
         A._volta_passagem()
     pairs = [(a, b) for a, b in zip(reads, reads[1:]) if a[0] == "failure"]
-    confere(A.passagem_falhou == A.last_prepare_key and A.passagem_falhou[:2] == (id(E.track), x["qid"])
-            and again is None,
+    confere(A.passagem_falhou == failed_key and again is None,
             f"the passage watcher takes the prepare failure out of the engine, once ({A.passagem_falhou})")
     confere(uses and all(uses), f"and reads and clears it under the engine's _qlock ({uses})")
     confere(len(pairs) == 2 and all(b[0] == "pronto" and a[1:] == b[1:] == (a[1], True) for a, b in pairs),
             f"and reads the prepared deck's tag in the same hold of the _qlock as the failure ({pairs})")
     confere(not prepara.called and A.preparando is None,
             f"and the head that failed is not prepared again ({prepara.call_count}, {A.preparando})")
+    carried, taken = (id(E.track), x["qid"], ("the source the prepare picked", None)), []
+
+    def decodes_nothing(gen, track, start, deck):
+        with E._qlock:
+            deck.eof_gen = gen
+    with contextlib.redirect_stderr(io.StringIO()), mock.patch.object(E, "_reader", decodes_nothing):
+        started = E.preparar(arquivo(A, "d2"), x["qid"], key=carried)
+        failed = ate(lambda: taken.append(E.take_prepare_failure()[0]) or taken[-1] is not None, limite=15.0)
+    confere(started and failed and taken[-1] == carried,
+            f"a prepared deck that does not decode hands back the key its prepare carried ({taken[-1:]})")
+    with contextlib.redirect_stderr(io.StringIO()), mock.patch.object(E, "_reader", decodes_nothing), \
+            mock.patch.object(E, "_mede", lambda *a: None):
+        started = E.preparar(arquivo(A, "d2"), x["qid"], key=carried)
+        with E.state_section():
+            atual, prox, playing = E._deck, E._pronto, E.track
+    eng.Engine._mede(E, atual, prox, playing)
+    real_failure, _ = E.take_prepare_failure()
+    confere(started and real_failure == carried,
+            f"and so does the engine's own measure of the passage, Engine._mede ({real_failure})")
     cmd.tirar_da_fila(A, x["qid"])
 
     real, holding, release, waiting = E._lock, threading.Event(), threading.Event(), threading.Event()

@@ -593,7 +593,7 @@ class App:
         self.sonoridade_falhou = set()  # os discos da prateleira que o ffmpeg nao mediu: nao tenta de novo
         self._son_lock = threading.Lock()
         self.parado_sem_fila = None  # disco que acabou com a fila vazia: a parecida que chegar toca
-        self.preparando = self.last_prepare_key = self.passagem_falhou = None
+        self.preparando = self.passagem_falhou = None
         self.closing = False
         # a janela propria (janela.py), quando ha: fechar ela desliga o servidor (pede_desligar), e o servidor que
         # para sozinho fecha ela (main). O loop e o desliga sao do servir e do build
@@ -1508,7 +1508,8 @@ class App:
         self.canal_depois(d)
         return d
 
-    def _prepara(self, tr, x, seen, chave, cap):
+    def _prepara(self, tr, x, seen, cap):
+        chave = (id(tr), x["qid"], (src := seen.get("youtube_id") or seen.get("url"), None))
         try:
             novo = self.fonte_de(seen)
             if novo is None:
@@ -1516,7 +1517,7 @@ class App:
                 return
             e = self.engine
             ganho = e.gain_for(rec := novo() if callable(novo) else novo)
-            chave = self.last_prepare_key = chave[:2] + ((chave[2][0], rec["file"] if callable(novo) else None),)
+            chave = (id(tr), x["qid"], (src, rec["file"] if callable(novo) else None))
 
             def pode():  # sob o _qlock do motor: so le campos em memoria
                 r = self.reserva
@@ -1525,7 +1526,7 @@ class App:
 
             def publica(depois):
                 if self.fila and self.fila[0] is x and x == seen:
-                    e.preparar(novo, x["qid"], pode=pode, ganho=ganho, depois=depois)
+                    e.preparar(novo, x["qid"], pode=pode, ganho=ganho, depois=depois, key=chave)
             self.with_engine(publica)
         except Exception as ex:  # sem a proxima pronta, ela fica para o avanco normal da fila no fim do disco
             self.passagem_falhou = chave
@@ -1552,20 +1553,19 @@ class App:
         with self.fila_lock:
             x = self.fila[0] if self.fila else None
             seen = dict(x or {})
-            busy, (failed, pronto), tried = self.preparando, e.take_prepare_failure(), self.last_prepare_key
+            busy, (failed, pronto) = self.preparando, e.take_prepare_failure()
             pode = (x is not None and dur and tr.get("path") and not e.loop
                     and cap.status in ("playing", "paused", "buffering"))
             if pronto is not None and (not pode or x["qid"] != pronto):
                 e.cancelar_pronto()
         if failed is not None:
-            self.passagem_falhou = tried if tried is not None and tried[1] == failed else (
-                id(tr), failed, self.passage_source(seen))
+            self.passagem_falhou = failed
         if not pode or (pronto is not None and x["qid"] == pronto) or dur - cap.pos > eng.TRANS_PREP_S:
             return
         if busy is not None or (chave := (id(tr), x["qid"], self.passage_source(seen))) == self.passagem_falhou:
             return
-        self.preparando = self.last_prepare_key = chave
-        threading.Thread(target=self._prepara, args=(tr, x, seen, chave, cap), daemon=True).start()
+        self.preparando = chave
+        threading.Thread(target=self._prepara, args=(tr, x, seen, cap), daemon=True).start()
 
     # Automatico -------------------------------------------
     def mix_do(self, yid):

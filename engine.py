@@ -1231,7 +1231,7 @@ class Engine:
         self.reserva_quadros = 0  # os quadros da voz que vieram do microfone de reserva (o _mic_cb), idem
         self._virou_em = -1e9    # monotonic da ultima virada (a seca logo depois dela e da passagem)
         self.periodo_saida = None  # a batida do que sai na saida (s), pelo plano no tempo: a regua dos testes (dev/)
-        self._prepare_failure_tag = None
+        self._prepare_failure = None
         # o servidor religa a parecida do Automatico cujo stream caiu: religar_stream(disco, onde parou, desistir), na
         # thread do leitor; sem ele (ou desistindo), o disco acaba e a fila segue
         self.religar_stream = None
@@ -2149,8 +2149,8 @@ class Engine:
 
     def take_prepare_failure(self):
         with self._qlock:
-            tag, self._prepare_failure_tag = self._prepare_failure_tag, None
-            return tag, self.pronto_tag
+            key, self._prepare_failure = self._prepare_failure, None
+            return key, self.pronto_tag
 
     @contextlib.contextmanager
     def state_section(self):
@@ -2498,7 +2498,7 @@ class Engine:
         else:
             depois.append(f)
 
-    def preparar(self, track, tag, pode=None, ganho=None, depois=None):
+    def preparar(self, track, tag, pode=None, ganho=None, depois=None, key=None):
         """A proxima da fila no segundo deck (o servidor chama a TRANS_PREP_S do fim): o leitor dela
         decodifica o comeco, o deste vai ate o fim, e o _mede marca onde virar. O deck novo so aparece para o _mixa
         sob o _qlock, ja com o ganho dele. pode(): conferido sob o _qlock antes de publicar (o servidor confere ali a
@@ -2510,7 +2510,7 @@ class Engine:
             return False
         alvo, mede = self._ganho_de(initial) if ganho is None else ganho  # fora das travas: pergunta ao servidor
         d = Deck(initial)
-        d.gen, d.ahead, d.ganho, d.ganho_alvo = 1, PRONTO_AHEAD, alvo, alvo
+        d.gen, d.ahead, d.ganho, d.ganho_alvo, d.key = 1, PRONTO_AHEAD, alvo, alvo, key
         with self._lock:
             with self._qlock:
                 if self.track is None or (pode is not None and not pode()):
@@ -2601,7 +2601,7 @@ class Engine:
         if not cabeca:  # a proxima nao decodificou: a preparacao sai, e ela fica para o avanco normal da fila
             with self._qlock:
                 if self._pronto is prox:
-                    self._prepare_failure_tag = self.pronto_tag
+                    self._prepare_failure = prox.key
                     self._cancela_passagem()
             return
         fim, queda, baixo = medir_fim(cauda)
@@ -3678,7 +3678,7 @@ class MockEngine(Engine):
             if self._pronto is not prox or self._deck is not atual:
                 return
             if not prox.q or not dur:
-                self._prepare_failure_tag = self.pronto_tag
+                self._prepare_failure = prox.key
                 self._cancela_passagem()
                 return
             ini = prox.q[0][0]
