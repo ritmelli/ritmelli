@@ -196,9 +196,6 @@ def contract_problems(doc):
     for required, output in GATED_JOBS.items():
         gated = [j for k, j in jobs.items() if display(k, j) == required or display(k, j).startswith(required + " (")]
         for job in gated:
-            needs = job.get("needs") or []
-            if "monta" not in ([needs] if isinstance(needs, str) else needs):
-                problems.append(f"{required} does not need the monta job, so its if: cannot read the monta outputs")
             if not re.fullmatch(rf"needs\.monta\.outputs\.{output}\s*==\s*'true'", bare(job.get("if", "")) or ""):
                 problems.append(f"the if: of {required} does not read the {output} output of the monta job")
     run_uploads = uploads(jobs)
@@ -207,7 +204,8 @@ def contract_problems(doc):
         problems.append("the step behind the parcial output does not Test-Path the partial setup in the "
                         f"{SETUP} folder")
     problems += [f"the run uploads {len(w)} artifacts named {n}, not 1" for n, w in found.items() if len(w) != 1]
-    problems += [f"the {n} artifact is uploaded only under an if:" for n, _, c in run_uploads if n in found and c]
+    problems += [f"the {n} artifact is uploaded under an if: or in a job that does not run in every build the "
+                 "pipeline expects" for n, _, c in run_uploads if n in found and c]
     fixed = [n for n, _, _ in run_uploads if n != SETUP and OTHER_VERSION.fullmatch(n)]
     if fixed:
         problems.append(f"the run uploads {fixed}, which the pipeline would take for the version of the build")
