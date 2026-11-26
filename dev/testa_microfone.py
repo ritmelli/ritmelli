@@ -24,7 +24,6 @@ Sai 1 se algo falhar.
 """
 import contextlib
 import ctypes
-import itertools
 import os
 import sys
 import threading
@@ -166,21 +165,14 @@ ALVOS = {"Mic": ALVO, "Mic2": OUTRO}  # o Mic e o que o AnelFalso le; o Mic2, ni
 class VigiaNoAnel:
     """The real Engine with its watcher running, the device list frozen (LISTA) and start replaced by one that only
     brings the Injetor up on the fake ring, aimed at the chosen microphone (ALVOS). It records each opening (microphone,
-    monotonic) and when each reopen was decided (decididas: the call that logs it, before the write), and
-    espera_reaberturas waits for the openings themselves instead of a fixed time."""
+    monotonic), and wait_for_reopenings waits for the openings themselves instead of a fixed time."""
 
     def __init__(self):
         self.e = e = eng.Engine(mic="Mic", monitor="")
-        self.aberturas, self.decididas = [], []
-        self._abriu = threading.Condition()
+        self.aberturas = []
+        self._opened = threading.Condition()
         e.start = self._start
         self._patches = contextlib.ExitStack()
-
-        def print_and_mark(*args, **kwargs):
-            if args and "reopening the audio" in str(args[0]):
-                self.decididas.append(time.monotonic())
-            print(*args, **kwargs)
-        self._patches.enter_context(mock.patch.object(eng, "print", print_and_mark, create=True))
         self._patches.enter_context(mock.patch.multiple(eng, create=True, **VIGIA_RAPIDO))
         self._patches.enter_context(mock.patch.object(eng, "list_devices_live", return_value=LISTA))
         self._patches.enter_context(mock.patch.object(eng, "_rescan"))
@@ -200,16 +192,16 @@ class VigiaNoAnel:
         inj = eng.Injetor(e, segue[1] if segue and segue[0] == mic else None)
         st.callback(inj.para)
         e._stack, e._injetor = st, inj
-        with self._abriu:
+        with self._opened:
             self.aberturas.append((mic, time.monotonic()))
-            self._abriu.notify_all()
+            self._opened.notify_all()
 
     def reaberturas(self):
         return len(self.aberturas) - 1
 
-    def espera_reaberturas(self, n, prazo_s=10.0):
-        with self._abriu:
-            return self._abriu.wait_for(lambda: self.reaberturas() >= n, prazo_s)
+    def wait_for_reopenings(self, count, timeout_s=10.0):
+        with self._opened:
+            return self._opened.wait_for(lambda: self.reaberturas() >= count, timeout_s)
 
     def fecha(self):
         self.e.close()  # o vigia segue vivo, mas parado: o motor esta fechado
@@ -236,19 +228,18 @@ class TestaMicrofone(unittest.TestCase):
             time.sleep(0.3)
             self.assertEqual(v.reaberturas(), 0, "com o leitor vivo o vigia nao reabre")
             anel.desliga()  # o filtro parou de ler; o motor segue capturando o mesmo microfone
-            self.assertTrue(v.espera_reaberturas(3), "o leitor perdido tem que reabrir ate o limite de tentativas")
+            self.assertTrue(v.wait_for_reopenings(3), "o leitor perdido tem que reabrir ate o limite de tentativas")
             # a janela do evento "audio" segue nas reaberturas, com a perda que as pediu
             self.assertIs(v.e._injetor.saude, janela, "a reabertura do leitor perdido trocou a janela do audio")
             self.assertEqual(janela.leitor_perdido, 1, "a perda que pediu a reabertura sumiu da janela do audio")
             self.assertTrue(all(m == "Mic" for m, _ in v.aberturas), "a reabertura trocou de microfone")
-            self.assertTrue(all(b - a >= 0.3 - 0.02 for a, b in itertools.pairwise(v.decididas)), "reabriu sem o intervalo")
             time.sleep(0.6)
             self.assertEqual(v.reaberturas(), 3, "passou do limite de tentativas")
             anel.liga()  # o filtro voltou a ler: a conta zera
             self._espera_leitor(v)
             time.sleep(0.2)
             anel.desliga()
-            self.assertTrue(v.espera_reaberturas(4), "depois de o leitor voltar, a perda nova nao reabriu")
+            self.assertTrue(v.wait_for_reopenings(4), "depois de o leitor voltar, a perda nova nao reabriu")
         finally:
             v.fecha()
             if anel._vai:
@@ -302,7 +293,14 @@ class TestaMicrofone(unittest.TestCase):
             self.assertEqual(e._recupera[1], 1, "a perda nova nao comecou a conta do zero")
             # as duas proximas falham (sem stream nenhum): seguem no intervalo, ate o limite
             e._reabre.side_effect = lambda: reabre(falha=True)
-            for _ in range(5):
+            volta(29.0)
+            self.assertEqual(reaberturas, [110.0, 123.0], "reopened before the interval")
+            volta(1.0)
+            self.assertEqual(reaberturas, [110.0, 123.0, 153.0])
+            volta(29.0)
+            self.assertEqual(reaberturas, [110.0, 123.0, 153.0], "reopened before the interval after a failed reopen")
+            volta(1.0)
+            for _ in range(3):
                 volta(30.0)
             self.assertEqual(reaberturas, [110.0, 123.0, 153.0, 183.0], "a reabertura que falhou parou a conta")
             self.assertIsNone(e._stack)
