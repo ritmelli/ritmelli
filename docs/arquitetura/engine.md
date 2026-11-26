@@ -12,6 +12,10 @@ dela (`transicao.rampa_saida`) e dura pelo menos `FASE_MIN_S` (#208). O JSON gua
 (os tokens do `dev/testa_passagem.py`, sem comentários e docstrings), e o teste reprova quando a banca mudou desde a
 gravação: o `--grava` regrava.
 
+Nada pesado no processo do áudio: o bloco é de 10 ms, e o que segura o interpretador estala o som no jogo.
+Biblioteca lenta ou conta longa vai para um processo auxiliar, como o `yt_fora.py` (`ritmelli.py --yt`) e o
+`andamento.py` (`ritmelli.py --andamento`), que o servidor abre pelo `auxiliar` do `server.py`.
+
 `engine.py`: mistura em WASAPI 48 kHz, blocos de 10 ms; ffmpeg decodifica; voz com no
 máximo ~80 ms de atraso; `MockEngine` sem áudio para teste (o relógio de 10 ms dele chama o `_mixa`; com o
 `relogio = False`, que o `server.App(..., relogio=False)` passa antes de ligar, quem chama é o teste). O Windows converte os 48 kHz

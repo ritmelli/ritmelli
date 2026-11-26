@@ -1,5 +1,5 @@
 {
-  "comment_lines": 6615,
+  "comment_lines": 6612,
   "docstring_lines": 4076,
   "suppressions": 34,
   "sleeps_app": 43,
@@ -24,6 +24,6 @@
   "engine_py_lines": 3729,
   "server_py_lines": 2712,
   "index_html_lines": 643,
-  "agents_md_lines": 80,
-  "agents_rules_without_check": 10
+  "agents_md_lines": 74,
+  "agents_rules_without_check": 1
 }
