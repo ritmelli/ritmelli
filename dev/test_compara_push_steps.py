@@ -1,4 +1,3 @@
-import importlib.util
 import os
 import re
 import shutil
@@ -7,12 +6,16 @@ import sys
 import tempfile
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+import fake_gh
+from workflow_yaml import ROOT, find_step, load
 
-_spec = importlib.util.spec_from_file_location("test_ci_workflow", ROOT / "dev" / "test_ci_workflow.py")
-workflow = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(workflow)
-step_run, check, failures = workflow.step_run, workflow.check, workflow.failures
+failures = []
+
+
+def check(ok, msg):
+    print(("ok    " if ok else "FAIL  ") + msg, flush=True)
+    if not ok:
+        failures.append(msg)
 
 
 def powershell():
@@ -30,13 +33,13 @@ def run_step(shell, block, env):
         return p.returncode, p.stdout + p.stderr, output.read_text(encoding="utf-8-sig").splitlines()
 
 
-def test_compara_on_push(all_jobs):
+def test_compara_on_push(jobs):
     shell = powershell()
     check(bool(shell), "a PowerShell runs the compara steps")
     if not shell:
         return
-    lines = all_jobs["compara"]
-    areas, key = step_run(lines, "O PR mexe na tela?"), step_run(lines, "Capture key")
+    areas = find_step(jobs["compara"], "O PR mexe na tela?")["run"]
+    key = find_step(jobs["compara"], "Capture key")["run"]
     gone = {"BASE": "0" * 40, "COMPARA_BASE": "0" * 40, "ETIQUETAS": "[]"}
     code, out, output = run_step(shell, areas, dict(gone, GITHUB_EVENT_NAME="push"))
     check(code == 0 and "roda=true" in output, f"on the push, the compara runs without the areas of a base (exit {code})")
@@ -47,9 +50,34 @@ def test_compara_on_push(all_jobs):
     check(code != 0 and "is not a commit here" in out, f"on a PR, a base that is not a commit fails the key (exit {code})")
 
 
+def test_compara_base_in_the_queue(jobs):
+    check(jobs["etiquetas"].get("outputs", {}).get("queue_base") == "${{ steps.le.outputs.queue_base }}"
+          and find_step(jobs["etiquetas"], "Etiquetas do PR").get("id") == "le",
+          "the etiquetas job exports the queue_base of its Etiquetas do PR step")
+    check(jobs["compara"].get("env", {}).get("COMPARA_BASE") == "${{ github.event_name == 'merge_group' && "
+          "needs.etiquetas.outputs.queue_base || github.event.pull_request.base.sha || github.event.before }}",
+          "in a queue entry the compara compares to the queue_base of the etiquetas job")
+    shell = powershell()
+    if not (shell and fake_gh.bash()):
+        check(False, "a PowerShell and a bash run the queue case")
+        return
+    parent, event_base = (subprocess.run(["git", "rev-parse", rev], cwd=ROOT, capture_output=True, text=True,
+                                         check=True).stdout.strip() for rev in ("HEAD~1", "HEAD"))
+    ran = fake_gh.run_step(find_step(jobs["etiquetas"], "Etiquetas do PR")["run"],
+                           {"GITHUB_EVENT_NAME": "merge_group", "GH_TOKEN": "x", "REPO": "ritmelli/ritmelli", "PR": "",
+                            "GITHUB_REF": f"refs/heads/gh-readonly-queue/main/pr-7-{parent}"}, {"labels": []})
+    code, out, output = run_step(shell, find_step(jobs["compara"], "Capture key")["run"],
+                                 {"GITHUB_EVENT_NAME": "merge_group", "BASE": event_base,
+                                  "COMPARA_BASE": ran.outputs.get("queue_base", "")})
+    check(ran.code == 0 and code == 0 and f"base={parent}" in output and f"base={event_base}" not in output,
+          f"in a queue entry the capture key takes the commit of the entry's ref, not the event base (exit {code})")
+
+
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
-    test_compara_on_push(workflow.jobs(workflow.WORKFLOW.read_text(encoding="utf-8")))
+    jobs = load(ROOT / ".github" / "workflows" / "testa.yml")["jobs"]
+    test_compara_on_push(jobs)
+    test_compara_base_in_the_queue(jobs)
     print(f"{'all passed' if not failures else f'{len(failures)} failed'}")
     return 1 if failures else 0
 
