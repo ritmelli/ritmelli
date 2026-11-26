@@ -77,7 +77,7 @@ class VoicePedalStart:
         if new:
             up_at = now - (round(now * 1000) - (stamp - 1)) % (2**32 - 1) / 1000 if stamp else now
             on, ended, owner = self._on, self._ended, None
-            if on is not None and up_at >= on[0]:
+            if on is not None and up_at >= on[0] and (on[1] is None or up_at <= on[1] + TICK_S):
                 owner = on
             elif ended is not None and ended[0] <= up_at <= ended[1] + TICK_S:
                 owner = ended
@@ -104,7 +104,7 @@ class VoicePedalStart:
         pedal = f"the pedal turned on {now - on_at:.2f} s ago"
         if off_at is not None:
             pedal += f" and off {now - off_at:.2f} s ago"
-            if off_at <= empty_at:
+            if empty_at is not None and off_at <= empty_at:
                 pedal += " (before the ring was seen empty, maybe before it ran dry)"
         if lo is not None and on_at > lo:
             pedal += " (after the ring was last filled, maybe after it ran dry)"
