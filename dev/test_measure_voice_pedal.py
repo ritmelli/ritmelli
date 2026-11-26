@@ -32,5 +32,34 @@ class Refusal(unittest.TestCase):
         self.assertEqual(self.run_main(CPU_ONLY, "--provider", "cpu"), "past the check")
 
 
+READY = ["pedal_voz: pronto"]
+FIM = ['fim {"blocos": 74, "secas": 1, "conta_ms_max": 101.1, "voz_taxa": 48000}']
+
+
+def state(secas=0, secas_pedal=0, volta=4.6):
+    return {"secas": secas, "secas_pedal": secas_pedal, "volta_max_ms": volta}
+
+
+class CycleRow(unittest.TestCase):
+    def test_a_cycle_with_its_voice(self):
+        row, problem = measure.cycle_row(3, state(1, 0), state(3, 1), READY, ["warning", *FIM])
+        self.assertIsNone(problem)
+        self.assertEqual(row, {"cycle": 3, "dry_outs": 2, "dry_outs_while_starting": 1, "new_longest_return_ms": None,
+                               "voice_blocks": 74, "voice_track_dry_outs": 1, "voice_slowest_block_ms": 101.1})
+
+    def test_a_longer_return_in_the_cycle(self):
+        row, _ = measure.cycle_row(1, state(volta=434.0), state(volta=656.0), READY, FIM)
+        self.assertEqual(row["new_longest_return_ms"], 656.0)
+
+    def test_a_cycle_without_its_voice_stops_the_measurement(self):
+        cases = {"no ready": ([], FIM), "an error": ([*READY, "pedal_voz: erro: the voice engine didn't start"], FIM),
+                 "no fim": (READY, ["warning"]), "no block": (READY, ['fim {"blocos": 0}'])}
+        for what, (server_lines, voice_lines) in cases.items():
+            with self.subTest(what):
+                row, problem = measure.cycle_row(5, state(), state(), server_lines, voice_lines)
+                self.assertIsNone(row)
+                self.assertTrue(problem.startswith("cycle 5: "), problem)
+
+
 if __name__ == "__main__":
     sys.exit(0 if unittest.main(verbosity=2, exit=False).result.wasSuccessful() else 1)

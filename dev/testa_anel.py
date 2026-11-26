@@ -232,42 +232,87 @@ class TestaInjetor(unittest.TestCase):
         self.assertEqual(pedidos, [("robo", 44100)], "o preset do filtro nao ficou pronto na taxa do Injetor")
 
 
+class TestVoicePedalStart(unittest.TestCase):
+    def test_pedal_off_while_a_dry_out_is_told(self):
+        pedal = dryouts.VoicePedalStart(clock=lambda: 5.0)
+        pedal.pedal(True)
+        pedal.clock = lambda: (pedal.pedal(False), 6.0)[1]
+        self.assertIn("turned on 1.00 s ago", pedal.starting())
+
+
 class TestVoicePedalDryOut(unittest.TestCase):
     def setUp(self):
-        self.k = K32Falso()
+        self.k = K32Falso(aberturas=2)
+        self.tick = 10_000
+        self.k.GetTickCount64 = lambda: self.tick
         a = self.a = injeta.Anel.from_address(self.k.p)
-        a.leitor[0].dono, a.leitor[0].batida, a.leitor[0].ep = 1, self.k.GetTickCount64(), ALVO
+        a.leitor[0].dono, a.leitor[0].batida, a.leitor[0].ep = 1, self.tick, ALVO
         self.motor = MotorFalso()
         self.now = 1000.0
         self.motor.voice_pedal = dryouts.VoicePedalStart(clock=lambda: self.now)
-        self.drain = threading.Event()
+        self.drain, self.gate, self.held = threading.Event(), threading.Event(), threading.Event()
+        self.gate.set()
         self.log = io.StringIO()
         full = eng.INJ_FOLGA * eng.BLOCK
 
+        self.wrote = False
+
         def na_fila(m):
+            if not self.gate.is_set():
+                self.held.set()
+                self.gate.wait()
+            if self.wrote:
+                self.wrote = False
+                return full
             if self.drain.is_set():
                 self.drain.clear()
                 return 0
             return full
 
+        def escreve(m, x):
+            self.wrote = True
+            return len(x)
+
         patches = [mock.patch.object(injeta, "k32", self.k), mock.patch.object(injeta.Microfone, "na_fila", na_fila),
-                   mock.patch.object(injeta.Microfone, "escreve", lambda m, x: len(x)),
+                   mock.patch.object(injeta.Microfone, "escreve", escreve),
                    mock.patch.object(eng.preset, "pede", return_value=None), mock.patch("sys.stderr", self.log)]
         for p in patches:
             p.start()
             self.addCleanup(p.stop)
+        self.producer = injeta.Microfone()
         self.inj = eng.Injetor(self.motor)
         self.addCleanup(self.inj.para)
-        self.assertTrue(espera(lambda: self.inj.leitores == 1), "the injector never saw the reader")
+        self.addCleanup(self.gate.set)
+        self.assertTrue(espera(lambda: self.inj.folga_min is not None), "the injector never served the reader")
+        self.dry_done = threading.Event()
+        ran_dry = self.inj.dry_outs.ran_dry
+
+        def told(back_s, count):
+            ran_dry(back_s, count)
+            self.dry_done.set()
+
+        self.inj.dry_outs.ran_dry = told
+
+    def advance(self, seconds):
+        self.now += seconds
+        self.tick += round(seconds * 1000)
+        self.a.leitor[0].batida = self.tick
 
     def dry_out(self):
-        before = self.inj.secas
+        self.dry_done.clear()
         self.drain.set()
-        self.assertTrue(espera(lambda: self.inj.secas > before), "the ring never ran dry")
+        self.assertTrue(self.dry_done.wait(3.0), "the ring never ran dry")
+
+    def plain_lines(self):
+        return self.log.getvalue().count("the microphone ring ran dry (")
+
+    def seen_up(self):
+        self.assertTrue(espera(lambda: self.motor.voice_pedal.track_up_at is not None),
+                        "the injector never saw the voice track")
 
     def track_up(self):
-        self.a.pista_batida, self.a.pista_ligada = self.k.GetTickCount64(), 1
-        self.assertTrue(espera(lambda: self.motor.voice_pedal.track_up_at is not None), "the injector never saw the voice track")
+        self.producer.pista_liga(True)
+        self.seen_up()
 
     def pedal_on(self, seconds_ago):
         self.now -= seconds_ago
@@ -287,15 +332,33 @@ class TestVoicePedalDryOut(unittest.TestCase):
         line = self.pedal_lines()[-1]
         self.assertIn("its voice track isn't up yet", line)
         self.assertEqual(self.offset(line, "turned on"), 2.0)
+        self.now += 1.0
+        self.dry_out()
+        self.assertEqual((self.inj.dry_outs.while_pedal_starting, len(self.pedal_lines()), self.plain_lines()), (2, 2, 0),
+                         "each dry-out while the pedal starts is told, without the quiet window")
 
     def test_dry_out_after_the_track_came_up(self):
         self.pedal_on(1.0)
         self.track_up()
-        self.now += 0.3
+        self.advance(0.3)
+        self.producer.pista_pulso()
         self.dry_out()
         self.assertEqual(self.inj.dry_outs.while_pedal_starting, 1)
         line = self.pedal_lines()[-1]
         self.assertEqual((self.offset(line, "turned on"), self.offset(line, "came up")), (1.3, 0.3))
+
+    def test_track_that_came_up_while_the_injector_was_away(self):
+        self.pedal_on(1.0)
+        self.gate.clear()
+        self.assertTrue(self.held.wait(3), "the injector never got to the ring")
+        self.producer.pista_liga(True)
+        self.advance(0.5)
+        self.producer.pista_pulso()
+        self.gate.set()
+        self.seen_up()
+        self.dry_out()
+        line = self.pedal_lines()[-1]
+        self.assertEqual((self.offset(line, "turned on"), self.offset(line, "came up")), (1.5, 0.5))
 
     def test_dry_out_long_after_the_track_came_up(self):
         self.pedal_on(0.0)
@@ -309,7 +372,13 @@ class TestVoicePedalDryOut(unittest.TestCase):
         self.track_up()
         self.dry_out()
         self.assertEqual((self.inj.secas, self.inj.dry_outs.while_pedal_starting), (1, 0))
-        self.assertEqual(self.pedal_lines(), [])
+        self.assertEqual((self.pedal_lines(), self.plain_lines()), ([], 1))
+        self.now += 1.0
+        self.dry_out()
+        self.assertEqual(self.plain_lines(), 1, "another dry-out within QUIET_S is not told")
+        self.now += dryouts.QUIET_S + 0.1
+        self.dry_out()
+        self.assertEqual(self.plain_lines(), 2, "after QUIET_S it is told again")
 
     def test_track_of_an_earlier_pedal_does_not_count_as_up(self):
         self.track_up()
@@ -317,6 +386,18 @@ class TestVoicePedalDryOut(unittest.TestCase):
         self.pedal_on(0.0)
         self.dry_out()
         self.assertIn("its voice track isn't up yet", self.pedal_lines()[-1])
+
+    def test_lines_of_one_start_stop_at_the_cap(self):
+        self.pedal_on(0.0)
+        for _ in range(dryouts.PEDAL_LINES + 5):
+            self.dry_out()
+        self.assertEqual((self.inj.dry_outs.while_pedal_starting, len(self.pedal_lines())),
+                         (dryouts.PEDAL_LINES + 5, dryouts.PEDAL_LINES))
+        self.motor.voice_pedal.pedal(False)
+        self.now += 1.0
+        self.pedal_on(0.0)
+        self.dry_out()
+        self.assertEqual(len(self.pedal_lines()), dryouts.PEDAL_LINES + 1, "a new start tells again")
 
 
 if __name__ == "__main__":

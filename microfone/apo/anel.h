@@ -98,7 +98,7 @@ typedef struct MicFxAnel {
     volatile int64_t fx_batida;   // e da dona do efeito
     // a pista da voz (v5): a voz convertida fora do filtro entra no lugar da voz do microfone
     volatile uint32_t pista_ligada;   // 1 = a voz do microfone sai e entra a da pista (vale com o escritor batendo)
-    uint32_t pista_reservado;
+    volatile uint32_t pista_ligou_ms;
     volatile int64_t pista_escrito;   // quadros publicados pelo escritor da pista
     volatile int64_t pista_batida;    // GetTickCount64 da ultima escrita (ou pulso) dele
     volatile int64_t pista_inicio;    // o pista_escrito de quando ele ligou: a leitura comeca dali

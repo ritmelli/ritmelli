@@ -56,7 +56,7 @@ class Anel(ctypes.Structure):
                 ("voz_fx", ctypes.c_float * VOZ_QUADROS), ("preset", ctypes.c_uint8 * PRESET_BYTES),
                 ("voz_dono", ctypes.c_uint32), ("fx_dono", ctypes.c_uint32), ("voz_batida", ctypes.c_int64),
                 ("fx_batida", ctypes.c_int64),
-                ("pista_ligada", ctypes.c_uint32), ("pista_reservado", ctypes.c_uint32),
+                ("pista_ligada", ctypes.c_uint32), ("pista_ligou_ms", ctypes.c_uint32),
                 ("pista_escrito", ctypes.c_int64), ("pista_batida", ctypes.c_int64), ("pista_inicio", ctypes.c_int64),
                 ("pista_lido", ctypes.c_int64 * LEITORES), ("pista", ctypes.c_float * (PISTA_QUADROS * CANAIS))]
 
@@ -200,8 +200,12 @@ class Microfone:
         folga escreve um pouco de silencio logo depois de ligar, antes da voz."""
         self.a.pista_batida = k32.GetTickCount64()
         if ligada and not self.a.pista_ligada:
+            self.a.pista_ligou_ms = k32.GetTickCount64() & 0xFFFFFFFF
             self.a.pista_inicio = self.a.pista_escrito  # antes de ligar: o filtro so le a marca com a pista ligada
         self.a.pista_ligada = 1 if ligada else 0
+
+    def pista_ligou_ha(self):
+        return (k32.GetTickCount64() - self.a.pista_ligou_ms) % 2**32 / 1000
 
     def pista_pulso(self):
         """O escritor da pista esta vivo (chamar a cada volta, mesmo sem ter o que escrever)."""

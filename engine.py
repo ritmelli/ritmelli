@@ -965,8 +965,8 @@ class Injetor:
         self.voltas[min(int(s * 1000), VOLTA_MS - 1)] += 1
 
     def _confere_fila(self, fila, volta):
-        """O tanto no anel quando a thread chegou, antes de completar: guarda o menor e conta (e diz, no maximo a cada
-        10 s) quando secou."""
+        """O tanto no anel quando a thread chegou, antes de completar: guarda o menor e conta quando secou (o que diz,
+        e quando, e do dryouts.RingDryOuts)."""
         if self.folga_min is None or fila < self.folga_min:
             self.folga_min = fila
         seca = fila == 0
@@ -1042,7 +1042,7 @@ class Injetor:
         # medidor levam a voz dela, que e o que o jogo ouve, e nao a crua
         p = m.pista_le()  # sempre le: a posicao anda junto com o escritor
         viva = m.pista_viva()
-        self.motor._pista_viva = self.motor.voice_pedal.track(viva)
+        self.motor._pista_viva = self.motor.voice_pedal.track(viva, m.pista_ligou_ha())
         if viva and len(p):
             p = np.concatenate([self._resto_pista, p])
             n = len(p) // BLOCK * BLOCK

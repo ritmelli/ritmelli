@@ -20,6 +20,10 @@ OFF_S = 4.0
 UP_S = 60.0
 
 
+def lines(path):
+    return path.read_text(encoding="utf-8", errors="replace").splitlines() if path.is_file() else []
+
+
 def runtime_refusal(provider):
     import onnxruntime
     if provider == "dml" and "DmlExecutionProvider" not in onnxruntime.get_available_providers():
@@ -34,7 +38,10 @@ def states(base, seconds):
     with urllib.request.urlopen(base + "/api/events", timeout=seconds + 5) as r:
         event = None
         while time.monotonic() < end:
-            line = r.readline().decode("utf-8").strip()
+            raw = r.readline()
+            if not raw:
+                return
+            line = raw.decode("utf-8").strip()
             if line.startswith("event: "):
                 event = line[7:]
             elif line.startswith("data: ") and event == "state":
@@ -43,6 +50,22 @@ def states(base, seconds):
 
 def hold(base, seconds):
     return collections.deque(states(base, seconds), maxlen=1)
+
+
+def cycle_row(n, before, after, server_lines, voice_lines):
+    if not any(ln.startswith("pedal_voz: pronto") for ln in server_lines):
+        return None, f"cycle {n}: the voice process never said it was ready"
+    errors = [ln for ln in server_lines if ln.startswith("pedal_voz: erro")]
+    if errors:
+        return None, f"cycle {n}: {errors[0]}"
+    ends = [json.loads(ln[4:]) for ln in voice_lines if ln.startswith("fim ")]
+    if not ends or not ends[-1].get("blocos"):
+        return None, f"cycle {n}: the voice process converted no block (its log has no fim with blocks)"
+    rose = after["volta_max_ms"] > before["volta_max_ms"]
+    return {"cycle": n, "dry_outs": after["secas"] - before["secas"],
+            "dry_outs_while_starting": after["secas_pedal"] - before["secas_pedal"],
+            "new_longest_return_ms": after["volta_max_ms"] if rose else None, "voice_blocks": ends[-1]["blocos"],
+            "voice_track_dry_outs": ends[-1].get("secas"), "voice_slowest_block_ms": ends[-1].get("conta_ms_max")}, None
 
 
 def main():
@@ -75,10 +98,10 @@ def main():
            str(work / "data")]
     base = f"http://127.0.0.1:{a.port}"
 
-    def call(method, path, body=None):
+    def call(method, path, body=None, timeout=30):
         req = urllib.request.Request(base + path, method=method, headers={"Content-Type": "application/json"},
                                      data=None if body is None else json.dumps(body).encode())
-        with urllib.request.urlopen(req, timeout=30) as r:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
             return json.load(r)
 
     with open(work / "server.out", "w", encoding="utf-8") as out, open(work / "server.err", "w", encoding="utf-8") as err:
@@ -100,44 +123,42 @@ def main():
             state = call("GET", "/api/state")
             print(f"microphone {state['active_devices']['mic']}, voice {voice}; before: {state['microfone']}", flush=True)
             log = work / "local" / "Ritmelli" / "logs" / "pistavoz.log"
-            for n in range(a.cycles):
-                before = call("GET", "/api/state")["microfone"]
+            after = state["microfone"]
+            for n in range(1, a.cycles + 1):
+                before, seen = after, len(lines(work / "server.err"))
                 call("POST", "/api/settings", {"effect": "pistavoz"})
                 hold(base, ON_S)
-                on = call("GET", "/api/state")["microfone"]
                 call("POST", "/api/settings", {"effect": "nenhum"})
                 hold(base, OFF_S)
                 after = call("GET", "/api/state")["microfone"]
-                ends = [ln for ln in log.read_text(encoding="utf-8", errors="replace").splitlines()
-                        if ln.startswith("fim ")] if log.is_file() else []
-                voice_counts = json.loads(ends[-1][4:]) if ends else {}
-                c = {"cycle": n + 1, "dry_outs": after["secas"] - before["secas"],
-                     "dry_outs_while_starting": after["secas_pedal"] - before["secas_pedal"],
-                     "longest_return_ms": on["volta_max_ms"], "voice_blocks": voice_counts.get("blocos"),
-                     "voice_track_dry_outs": voice_counts.get("secas"),
-                     "voice_slowest_block_ms": voice_counts.get("conta_ms_max")}
+                c, problem = cycle_row(n, before, after, lines(work / "server.err")[seen:], lines(log))
+                if problem:
+                    sys.exit(f"{problem} (see {work / 'server.err'} and {log})")
                 cycles.append(c)
                 print(json.dumps(c), flush=True)
         finally:
             try:
                 if proc.poll() is None:
-                    call("POST", "/api/shutdown", {})
+                    call("POST", "/api/shutdown", {}, timeout=5)
                     proc.wait(timeout=30)
+            except (OSError, subprocess.TimeoutExpired) as ex:
+                print(f"the server didn't stop through its API ({type(ex).__name__}: {ex}): its job ends it",
+                      file=sys.stderr, flush=True)
             finally:
                 if job:
                     job.end()
-    dry = [ln for ln in (work / "server.err").read_text(encoding="utf-8", errors="replace").splitlines() if "ran dry" in ln]
+    dry = [ln for ln in lines(work / "server.err") if "ran dry" in ln]
     blocks = [c["voice_slowest_block_ms"] for c in cycles if c["voice_slowest_block_ms"] is not None]
     result = {"microphone": a.mic, "voice": voice, "provider": a.provider, "cycles": cycles,
               "dry_outs": sum(c["dry_outs"] for c in cycles),
               "dry_outs_while_starting": sum(c["dry_outs_while_starting"] for c in cycles),
-              "longest_return_ms": max([c["longest_return_ms"] for c in cycles] or [0.0]),
+              "longest_return_ms_since_the_ring_opened": after["volta_max_ms"],
               "voice_blocks": sum(c["voice_blocks"] or 0 for c in cycles),
               "voice_slowest_block_ms": max(blocks or [0.0]),
               "dry_out_lines": dry, "work": str(work)}
     a.out.write_text(json.dumps(result, indent=1, ensure_ascii=False), encoding="utf-8")
     print(f"{result['dry_outs']} dry-outs in {len(cycles)} cycles, {result['dry_outs_while_starting']} while the pedal "
-          f"was starting; longest return {result['longest_return_ms']} ms; voice: {result['voice_blocks']} blocks, the "
+          f"was starting; longest return {result['longest_return_ms_since_the_ring_opened']} ms; voice: {result['voice_blocks']} blocks, the "
           f"slowest {result['voice_slowest_block_ms']} ms; result: {a.out}", flush=True)
     return 0
 
