@@ -131,9 +131,19 @@ CASES = {
                                                  "        return\n    time.sleep(1)\n"},
          {"a.py": "import time\nwhile True:\n    try:\n        f()\n        break\n    except OSError:\n"
                   "        time.sleep(1)\n"}),
-        ("the sleep in a nested function", {"a.py": "import time\nfor x in y:\n    try:\n        f()\n    except OSError:\n"
-                                                    "        pass\n    def g():\n        time.sleep(1)\n"},
-         {"a.py": "import time\nfor x in y:\n    try:\n        f()\n    except OSError:\n        pass\n    time.sleep(1)\n"}),
+        ("the sleep in a nested function", {"a.py": "import time\nfor x in y:\n    try:\n        f()\n        break\n"
+                                                    "    except OSError:\n        pass\n    def g():\n        time.sleep(1)\n"},
+         {"a.py": "import time\nfor x in y:\n    try:\n        f()\n        break\n    except OSError:\n        pass\n"
+                  "    time.sleep(1)\n"}),
+        ("a poll that goes on either way, against one that ends when it works",
+         {"a.py": "import time\nfor d in cases:\n    time.sleep(0.05)\n    try:\n        st = f(d)\n"
+                  "    except E as ex:\n        st = ex.status\n    check(st)\n"},
+         {"a.py": "import time\ndef w():\n    for _ in range(50):\n        time.sleep(0.2)\n        try:\n"
+                  "            if f():\n                return\n        except RuntimeError:\n            pass\n"}),
+        ("the success after the try", {"a.py": "import time\nwhile True:\n    try:\n        get()\n    except OSError:\n"
+                                               "        pass\n    time.sleep(1)\n"},
+         {"a.py": "import time\nwhile True:\n    try:\n        get()\n    except OSError:\n        pass\n"
+                  "    if done():\n        return\n    time.sleep(1)\n"}),
         ("an outer loop around a retry", {"a.py": "import time\nfor a in b:\n    x = 1\n"},
          {"a.py": "import time\nfor a in b:\n    while True:\n        try:\n            f()\n        except OSError:\n"
                   "            time.sleep(1)\n"}),
@@ -159,7 +169,7 @@ CASES = {
         ("a handler exits", {"a.py": "import sys, time\nfor w in sizes:\n    try:\n        f(w)\n    except OSError:\n"
                                      "        sys.exit(1)\n    time.sleep(1)\n"},
          {"a.py": "import sys, time\nfor w in sizes:\n    try:\n        f(w)\n    except OSError:\n"
-                  "        print('again')\n    time.sleep(1)\n"}),
+                  "        print('again')\n        time.sleep(1)\n"}),
         ("a brace and a timer inside strings", {"a.js": "s.onerror = () => { report(\"setTimeout(go, 100)\"); };\n"},
          {"a.js": "s.onerror = () => { report(\"}\"); setTimeout(go, 100); };\n"}),
         ("the transport's aoFalhar", {"a.js": "es.aoFalhar(() => { online(false); });\n"},
@@ -365,6 +375,7 @@ def test_description():
         "a heading with nothing under it": "## Proof\n## Other\n![a](https://x/a.png)\n",
         "a plain label after it": "Proof: it works.\nNotes: `python dev/x.py` is the next step.\n",
         "an empty code block": "## Proof\n\n```\n```\n",
+        "a code block with no run in it": "## Proof\n\n```\nIt works.\n```\n",
         "a code block that never closes": "## Proof\n\n```\npython dev/x.py\n```text\n",
         "a proof section only inside an example block": "```markdown\n## Proof\n`python dev/garden.py`\n```\n",
     }

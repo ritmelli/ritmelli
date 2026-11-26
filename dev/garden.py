@@ -60,6 +60,10 @@ IMAGE = re.compile(r"!\[[^\]]*\]\([^)]+\)|<img\s|https://github\.com/user-attach
 PROOF_SPAN = re.compile(r"^\s*(?:python|py|gh|git|pwsh|powershell|bash|node|npm|ruff|actionlint)\b"
                         r"|[\w./\\-]+\.(?:py|ps1|yml|js|sh|bat|iss|cpp|html)\b|^\s*(?:test|testa|teste)_\w+"
                         r"|^\s*--[a-z][\w-]*")
+BLOCK_PROOF = re.compile(r"^\s*(?:\$|>|PS [^>]*>|[A-Z]:\\[^>]*>)\s*\S"
+                         r"|^\s*(?:python|py|gh|git|pwsh|powershell|bash|node|npm|ruff|actionlint)\s"
+                         r"|^\s*(?:ok|FAIL|FALHA)\s|\b(?:\d+ (?:of|de) \d+|passed|failed|exit(?: code)? ?\d+|Traceback)\b",
+                         re.M)
 BIG_FILES = {"engine_py_lines": "engine.py", "server_py_lines": "server.py",
              "index_html_lines": "themes/ritmelli/index.html", "agents_md_lines": "AGENTS.md"}
 
@@ -604,9 +608,15 @@ def python_retries(tree):
     for loop in ast.walk(tree):
         if isinstance(loop, LOOPS):
             inner = list(local_nodes(loop))
-            handlers = [h for n in inner if isinstance(n, ast.Try) for h in n.handlers]
-            if any(is_sleep(n, aliases) for n in inner) and any(not leaves(h.body) for h in handlers):
-                found.append(loop.lineno)
+            if not any(is_sleep(n, aliases) for n in inner):
+                continue
+            ends = any(isinstance(n, (ast.Return, ast.Break)) for n in inner)
+            for attempt in (n for n in inner if isinstance(n, ast.Try)):
+                again = [h for h in attempt.handlers if not leaves(h.body)]
+                waits_on_failure = any(is_sleep(n, aliases) for h in again for n in local_nodes(h))
+                if again and (waits_on_failure or ends):
+                    found.append(loop.lineno)
+                    break
     return found
 
 
@@ -1186,7 +1196,7 @@ def blocks(lines):
 
 def has_proof(text):
     parts = blocks(text.splitlines())
-    if any(kind == "code" and body.strip() for kind, body in parts):
+    if any(kind == "code" and BLOCK_PROOF.search(body) for kind, body in parts):
         return True
     prose = "\n".join(body for kind, body in parts if kind == "text")
     if RUN_LINK.search(prose) or IMAGE.search(prose):
