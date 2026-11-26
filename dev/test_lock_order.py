@@ -194,33 +194,56 @@ def section_yields_under_qlock(engine):
     return bool(yields) and all(id(y) in held for y in yields)
 
 
-def returned_callables(func):
-    local = {n.name: n for n in ast.walk(func) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n is not func}
-    assigned = {}
-    for n in ast.walk(func):
-        for t in (n.targets if isinstance(n, ast.Assign) else []):
-            if isinstance(t, ast.Name):
-                assigned.setdefault(t.id, []).append(n.value)
-    todo, found, names = [r.value for r in ast.walk(func) if isinstance(r, ast.Return) and r.value is not None], [], set()
+def scope_nodes(func):
+    todo = list(ast.iter_child_nodes(func))
     while todo:
-        for m in ast.walk(todo.pop()):
-            if isinstance(m, ast.Lambda):
-                found.append(m)
-            elif isinstance(m, ast.Name) and m.id not in names:
-                names.add(m.id)
-                found += [local[m.id]] if m.id in local else []
-                todo += assigned.get(m.id, [])
-    return found
+        n = todo.pop()
+        yield n
+        if not isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)):
+            todo.extend(ast.iter_child_nodes(n))
 
 
-def value_calls(value):
-    if isinstance(value, ast.Call):
-        return [value]
+def local_assignments(func):
+    assigned = {}
+    for n in scope_nodes(func):
+        pairs = [(t, n.value) for t in n.targets] if isinstance(n, ast.Assign) else \
+            [(n.target, n.value)] if isinstance(n, (ast.AnnAssign, ast.NamedExpr)) and n.value is not None else []
+        for t, v in pairs:
+            for name in [t] if isinstance(t, ast.Name) else [e for e in getattr(t, "elts", []) if isinstance(e, ast.Name)]:
+                assigned.setdefault(name.id, []).append(v)
+    return assigned
+
+
+def value_parts(value):
     if isinstance(value, ast.BoolOp):
-        return [c for v in value.values for c in value_calls(v)]
+        return [p for v in value.values for p in value_parts(v)]
     if isinstance(value, ast.IfExp):
-        return value_calls(value.body) + value_calls(value.orelse)
-    return []
+        return value_parts(value.body) + value_parts(value.orelse)
+    if isinstance(value, ast.NamedExpr):
+        return value_parts(value.value)
+    if isinstance(value, (ast.Tuple, ast.List)):
+        return [p for v in value.elts for p in value_parts(v)]
+    return [value]
+
+
+def held_callables(func, exprs):
+    local = {n.name: n for n in scope_nodes(func) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    assigned, todo, names, found, calls = local_assignments(func), list(exprs), set(), [], []
+    while todo:
+        value = todo.pop()
+        found += [m for m in ast.walk(value) if isinstance(m, ast.Lambda)]
+        for part in value_parts(value):
+            if isinstance(part, ast.Call):
+                calls.append(part)
+            elif isinstance(part, ast.Name) and part.id not in names:
+                names.add(part.id)
+                found += [local[part.id]] if part.id in local else []
+                todo += assigned.get(part.id, [])
+    return found, calls
+
+
+def returned_callables(func):
+    return held_callables(func, [n.value for n in scope_nodes(func) if isinstance(n, ast.Return) and n.value])[0]
 
 
 def by_getattr(node):
@@ -491,15 +514,9 @@ class Walker(ast.NodeVisitor):
             return [arg]
         if not isinstance(arg, ast.Name):
             return []
-        out = [n for n in ast.walk(func) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-               and n.name == arg.id and n is not func]
-        for n in ast.walk(func):
-            if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == arg.id for t in n.targets):
-                out += [m for m in ast.walk(n.value) if isinstance(m, ast.Lambda)]
-                for call in value_calls(n.value):
-                    out += [m for key in resolve(self.table, call, self.name, self.cls)
-                            for m in returned_callables(self.table[key])]
-        return out
+        found, calls = held_callables(func, [arg])
+        return found + [m for call in calls for key in resolve(self.table, call, self.name, self.cls)
+                        for m in returned_callables(self.table[key])]
 
     def mark_callbacks(self, func):
         for call in ast.walk(func):
@@ -1131,6 +1148,11 @@ def main():
     check(fallback != locked and any("lib_lock" in b for b in bad),
           f"and so it does with the builder reached through a fallback, fonte_de(seen) or None "
           f"({[b for b in bad if 'lib_lock' in b][:1]})")
+    chained = locked.replace("novo = self.fonte_de(seen)\n", "loaded = self.fonte_de(seen)\n            novo = loaded\n", 1)
+    bad, *_ = scan(dict(sources, **{"server.py": chained}), order, before)
+    check(chained != locked and any("lib_lock" in b for b in bad),
+          f"and through a local name the builder passes on its way, loaded = self.fonte_de(seen); novo = loaded "
+          f"({[b for b in bad if 'lib_lock' in b][:1]})")
     ternary = locked.replace("novo = self.fonte_de(seen)\n", "novo = self.fonte_de(seen) if seen else None\n", 1)
     bad, *_ = scan(dict(sources, **{"server.py": ternary}), order, before)
     check(ternary != locked and any("lib_lock" in b for b in bad),
@@ -1148,6 +1170,21 @@ def main():
     bad, *_ = scan(dict(sources, **{"server.py": alias}), order, before)
     check(alias != named and any("lib_lock" in b for b in bad),
           f"and through a local name bound to that function ({[b for b in bad if 'lib_lock' in b][:1]})")
+    shadowed = sources["server.py"].replace(
+        '            return lambda: dict(it, path=str(LIB / it["file"]), **marca_auto(x))\n',
+        '            def helper():\n                builder = lambda: self.lib.update(it["id"])\n'
+        '                return builder\n'
+        '            builder = lambda: dict(it, path=str(LIB / it["file"]), **marca_auto(x))\n            return builder\n', 1)
+    bad, *_ = scan(dict(sources, **{"server.py": shadowed}), order, before)
+    check(shadowed != sources["server.py"] and not any("lib_lock" in b for b in bad),
+          f"a nested function's own builder, under the same name, is not taken for the one fonte_de returns "
+          f"({[b for b in bad if 'lib_lock' in b][:1]})")
+    for what, form in (("an annotated name", "            builder: object = build\n"),
+                       ("a name unpacked from a tuple", "            builder, _ = build, None\n")):
+        held = named.replace("            return build\n", form + "            return builder\n", 1)
+        bad, *_ = scan(dict(sources, **{"server.py": held}), order, before)
+        check(held != named and any("lib_lock" in b for b in bad),
+              f"and through {what} bound to that function ({[b for b in bad if 'lib_lock' in b][:1]})")
     bound = sources["server.py"].replace(
         '            return lambda: dict(it, path=str(LIB / it["file"]), **marca_auto(x))\n',
         '            build = lambda: (self.lib.update(it["id"]), dict(it, path=str(LIB / it["file"]), **marca_auto(x)))[1]\n'
