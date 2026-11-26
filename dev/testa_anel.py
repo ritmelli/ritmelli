@@ -353,6 +353,20 @@ class TestVoicePedalStart(unittest.TestCase):
                 self.assertEqual(dry.while_pedal_starting, 1)
                 self.assertIn(said, log.getvalue())
 
+    def test_the_bounds_are_not_moved_by_float_error(self):
+        now = [0.0]
+        pedal = dryouts.VoicePedalStart(clock=lambda: now[0])
+        pedal.pedal(True)
+        dry = dryouts.RingDryOuts(pedal)
+        with mock.patch("sys.stderr", io.StringIO()) as log:
+            now[0] = 0.29
+            dry.read_ring(lambda: 1)
+            now[0] = 0.56
+            dry.read_ring(lambda: 0)
+            dry.ran_dry(0.27, 1)
+            dryouts.LOG.written()
+        self.assertIn("it ran dry between 0.29 and 0.56 s after the pedal turned on;", log.getvalue())
+
     def test_the_bounds_of_the_line_never_narrow(self):
         counted, log = self.away(-0.006, 0.0, empty_at=0.108)
         self.assertEqual(counted, 1)
@@ -613,6 +627,7 @@ class TestVoicePedalDryOut(unittest.TestCase):
         ran_dry = self.inj.dry_outs.ran_dry
 
         def told(back_s, count):
+            self.live_at_dry = self.motor._pista_viva
             ran_dry(back_s, count)
             self.dry_done.set()
 
@@ -841,6 +856,7 @@ class TestVoicePedalDryOut(unittest.TestCase):
         self.assertIn("came up 0.00 s ago, after the ring was last filled, so which came first is not known",
                       self.pedal_lines()[-1])
         self.assertEqual(self.logged().count("voice pedal: its voice track came up"), 1, "one line for the track coming up")
+        self.assertFalse(self.live_at_dry, "the second reading of the track left the pass's mix as _voz chose it")
 
     def test_track_up_while_the_reader_held_the_ring(self):
         self.pedal_on(1.0)

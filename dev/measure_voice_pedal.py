@@ -75,15 +75,23 @@ def read_states(r, seconds, clock=time.monotonic):
 
 def caught_up(seen, target):
     a, b = seen["microfone"], target["microfone"]
-    return all(a[k] >= b[k] for k in ("secas", "secas_pedal", "volta_max_ms"))
+    headroom = b["folga_min_ms"] is None or (a["folga_min_ms"] is not None and a["folga_min_ms"] <= b["folga_min_ms"])
+    return headroom and all(a[k] >= b[k] for k in ("secas", "secas_pedal", "volta_max_ms"))
 
 
-def catch_up(r, seen, target, seconds=UP_S, clock=time.monotonic):
+def catch_up(r, seen, target, mic, seconds=UP_S, clock=time.monotonic):
+    problem = interruption([seen, target], mic)
+    if problem:
+        raise EOFError(f"at the end of the wait, /api/state: {problem}")
     if caught_up(seen, target):
         return []
     got = []
     for st in read_states(r, seconds, clock):
+        problem = interruption([seen, st], mic)
+        if problem:
+            raise EOFError(problem)
         got.append(st)
+        seen = st
         if caught_up(st, target):
             return got
     raise EOFError(f"the state stream didn't reach the counters of /api/state in {seconds:.0f} s")
@@ -216,7 +224,7 @@ def main():
                     during = list(read_states(events, a.on_s))
                     call("POST", "/api/settings", {"effect": "nenhum"})
                     during += list(read_states(events, OFF_S))
-                    during += catch_up(events, (during or [last])[-1], call("GET", "/api/state"))
+                    during += catch_up(events, (during or [last])[-1], call("GET", "/api/state"), mic)
                 except EOFError as ex:
                     sys.exit(f"cycle {n}: {ex} (see {server_err} and {log})")
                 states_seen = [last, *during]

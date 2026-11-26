@@ -969,7 +969,7 @@ class Injetor:
         self.saude.fila(fila, passagem=seca and self.motor.em_passagem(), esticando=seca and RUBBER_BAND.em_curso())
         if seca:
             self.secas += 1
-            self.motor._pista_viva = self.motor.voice_pedal.track(m.pista_viva(), m.pista_ligou())
+            self.motor.voice_pedal.track(m.pista_viva(), m.pista_ligou())
             self.dry_outs.ran_dry(volta, self.secas)
 
     def para(self):

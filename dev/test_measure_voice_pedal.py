@@ -201,7 +201,7 @@ class Main(unittest.TestCase):
                                 ("GET", "/api/events"), ("POST", "/api/shutdown")])
 
     def test_a_state_read_apart_from_the_stream_does_not_break_a_cycle(self):
-        why, sent, result = self.run_main([state(), state(1, 1, 656.0, 10.0)], "--cycles", "1",
+        why, sent, result = self.run_main([state(1, 0, 9.0, 10.0), state(1, 1, 656.0, 10.0)], "--cycles", "1",
                                           events=[state(0, 0, 9.0, 10.0), state(0, 0, 9.0, 10.0),
                                                   state(0, 0, 9.0, 10.0), state(1, 1, 656.0, 10.0)])
         self.assertIsNone(why)
@@ -209,6 +209,23 @@ class Main(unittest.TestCase):
         self.assertEqual((len(result["cycles"]), result["dry_outs"], result["dry_outs_while_starting"],
                           result["onnxruntime"]), (1, 1, 1, PINNED),
                          "the dry-out still queued in the stream past the cycle's wait is that cycle's")
+
+    def test_a_broken_ring_at_the_end_of_a_cycle_stops_the_measurement(self):
+        healthy = [state(0, 0, 9.0, 10.0)] * 3
+        cases = {"the ring closed": {"active_devices": {"mic": MIC}, "microfone": {"anel": False, "leitores": 0}},
+                 "the reader gone": state(0, 0, 9.0, 10.0, leitores=0),
+                 "the injector opened again": state(0, 0, 0.0, None)}
+        for what, end in cases.items():
+            with self.subTest(what):
+                why, _, result = self.run_main([state(), end], "--cycles", "1", events=healthy)
+                self.assertIn("cycle 1: at the end of the wait, /api/state: ", why)
+                self.assertIsNone(result)
+
+    def test_a_broken_ring_while_catching_up_stops_the_measurement(self):
+        why, _, result = self.run_main([state(), state(1, 0, 9.0, 10.0)], "--cycles", "1",
+                                       events=[state(0, 0, 9.0, 10.0)] * 3 + [state(0, 0, 9.0, 10.0, leitores=0)])
+        self.assertIn("cycle 1: the ring had no reader", why)
+        self.assertIsNone(result)
 
     def test_a_real_drop_of_the_counters_still_stops_the_measurement(self):
         why, _, result = self.run_main([state()], "--cycles", "1",
@@ -236,16 +253,21 @@ class EarlyStop(unittest.TestCase):
 class CatchUp(unittest.TestCase):
     def test_a_state_queued_past_the_wait_is_read(self):
         r = stream(state(0, 0, 9.0, 10.0), state(1, 1, 656.0, 10.0), state(1, 1, 656.0, 10.0))
-        got = measure.catch_up(r, state(0, 0, 9.0, 10.0), state(1, 1, 656.0, 10.0), clock=lambda: 100.0)
+        got = measure.catch_up(r, state(0, 0, 9.0, 10.0), state(1, 1, 656.0, 10.0), MIC, clock=lambda: 100.0)
         self.assertEqual(got, [state(0, 0, 9.0, 10.0), state(1, 1, 656.0, 10.0)])
 
+    def test_the_least_headroom_is_caught_up_too(self):
+        r = stream(state(folga=None), state(folga=12.0))
+        got = measure.catch_up(r, state(folga=None), state(folga=12.0), MIC, clock=lambda: 100.0)
+        self.assertEqual(got, [state(folga=None), state(folga=12.0)])
+
     def test_a_stream_already_there_reads_nothing(self):
-        self.assertEqual(measure.catch_up(stream(), state(1, 1, 9.0), state(1, 1, 9.0)), [])
+        self.assertEqual(measure.catch_up(stream(), state(1, 1, 9.0), state(1, 1, 9.0), MIC), [])
 
     def test_a_stream_that_never_gets_there_stops(self):
         times = iter([100.0, 100.0, 200.0])
         with self.assertRaises(EOFError) as stop:
-            measure.catch_up(stream(state(), state()), state(), state(1), seconds=60.0, clock=lambda: next(times))
+            measure.catch_up(stream(state(), state()), state(), state(1), MIC, seconds=60.0, clock=lambda: next(times))
         self.assertIn("didn't reach the counters of /api/state", str(stop.exception))
 
 
