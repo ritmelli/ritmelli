@@ -2744,18 +2744,43 @@ def engine_seams(A, E):
     confere(ate(lambda: E.status() == "playing"), f"the record plays ({E.status()})")
     x, _, _ = cmd.enfileirar(A, {"id": "d2"})
     A.passagem_falhou = None
-    engine_class, uses = type(E), []
+    engine_class, uses, reads = type(E), [], []
+
+    class Counted:
+        def __init__(self, lock):
+            self.lock, self.taken = lock, 0
+
+        def __enter__(self):
+            self.lock.acquire()
+            self.taken += 1
+            return self
+
+        def __exit__(self, *exc):
+            self.lock.release()
+
+        def locked(self):
+            return self.lock.locked()
 
     class Watched(engine_class):
         @property
         def _prepare_failure_tag(self):
             uses.append(self._qlock.locked())
+            reads.append(("failure", self._qlock.taken, self._qlock.locked()))
             return self.__dict__["_prepare_failure_tag"]
 
         @_prepare_failure_tag.setter
         def _prepare_failure_tag(self, value):
             uses.append(self._qlock.locked())
             self.__dict__["_prepare_failure_tag"] = value
+
+        @property
+        def pronto_tag(self):
+            reads.append(("pronto", self._qlock.taken, self._qlock.locked()))
+            return self.__dict__["pronto_tag"]
+
+        @pronto_tag.setter
+        def pronto_tag(self, value):
+            self.__dict__["pronto_tag"] = value
     with mock.patch.object(eng, "TRANS_PREP_S", 1e6), mock.patch.object(A, "_prepara") as prepara:
         A._volta_passagem()
         confere(ate(lambda: prepara.called) and prepara.call_args.args[1] is x,
@@ -2764,16 +2789,20 @@ def engine_seams(A, E):
         prepara.reset_mock()
         with E.state_section():
             E._prepare_failure_tag = x["qid"]
-        E.__class__ = Watched
+        qlock, E.__class__ = E._qlock, Watched
+        E._qlock = Counted(qlock)
         try:
             A._volta_passagem()
             again, _ = E.take_prepare_failure()
         finally:
-            E.__class__ = engine_class
+            E.__class__, E._qlock = engine_class, qlock
         A._volta_passagem()
+    pairs = [(a, b) for a, b in zip(reads, reads[1:]) if a[0] == "failure"]
     confere(A.passagem_falhou == (id(E.track), x["qid"], x.get("youtube_id") or x.get("url")) and again is None,
             f"the passage watcher takes the prepare failure out of the engine, once ({A.passagem_falhou})")
     confere(uses and all(uses), f"and reads and clears it under the engine's _qlock ({uses})")
+    confere(len(pairs) == 2 and all(b[0] == "pronto" and a[1:] == b[1:] == (a[1], True) for a, b in pairs),
+            f"and reads the prepared deck's tag in the same hold of the _qlock as the failure ({pairs})")
     confere(not prepara.called and A.preparando is None,
             f"and the head that failed is not prepared again ({prepara.call_count}, {A.preparando})")
     cmd.tirar_da_fila(A, x["qid"])

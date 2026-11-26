@@ -607,7 +607,7 @@ class App:
         self._son_lock = threading.Lock()
         self.parado_sem_fila = None  # disco que acabou com a fila vazia: a parecida que chegar toca
         self.preparando = self.last_prepare_key = None
-        self.passagem_falhou = None  # (disco, qid, fonte) que nao deu para preparar: toca no fim, como antes
+        self.passagem_falhou = None
         self.closing = False
         # a janela propria (janela.py), quando ha: fechar ela desliga o servidor (pede_desligar), e o servidor que
         # para sozinho fecha ela (main). O loop e o desliga sao do servir e do build

@@ -277,14 +277,8 @@ def test_shape(flows):
 
 
 def tla_job_failures(flows):
-    job = flows[TESTA]["jobs"].get("tla", {})
-    tlc = [s for s in job_steps(job) if "run" in s]
-    out = [] if job.get("if") == "github.event_name != 'push'" else [f"the tla job runs under if: {job.get('if')}"]
-    out += ["the tla job may fail without failing the run"] if "continue-on-error" in job else []
-    if [s.get("run", "").strip() for s in tlc] != ["python dev/testa_tudo.py --passo tla"]:
-        out.append(f"the tla job does not run TLC as its one command ({[s.get('run') for s in tlc]})")
-    out += [f"the TLC step has {k}" for s in tlc for k in ("if", "continue-on-error") if k in s]
-    return out
+    runs = [s.get("run") for s in job_steps(flows[TESTA]["jobs"].get("tla", {})) if "run" in s]
+    return [] if len(runs) == 1 else [f"the tla job has {len(runs)} run steps, not the TLC one alone ({runs})"]
 
 
 def test_tla_job(flows):
@@ -295,17 +289,11 @@ def test_tla_job(flows):
           f"every action of the tla job is pinned by its commit sha ({uses})")
     check(any(u.startswith("actions/setup-java@") for u in uses), "the tla job takes Java from actions/setup-java")
     found = tla_job_failures(flows)
-    check(found == [], f"the tla job runs TLC on every PR and queue run, and its failure fails the job ({found})")
-
-    def tlc_step(f):
-        return step_of(f, "tla", "TLC")
-    for why, change in (
-            ("the TLC command replaced by true", lambda f: tlc_step(f).update({"run": "true"})),
-            ("the TLC step under if: false", lambda f: tlc_step(f).update({"if": "false"})),
-            ("the TLC step allowed to fail", lambda f: tlc_step(f).update({"continue-on-error": True})),
-            ("the tla job allowed to fail", lambda f: f[TESTA]["jobs"]["tla"].update({"continue-on-error": True})),
-            ("the tla job under if: false", lambda f: f[TESTA]["jobs"]["tla"].update({"if": "false"}))):
-        check(tla_job_failures(mutated(flows, change)) != [], f"the mutant with {why} fails")
+    check(found == [], f"the TLC step is the tla job's only run step; REQUIRED_MODES holds its command and conditions "
+                       f"({found})")
+    found = tla_job_failures(mutated(flows, lambda f: f[TESTA]["jobs"]["tla"]["steps"].insert(
+        -1, {"name": "Before", "run": "rm -r dev/tla"})))
+    check(found != [], f"the mutant with a second run step in the tla job fails ({found})")
 
 
 def compara_job_failures(flows):

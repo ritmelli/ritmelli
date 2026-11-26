@@ -8,7 +8,8 @@ CONSTANTS Qids, NoQid, StreamFailureChecksJob, AudioSwapThroughChangeQueue, Stre
           OpenedStreamLooksForTheFile, SeekStartsANewLine, WaitKeyedByGen, WithTheForget,
           WithTheDrop, WithTheJobSwitch, DownloadEndsBeforeTheSourcePick, PrepareLooksAtTheShelf,
           PassageFileKeepsTheJob, WithTheRename, RenameReplacesTheTrack, RenameReachesThePreparedDeck,
-          RecordBuiltUnderTheLock, WithTheJobOnThePlatter, TheJobIsPlayedBeforeItsDownloadEnds
+          RecordBuiltUnderTheLock, WithTheJobOnThePlatter, TheJobIsPlayedBeforeItsDownloadEnds,
+          DownloadOutcomes, StreamReaderStartsWith, QueueLengths
 
 VARIABLES pc, track, nextId, line, pronto, nearEnd, noReader, gen,
           jobStatus, shelf, stream, swTr, dlSaw, wrongTrack, fileWait, stGen, refusedPlaying,
@@ -108,7 +109,8 @@ Init ==
     /\ fileWait = <<0, 0>>
     /\ stGen = 0
     /\ refusedPlaying = FALSE
-    /\ fila \in {<<q>> : q \in Qids} \cup ({<<a, b>> : a, b \in Qids} \ {<<q, q>> : q \in Qids})
+    /\ fila \in (IF 1 \in QueueLengths THEN {<<q>> : q \in Qids} ELSE {})
+               \cup (IF 2 \in QueueLengths THEN {<<a, b>> : a, b \in Qids} \ {<<q, q>> : q \in Qids} ELSE {})
     /\ ver = [q \in Qids |-> "video"]
     /\ virou = NoSwitch
     /\ closing = NoSwitch
@@ -135,8 +137,8 @@ Init ==
 DownloadEnds ==
     /\ At("Download", "dl_run")
     /\ TheJobIsPlayedBeforeItsDownloadEnds => pc["Swap"] \in {"sw_release", "done"}
-    /\ \/ jobStatus' = "error" /\ UNCHANGED shelf /\ Goto("Download", "dl_failed")
-       \/ UNCHANGED jobStatus /\ shelf' = TRUE /\ Goto("Download", "dl_shelved")
+    /\ \/ "error" \in DownloadOutcomes /\ jobStatus' = "error" /\ UNCHANGED shelf /\ Goto("Download", "dl_failed")
+       \/ "shelved" \in DownloadOutcomes /\ UNCHANGED jobStatus /\ shelf' = TRUE /\ Goto("Download", "dl_shelved")
     /\ UNCHANGED <<lockVars, platVars, stream, swTr, dlSaw, wrongTrack, fileWait, stGen, refusedPlaying, queueVars, localVars, shelfName, dlName>>
 
 DownloadMarksDone ==
@@ -307,7 +309,7 @@ StreamReaderStarts ==
     /\ At("StreamReader", "sr_idle")
     /\ \/ stream = "refused" /\ Goto("StreamReader", "st_refused")
        \/ /\ stream = "ok"
-          /\ \E l \in {"done", "st_reading"} \cup (IF WithTheDrop THEN {"sr_dropped"} ELSE {}) :
+          /\ \E l \in StreamReaderStartsWith \cup (IF WithTheDrop THEN {"sr_dropped"} ELSE {}) :
                 Goto("StreamReader", l)
        \/ stream = "gone" /\ Goto("StreamReader", "done")
     /\ UNCHANGED <<lockVars, platVars, jobVars, queueVars, localVars>>

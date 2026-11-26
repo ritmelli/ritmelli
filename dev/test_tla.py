@@ -56,8 +56,19 @@ RUNS = (
     Run("Races211, the code as it is: the job with one queue move", "Races211",
         constants=(("TwoMoves", "FALSE"), ("WithThePlay", "FALSE"),
                    ("WithTheForget", "FALSE"), ("WithTheSeek", "FALSE"))),
-    Run("Races211, the code as it is: the download, the stream and the swap, with the record renamed on the shelf",
-        "Races211", constants=RENAME),
+    Run("Races211, the code as it is: the download, the stream and the swap, with the record renamed on the shelf "
+        "and the download failing", "Races211", constants=RENAME + (("DownloadOutcomes", '{"error"}'),)),
+    Run("Races211, the code as it is: the download, the stream and the swap, with the record renamed on the shelf, "
+        "the download putting it on the shelf and the stream with audio", "Races211",
+        constants=RENAME + (("DownloadOutcomes", '{"shelved"}'), ("StreamReaderStartsWith", '{"done"}'))),
+    Run("Races211, the code as it is: the download, the stream and the swap, with the record renamed on the shelf, "
+        "the download putting it on the shelf, the stream silent and one entry in the queue", "Races211",
+        constants=RENAME + (("DownloadOutcomes", '{"shelved"}'), ("StreamReaderStartsWith", '{"st_reading"}'),
+                            ("QueueLengths", "{1}"))),
+    Run("Races211, the code as it is: the download, the stream and the swap, with the record renamed on the shelf, "
+        "the download putting it on the shelf, the stream silent and two entries in the queue", "Races211",
+        constants=RENAME + (("DownloadOutcomes", '{"shelved"}'), ("StreamReaderStartsWith", '{"st_reading"}'),
+                            ("QueueLengths", "{2}"))),
     Run("Races211, the code as it is: a passage to the job's shelf file, with the record renamed on the shelf",
         "Races211", constants=RENAME_SWITCH),
     Run("Races211, the code as it is: the job's record played from the shelf, with the record renamed on the shelf",
