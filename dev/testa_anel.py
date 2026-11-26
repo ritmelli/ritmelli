@@ -518,6 +518,24 @@ class TestVoicePedalStart(unittest.TestCase):
             pedal.track(True, stamp(5.0))
         self.assertEqual((seen, pedal.track_up_at), ([None], 5.0))
 
+    def test_a_track_read_after_its_pedal_turned_on_again_is_told_for_its_start(self):
+        now = [1.0]
+        pedal = dryouts.VoicePedalStart(clock=lambda: now[0])
+        lines = []
+        with mock.patch.object(dryouts.LOG, "tell", side_effect=lines.append):
+            pedal.pedal(True)
+            now[0] = 2.3
+            pedal.pedal(False)
+            now[0] = 2.5
+            pedal.pedal(True)
+            now[0] = 2.7
+            pedal.track(True, stamp(1.5))
+            now[0] = 3.5
+            pedal.track(True, stamp(3.2))
+        self.assertEqual(lines, ["voice pedal: its voice track came up 0.50 s after the pedal turned on",
+                                 "voice pedal: its voice track came up 0.70 s after the pedal turned on"],
+                         "one line for each start, each against its own pedal")
+
     def test_a_stamp_from_before_the_wrap_read_after_it(self):
         wrap = 2**32 / 1000
         now = [wrap - 1.0]

@@ -72,7 +72,7 @@ class VoicePedalStart:
         if new:
             up_at = now - (round(now * 1000) - (stamp - 1)) % (2**32 - 1) / 1000 if stamp else now
             on_at, last_on = self.on_at, self.last_on
-            if on_at is None and last_on is not None and last_on[0] <= up_at <= last_on[1] + TICK_S:
+            if (on_at is None or up_at < on_at) and last_on is not None and last_on[0] <= up_at <= last_on[1] + TICK_S:
                 on_at = last_on[0]
             if on_at is not None and up_at >= on_at:
                 LOG.tell(f"voice pedal: its voice track came up {up_at - on_at:.2f} s after the pedal turned on")
