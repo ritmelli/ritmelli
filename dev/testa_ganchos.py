@@ -67,7 +67,7 @@ def ganchos(arvore, modulo):
     def nome_de(no):
         return no.id if isinstance(no, ast.Name) else no.attr if isinstance(no, ast.Attribute) else ""
 
-    achados = set()
+    achados = {}
     escopos = [arvore] + [f for f in ast.walk(arvore) if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef))]
     for escopo in escopos:
         # o apelido local de uma funcao (x = self._modulo): o que se le ou chama nele conta como no original
@@ -83,23 +83,23 @@ def ganchos(arvore, modulo):
 
         for no in ast.walk(escopo):
             if isinstance(no, ast.Name) and tem(no.id):
-                achados.add(no.id)
+                achados.setdefault(no.id, no.lineno)
             elif isinstance(no, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and tem(no.name):
-                achados.add(no.name)
+                achados.setdefault(no.name, no.lineno)
             elif isinstance(no, ast.arg) and tem(no.arg):
-                achados.add(no.arg)
+                achados.setdefault(no.arg, no.lineno)
             elif isinstance(no, ast.Attribute):
                 if tem(no.attr):
-                    achados.add(no.attr)
+                    achados.setdefault(no.attr, no.lineno)
                 elif dono(no.value):
-                    achados.add(f"{dono(no.value)}.{no.attr}")
+                    achados.setdefault(f"{dono(no.value)}.{no.attr}", no.lineno)
             elif (isinstance(no, ast.Call) and nome_de(no.func) in ("getattr", "hasattr", "setattr")
                   and len(no.args) >= 2 and isinstance(no.args[1], ast.Constant) and isinstance(no.args[1].value, str)):
                 attr = no.args[1].value  # a mesma regra do acesso direto
                 if tem(attr):
-                    achados.add(attr)
+                    achados.setdefault(attr, no.lineno)
                 elif dono(no.args[0]):
-                    achados.add(f"{dono(no.args[0])}.{attr}")
+                    achados.setdefault(f"{dono(no.args[0])}.{attr}", no.lineno)
     return achados
 
 
@@ -358,9 +358,12 @@ def counts(files):
     engine, permissao = files.get("engine.py", ""), files.get("permissao.py", "")
     tree = ast.parse(engine)
     modules = opcionais(tree)
-    hooks = sorted(set().union(*(ganchos(tree, m) for m in modules))) if modules else []
+    found = {}
+    for m in modules:
+        for name, line in ganchos(tree, m).items():
+            found[name] = min(line, found.get(name, line))
     routes = out_of_repo_routes(ast.parse(permissao)) or ()
-    out = {"engine_hooks": [("engine.py", first_line(engine, h)) for h in hooks],
+    out = {"engine_hooks": [("engine.py", line) for _, line in sorted(found.items())],
            "out_of_repo_routes": [("permissao.py", first_line(permissao, r[-1])) for r in sorted(set(routes))]}
     for key, owner, classes in (("engine_reaches", "engine.py", {"Engine", "MockEngine"}),
                                 ("app_reaches", "server.py", {"App"})):

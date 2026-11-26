@@ -30,6 +30,8 @@ GARDEN_FILES = ("dev/garden.py", "dev/test_garden.py")
 ISSUE = re.compile(r"#\d+\b|/issues/\d+\b")
 BLOCK_MARKER = re.compile(r"^\s*(?:[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-(?:INICIO|FIM)|[a-z]+:(?:inicio|fim))\b")
 KEPT_COMMENT = re.compile(r"^\s*(?:inline-script:|manual:|i18n-ok\b)")
+GENERATED_MARKERS = {"molduras:inicio (gravado pelo dev/molduras.py: o desenho mora la, nao editar aqui)"}
+LICENSE = re.compile(r"SPDX-License-Identifier:|\bCopyright\b|\bLicensed under\b", re.I)
 ENCODING = re.compile(r"coding[:=]\s*[-\w.]+")
 PIN = re.compile(r"@[0-9a-f]{40}\s*$")
 PIN_VERSION = re.compile(r"^\s*v\d+(?:\.\d+)*\s*$")
@@ -431,6 +433,19 @@ class Tree:
         return sorted(p for p in self.files if suffix(p) in suffixes)
 
 
+def license_header(lexed):
+    by_line = {}
+    for c in lexed.comments:
+        for k, text in enumerate(c.text.splitlines() or [""]):
+            by_line.setdefault(c.start + k, text)
+    header, n = set(), 1
+    while n in by_line and not lexed.code.get(n, "").strip(" \t*/#;<!->"):
+        if LICENSE.search(by_line[n]):
+            header.add(n)
+        n += 1
+    return header
+
+
 def comment_lines(t):
     items = []
     for p in t.paths(*COMMENT_EXTENSIONS):
@@ -443,9 +458,10 @@ def comment_lines(t):
                 if c.end > c.start and any(text.strip(" */") for text in c.text.splitlines()[1:]):
                     lines |= set(range(c.start + 1, c.end + 1))
                 marker = BLOCK_MARKER.match(c.text)
-                if marker and re.search(r"[^\W\d_]", (c.text.splitlines() or [""])[0][marker.end():]):
+                first = (c.text.splitlines() or [""])[0]
+                if marker and first.strip() not in GENERATED_MARKERS and re.search(r"[^\W\d_]", first[marker.end():]):
                     lines.add(c.start)
-        items += [(p, n) for n in sorted(lines)]
+        items += [(p, n) for n in sorted(lines - license_header(lexed))]
     return items
 
 
@@ -766,7 +782,10 @@ def js_retries(code):
     functions = js_functions(code)
     calls = {}
     for name, a, b in functions:
-        calls.setdefault(name, set()).update(re.findall(r"(?<![\w$.])([A-Za-z_$][\w$]*)\s*\(", code[a:b]))
+        body = code[a:b]
+        calls.setdefault(name, set()).update(
+            m.group(1) for m in re.finditer(r"(?<![\w$])([A-Za-z_$][\w$]*)\s*\(", body)
+            if not body[:m.start()].rstrip().endswith("."))
     for m in JS_HANDLER.finditer(code):
         start, body = handler_body(code, m.end())
         enclosing = {name for name, a, b in functions if a < m.start() < b}
@@ -1149,7 +1168,16 @@ def new_items(items, added):
     return [i for i in items if i[1] in added.get(i[0], ())]
 
 
+def is_count(value):
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
 def check(counts, ceilings, base, added=None, base_has_ceilings=True):
+    bad = [f"{name}: the ceiling {value!r} in {where} is not a whole number" for where, values in
+           (("dev/garden.json", ceilings), ("the base's dev/garden.json", base or {}))
+           for name, value in values.items() if not is_count(value)]
+    if bad:
+        return bad, []
     failures, summary = [], []
     for name, value in counts.items():
         n = count_of(value)
@@ -1336,7 +1364,7 @@ def description_problems(body):
                         "block, a link to a run or an image)")
     problems += [f"line {n}: \"{PROSE.search(line).group(0)}\" with no issue link: fix it, or link the issue that "
                  f"tracks it" for n, line in enumerate(lines, 1)
-                 if PROSE.search(line) and not ISSUE.search(re.sub(r"`[^`]*`", "", line))]
+                 if PROSE.search(line) and not ISSUE.search(re.sub(r"(`+)(?!`).*?(?<!`)\1(?!`)", "", line))]
     return problems
 
 

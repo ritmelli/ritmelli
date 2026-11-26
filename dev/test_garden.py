@@ -33,6 +33,8 @@ WORKFLOW = ("name: W\non:\n  push:\njobs:\n  j:\n    runs-on: ubuntu-24.04\n    
 INDEX = "<html>\n<script>\nlet a = 1;\n</script>\n</html>\n"
 AGENTS_OK = "# AGENTS.md\n\n- A rule that `testa_i18n` holds.\n"
 
+MOLDURAS = next(iter(garden.GENERATED_MARKERS))
+
 CASES = {
     "comment_lines": [
         ("python", {"a.py": "x = '#not a comment'\n"}, {"a.py": "x = 1  # a comment\n"}),
@@ -49,8 +51,10 @@ CASES = {
         ("prose under a block marker", {"a.js": "/* DECK-JS-INICIO */\nx();\n"},
          {"a.js": "/* DECK-JS-INICIO\n   the deck, and why it lives here */\nx();\n"}),
         ("css", {"a.css": "a { content: '/* no */'; }\n"}, {"a.css": "a { color: red; } /* why */\n"}),
-        ("css generated block", {"a.css": "/* molduras:inicio */\na {}\n/* molduras:fim */\n"},
-         {"a.css": "/* molduras:inicio */\n/* hand */\na {}\n/* molduras:fim */\n"}),
+        ("css generated block", {"a.css": f"/* {MOLDURAS} */\na {{}}\n/* molduras:fim */\n"},
+         {"a.css": f"/* {MOLDURAS} */\n/* hand */\na {{}}\n/* molduras:fim */\n"}),
+        ("a license header", {"a.py": "# SPDX-License-Identifier: GPL-3.0-or-later\nx = 1\n"},
+         {"a.py": "# SPDX-License-Identifier: GPL-3.0-or-later\n# why\nx = 1\n"}),
         ("powershell", {"a.ps1": "$a = 'x # y'\n$b = \"#$a\"\n"}, {"a.ps1": "$a = 1 # why\n"}),
         ("powershell block", {"a.ps1": "$a = @'\n# inside a here-string\n'@\n"}, {"a.ps1": "<#\n why\n#>\n$a = 1\n"}, 3),
         ("psd1", {"a.psd1": "@{ A = '#' }\n"}, {"a.psd1": "# why\n@{ A = 1 }\n"}),
@@ -190,7 +194,7 @@ CASES = {
                   "  };\n}\nfunction conectar() { carregar(); }\n"}),
         ("a method with the caller's name is not a call to it",
          {"a.js": "function carregar() {\n  s.onerror = () => { setTimeout(avisar, 1000); };\n}\n"
-                  "function avisar() { logger.carregar(); }\n"},
+                  "function avisar() { logger.carregar(); logger . carregar(); }\n"},
          {"a.js": "function carregar() {\n  s.onerror = () => { setTimeout(avisar, 1000); };\n}\n"
                   "function avisar() { carregar(); }\n"}),
         ("a handler exits", {"a.py": "import sys, time\nfor w in sizes:\n    try:\n        f(w)\n    except OSError:\n"
@@ -370,6 +374,11 @@ def test_check():
                                     base_has_ceilings=False)
     check(failed == [] and measured == ["-- summary: garden a: 2 (-1 against the base)"],
           f"a base from before the scoreboard is measured: the delta of what changed, no ceiling check ({measured})")
+    for label, ceilings, base in (("NaN", {"a": float("nan")}, {"a": 1}), ("a text", {"a": "2"}, {"a": 1}),
+                                  ("a negative number", {"a": -1}, {"a": 1}), ("NaN on the base", {"a": 2},
+                                                                              {"a": float("nan")})):
+        bad, _ = garden.check({"a": [("x.py", 1), ("x.py", 2)]}, ceilings, base)
+        check(len(bad) == 1 and "not a whole number" in bad[0], f"a ceiling that is {label} fails ({bad})")
     _, quiet = garden.check({"a": 1}, {"a": 1}, {"a": 1})
     check(quiet == ["-- summary: garden: no counter changed against the base (1 counters)"],
           f"with no change, one line says so ({quiet})")
@@ -428,6 +437,8 @@ def test_description():
         "a command alone on the block's first line": "## Proof\n\n```\npython\nAll tests passed.\n```\n",
         "an issue number inside code": "## Proof\n\n- `python dev/garden.py` fails on the base.\n\n"
                                         "The rest stays for now (`#250`).\n",
+        "an issue number inside double backticks": "## Proof\n\n- `python dev/garden.py` fails on the base.\n\n"
+                                                    "The rest stays for now (``#250``).\n",
         "a proof hidden in an HTML comment": "## Proof\n<!-- `python dev/garden.py` fails on the base -->\n",
         "a code block that never closes": "## Proof\n\n```\npython dev/x.py\n```text\n",
         "a proof section only inside an example block": "```markdown\n## Proof\n`python dev/garden.py`\n```\n",
@@ -645,6 +656,15 @@ def test_stdlib():
           "dev/garden.py and dev/test_garden.py run in the STDLIB of the required check")
     check(json.loads((ROOT / "dev" / "garden.json").read_text(encoding="utf-8")).keys() == garden.COUNTERS.keys(),
           "dev/garden.json has one ceiling per counter")
+    generator = (ROOT / "dev" / "molduras.py").read_text(encoding="utf-8")
+    check(all(f"/* {m} */" in generator for m in garden.GENERATED_MARKERS),
+          "the generated marker kept out of the count is the one dev/molduras.py writes")
+    tree = garden.Tree(garden.working_tree())
+    hooks = garden.COUNTERS["engine_hooks"](tree)
+    code = tree.lexed("engine.py").code
+    docs = {n for p, n in garden.docstring_lines(tree) if p == "engine.py"}
+    check(bool(hooks) and all(code.get(n, "").strip() and n not in docs for _, n in hooks),
+          "each hook of engine.py is listed at a line of code, not of a comment or docstring")
 
 
 test_counters()
