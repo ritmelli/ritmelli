@@ -96,7 +96,7 @@ class Automatico:
             out.append(m)
         return out
 
-    def _presa(self):
+    def head_held(self):
         """Com fila_lock: a primeira da fila nao troca mais (a passagem para ela ja esta sendo preparada, ou falta
         pouco para isso, ou um avanco reservado em curso vai toca-la)."""
         A = self.app
@@ -121,7 +121,7 @@ class Automatico:
         k = len(A.fila)
         while k and A.fila[k - 1].get("auto") and not A.fila[k - 1].get("fixa"):
             k -= 1
-        if k == 0 and self._presa():
+        if k == 0 and self.head_held():
             k = 1
         bloco = A.fila[k:]
         n = AUTO_FILA - sum(1 for x in A.fila[:k] if x.get("auto"))
@@ -206,11 +206,11 @@ class Automatico:
                     A.mix_buscando, base = True, A.mix_base
             # a ordem por andamento se refaz quando muda a fila, o prato, o Mix ou chega uma medida
             agora = (id(tr), tuple(x["qid"] for x in A.fila), A.andamentos_versao, A.mix_seq,
-                     self._presa())
+                     self.head_held())
             if agora != sinal and (A.mix or any(x.get("auto") for x in A.fila)):
                 entrou = self._ordena_auto()
                 sinal = (id(tr), tuple(x["qid"] for x in A.fila), A.andamentos_versao, A.mix_seq,
-                         self._presa())
+                         self.head_held())
         if base:
             threading.Thread(target=self._busca_mix, args=(base,), daemon=True).start()
         # o disco acabou antes de chegar parecida (o Mix ainda vinha): a primeira toca agora; e tambem a que ja estava
@@ -236,7 +236,7 @@ class Automatico:
         return None
 
     def _troca_audio(self, vid, v):
-        self.app.apply_audio_version(vid, v, self._presa)
+        self.app.apply_audio_version(vid, v)
 
     def _a_medir(self):
         """Com fila_lock: o que falta fazer, pela ordem em que faz falta: ("medir", disco) sem andamento ou

@@ -1335,7 +1335,10 @@ def avanco(A, E):
                 if invalida is not None:
                     invalida()
                 s.solta()
-                return livre, await asyncio.wait_for(segundo, 5)
+                try:
+                    return livre, await asyncio.wait_for(segundo, 5)
+                except ValueError as ex:
+                    return livre, ex
             livre, segundo = asyncio.run(corre())
             t.join(5)
         finally:
@@ -1347,8 +1350,9 @@ def avanco(A, E):
             and no_prato(E) == "d2" and fila(A) == ["d3"],
             f"e os dois Proximos devolvem a mesma entrada: so uma sai da fila ({segundo[0]}, {fila(A)})")
     x, y, livre, segundo, res = dois_proximos(quebra=True)
-    confere(segundo[0] == 409 and res and isinstance(res[0], ValueError) and fila(A) == ["d3"],
-            f"a entrada quebrada: o erro libera quem esperava (409) e ela sai da fila ({segundo[0]}, {fila(A)})")
+    confere(res and isinstance(res[0], ValueError) and segundo is res[0] and fila(A) == ["d3"],
+            f"the broken entry: the Next that waited gets the same error as the first, and it leaves the queue "
+            f"({segundo!r}, {res}, {fila(A)})")
     x, y, livre, segundo, res = dois_proximos(invalida=lambda: E.load(arquivo(A, "d3")))
     confere(segundo[0] == 409 and res and res[0] is None and no_prato(E) == "d3" and fila(A) == ["d2", "d3"],
             f"o prato trocou no meio: a reserva invalidada nao toca nem tira a entrada, e libera quem esperava "
@@ -1381,6 +1385,39 @@ def avanco(A, E):
     confere(r1 and r2 and r1[0] is x and r2[0] is x and no_prato(E) == "d2" and fila(A) == ["d3"],
             f"o segundo Proximo com o primeiro no meio da troca: os dois devolvem a mesma entrada, e so ela sai da "
             f"fila ({no_prato(E)}, {fila(A)})")
+
+    def joined_next_and_a_play_that_raises(stops):
+        limpa()
+        toca("d1")
+        cmd.enfileirar(A, {"id": "d2"})
+        cmd.enfileirar(A, {"id": "d3"})
+        playing, joined, refused = threading.Event(), threading.Event(), RuntimeError("the entry would not play")
+        group_waits = cmd.Proximo.espera
+
+        def joins(group, prazo=None):
+            joined.set()
+            return group_waits(group, prazo)
+
+        def raises(*a, **kw):
+            playing.set()
+            joined.wait(5)
+            if stops:
+                cmd.parar(A)
+            raise refused
+        with mock.patch.object(cmd.Proximo, "espera", joins), mock.patch.object(A, "tocar_entrada", raises):
+            t1, r1 = em_thread(cmd.pular, A)
+            playing.wait(5)
+            t2, r2 = em_thread(cmd.pular, A)
+            t1.join(5)
+            t2.join(5)
+        return joined.is_set() and r1 == r2 == [None if stops else refused], (r1, r2, no_prato(E), fila(A))
+    same, seen = joined_next_and_a_play_that_raises(stops=False)
+    confere(same and seen[2:] == ("d1", ["d3"]),
+            f"a Next joins one whose play raises: both get the same error, and only the entry that failed leaves the "
+            f"queue {seen}")
+    same, seen = joined_next_and_a_play_that_raises(stops=True)
+    confere(same and seen[2] is None,
+            f"a Next joins one whose play raises after a Stop resolved the advance: both get the Stop's result {seen}")
 
     # a fila muda no mesmo trecho do _qlock em que a passagem preparada sai: o motor, no bloco que chega bem nessa hora,
     # nao vira para a entrada que acabou de sair
@@ -1598,12 +1635,12 @@ def avanco(A, E):
     x, _, _ = cmd.enfileirar(A, {"id": "d2"})
     with mock.patch.object(eng, "TRANS_PREP_S", 10):
         with A.fila_lock:
-            antes = A.automatico._presa()
+            antes = A.automatico.head_held()
             with E._qlock:
                 r = A.reserva = cmd.Reserva(E._deck, E._deck.linha, x)
-            reservada = A.automatico._presa()
+            reservada = A.automatico.head_held()
             A.release_reservation(r, None)
-            depois = A.automatico._presa()
+            depois = A.automatico.head_held()
     confere(not antes and reservada and not depois,
             f"a primeira da fila com um avanco reservado nao troca no Automatico ({antes}, {reservada}, {depois})")
 

@@ -113,11 +113,13 @@ def finished_download_that_left_the_shelf(A, E, readers):
 def finished_download_forgotten_during_the_refusal(A, E, readers):
     item = A.lib.get("d2")
     real_get = A.lib.get
+    removed = []
 
     def get_then_forget(iid):
         it = real_get(iid)
         if iid == "d2" and it is not None:
             A.lib.items.remove(it)
+            removed.append(iid)
         return it
     try:
         with mock.patch.object(A.lib, "get", side_effect=get_then_forget):
@@ -127,9 +129,9 @@ def finished_download_forgotten_during_the_refusal(A, E, readers):
         if real_get("d2") is None:
             A.lib.items.append(item)
     tr = E.track or {}
-    check(not loading and (tr.get("id") == "d2" or E.track is None),
-          f"a finished download whose record leaves the shelf right after the refusal reads it does not leave the "
-          f"platter loading ({j['status']}, {E.status()}, {tr.get('id')})")
+    check(removed == ["d2"] and not loading and tr.get("id") == "d2" and str(tr.get("path", "")).endswith("d2.m4a"),
+          f"a finished download whose record leaves the shelf right after the refusal reads it plays the file it read "
+          f"({removed}, {j['status']}, {E.status()}, {tr.get('id')})")
 
 
 def warning_after_another_record_took_the_platter(A, E, readers):
@@ -227,7 +229,7 @@ def audio_version_during_a_pending_switch(A, E, readers):
 
 def audio_version_while_the_engine_switches(A, E, readers):
     x = prepared_similar(A, E, readers, "similar2")
-    real = A.automatico._presa
+    real = A.automatico.head_held
     inside = []
 
     def presa():
@@ -236,7 +238,7 @@ def audio_version_while_the_engine_switches(A, E, readers):
             mix_until_the_switch(E)
         return real()
     v = {"youtube_id": "fffffffffff", "duration": 200, "title": "similar", "channel": "c"}
-    with A.fila_lock, mock.patch.object(A.automatico, "_presa", presa):
+    with A.fila_lock, mock.patch.object(A.automatico, "head_held", presa):
         A.automatico._troca_audio("aaaaaaaaaaa", v)
     check(inside == [True], f"the audio version reads the pending switch and the held head in one stretch of the "
                             f"_qlock, where the engine cannot switch ({inside})")
@@ -257,18 +259,18 @@ def audio_version_entries(A, E):
         A.change_queue(lambda: A.fila.extend([head, tail]))
     mixed = {"youtube_id": "ggggggggggg", "title": "mixed", "ordem": 1}
     plain = {"youtube_id": "hhhhhhhhhhh", "title": "plain", "ordem": 2}
-    mix0, A.mix = A.mix, [mixed, plain]
+    mix0, A.mix = A.mix, [mixed, plain, head]
     v = {"youtube_id": "iiiiiiiiiii", "duration": 200, "title": "the audio", "channel": "c"}
     audio = {"youtube_id": "iiiiiiiiiii", "duration": 200, "title": "the audio", "channel": "c", "audio": True,
              "video": "ggggggggggg", "thumb": music.thumb("iiiiiiiiiii"), "tipo": "ATV"}
     try:
-        with A.fila_lock:
-            A.apply_audio_version("ggggggggggg", v, lambda: True)
+        with A.fila_lock, mock.patch.object(A.automatico, "head_held", return_value=True):
+            A.apply_audio_version("ggggggggggg", v)
         check(head == dict(entry, qid="head1"), f"the held head keeps its version ({head})")
         check(tail == dict(entry, qid="tail1", **audio), f"the entry after it takes the audio version ({tail})")
         check(mixed == {"ordem": 1, **audio}, f"the Mix entry takes the audio version ({mixed})")
-        with A.fila_lock:
-            A.apply_audio_version("hhhhhhhhhhh", None, lambda: False)
+        with A.fila_lock, mock.patch.object(A.automatico, "head_held", return_value=False):
+            A.apply_audio_version("hhhhhhhhhhh", None)
         check(plain == {"youtube_id": "hhhhhhhhhhh", "title": "plain", "ordem": 2, "audio": True},
               f"with no audio version, the Mix entry only gets the mark that it was looked up ({plain})")
     finally:

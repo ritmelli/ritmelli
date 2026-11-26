@@ -51,7 +51,7 @@ RUNS = (
     Run("LocksAndSwitch, the code as it is", "LocksAndSwitch"),
     Run("LocksAndSwitch, the code as it is: every reservation resolves (weak fairness, no symmetry)",
         "LocksAndSwitch", invariants=(), properties=("ReservationsResolve",), specification="FairSpec",
-        symmetry=False, deadlock=False, constants=(("Reopens", "FALSE"), ("PreparesAgain", "FALSE"))),
+        symmetry=False, deadlock=False, constants=(("Reopens", "FALSE"),)),
     Run("mutant: overlapping Nexts do not join", "LocksAndSwitch", "invariant OneAdvance",
         constants=(("NextsJoin", "FALSE"),)),
     Run("mutant: a Next does not join an advance that already published its line", "LocksAndSwitch",
@@ -76,8 +76,14 @@ RUNS = (
         constants=(("TakingTheSwitchClearsIt", "FALSE"),)),
     Run("mutant: a swap that fails keeps its reservation", "LocksAndSwitch", "property", invariants=(),
         properties=("ReservationsResolve",), specification="FairSpec", symmetry=False, deadlock=False,
-        constants=(("FailedSwapReleasesReservation", "FALSE"), ("Reopens", "FALSE"),
-                   ("PreparesAgain", "FALSE"))),
+        constants=(("FailedSwapReleasesReservation", "FALSE"), ("Reopens", "FALSE"))),
+    Run("mutant: the audio thread takes the _lock", "LocksAndSwitch", "invariant LockOrderKept",
+        invariants=("LockOrderKept",), constants=(("MixerTakesOnlyQlock", "FALSE"),)),
+    Run("mutant: a Next whose play raised leaves the error out of its group", "LocksAndSwitch",
+        "invariant OneAdvance", invariants=("OneAdvance",), constants=(("PlayErrorReachesTheGroup", "FALSE"),)),
+    Run("mutant: a Next whose play raised after a Stop resolved its group raises anyway", "LocksAndSwitch",
+        "invariant OneAdvance", invariants=("OneAdvance",),
+        constants=(("RaisingNextTakesTheResolvedResult", "FALSE"),)),
 )
 
 failures = []
@@ -146,8 +152,8 @@ def outcome(text):
 
 
 def states(text):
-    m = re.search(r"([\d,]+) distinct states found", text)
-    return m.group(1).replace(",", "") if m else "?"
+    found = re.findall(r"(\d[\d,]*) distinct states found", text)
+    return found[-1].replace(",", "") if found else "?"
 
 
 def jar_path(tmp):

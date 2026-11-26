@@ -19,6 +19,8 @@ CALLBACKS = {
     ("comandos.py", None, "concilia"): {1: QUEUE_HELD, "under": QUEUE_HELD, 2: ["fila_lock"], "closed": ["fila_lock"]},
 }
 ENGINE_GUARD = ["_lock", "_qlock"]
+WRITERS = {"save_json", "_save", "write_text", "write_bytes"}
+WRITES = "a file write"
 
 failures = []
 
@@ -32,9 +34,11 @@ def check(ok, msg):
 def declared(text):
     order = re.search(r"^LockOrder == <<(.*?)>>", text, re.M)
     before = re.search(r"^BeforeQlockOnly == \{(.*?)\}", text, re.M)
-    if not order or not before:
-        return None, None
-    return re.findall(r'"(\w+)"', order.group(1)), set(re.findall(r'"(\w+)"', before.group(1)))
+    audio = re.search(r"^AudioLocks == \{(.*?)\}", text, re.M)
+    if not order or not before or not audio:
+        return None, None, None
+    return (re.findall(r'"(\w+)"', order.group(1)), set(re.findall(r'"(\w+)"', before.group(1))),
+            set(re.findall(r'"(\w+)"', audio.group(1))))
 
 
 def lock_of(node, cls):
@@ -104,6 +108,8 @@ def summaries(table):
                 direct[key].add(lock)
             if isinstance(n, ast.Call):
                 calls[key] |= set(resolve(table, n, module, cls))
+                if writer(n):
+                    direct[key].add(WRITES)
     out = {k: set(v) for k, v in direct.items()}
     changed = True
     while changed:
@@ -114,6 +120,11 @@ def summaries(table):
                 out[key] |= more
                 changed = True
     return out
+
+
+def writer(call):
+    f = call.func
+    return (f.attr if isinstance(f, ast.Attribute) else f.id if isinstance(f, ast.Name) else None) in WRITERS
 
 
 def in_order(held, lock, order, before):
@@ -127,7 +138,7 @@ class Walker(ast.NodeVisitor):
     def __init__(self, name, order, before, table, summary):
         self.name, self.order, self.before, self.table, self.summary = name, order, before, table, summary
         self.cls, self.held, self.bad, self.used, self.nested, self.followed = None, [], [], set(), 0, 0
-        self.callbacks, self.walked = {}, 0
+        self.callbacks, self.walked, self.scopes = {}, 0, []
 
     def take(self, lock, line, waits=True):
         self.used.add(lock)
@@ -139,16 +150,52 @@ class Walker(ast.NodeVisitor):
             self.bad.append(f"{self.name}:{line}: the _lock waited for with the fila_lock held (with_engine tries "
                             f"it with blocking=False)")
 
+    def against_held(self, locks, node, label):
+        for lock in sorted(locks):
+            if lock == WRITES:
+                if "fila_lock" in self.held:
+                    self.bad.append(f"{self.name}:{node.lineno}: calls {label}, which writes a file, while holding "
+                                    f"the fila_lock")
+                continue
+            if lock == "_lock" and lock in self.held and "_qlock" not in self.held:
+                continue
+            if lock in self.held or not in_order(self.held, lock, self.order, self.before) or (
+                    lock == "_lock" and "fila_lock" in self.held):
+                self.bad.append(f"{self.name}:{node.lineno}: calls {label}, which takes {lock}, while holding "
+                                f"{', '.join(self.held)}")
+
+    def local(self, node):
+        if not isinstance(node.func, ast.Name):
+            return None
+        for outer in reversed(self.scopes):
+            for n in ast.walk(outer):
+                if (isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n is not outer
+                        and n.name == node.func.id):
+                    return n
+        return None
+
+    def local_locks(self, func):
+        locks = set()
+        for n in ast.walk(func):
+            lock = lock_of(n.context_expr, self.cls) if isinstance(n, ast.withitem) else acquired(n, self.cls)
+            if lock:
+                locks.add(lock)
+            if isinstance(n, ast.Call):
+                if writer(n):
+                    locks.add(WRITES)
+                for key in resolve(self.table, n, self.name, self.cls):
+                    locks |= self.summary[key]
+        return locks
+
     def follow(self, node):
-        for key in resolve(self.table, node, self.name, self.cls):
+        keys = resolve(self.table, node, self.name, self.cls)
+        for key in keys:
             self.followed += 1
-            for lock in sorted(self.summary[key]):
-                if lock == "_lock" and lock in self.held:
-                    continue
-                if lock in self.held or not in_order(self.held, lock, self.order, self.before) or (
-                        lock == "_lock" and "fila_lock" in self.held):
-                    self.bad.append(f"{self.name}:{node.lineno}: calls {key[1] + '.' if key[1] else ''}{key[2]}, "
-                                    f"which takes {lock}, while holding {', '.join(self.held)}")
+            self.against_held(self.summary[key], node, f"{key[1] + '.' if key[1] else ''}{key[2]}")
+        nested = None if keys else self.local(node)
+        if nested is not None:
+            self.followed += 1
+            self.against_held(self.local_locks(nested), node, nested.name)
 
     def visit_ClassDef(self, node):
         outer, self.cls = self.cls, node.name
@@ -185,7 +232,9 @@ class Walker(ast.NodeVisitor):
         self.walked += id(node) in self.callbacks
         outer, self.held = self.held, list(self.callbacks.get(id(node), []))
         self.mark_callbacks(node)
+        self.scopes.append(node)
         self.generic_visit(node)
+        self.scopes.pop()
         self.held = outer
 
     visit_AsyncFunctionDef = visit_FunctionDef
@@ -216,6 +265,8 @@ class Walker(ast.NodeVisitor):
         if lock:
             self.take(lock, node.lineno, waits=not nonblocking(node))
         elif self.held:
+            if writer(node) and "fila_lock" in self.held:
+                self.bad.append(f"{self.name}:{node.lineno}: a file written while holding the fila_lock")
             self.follow(node)
         self.generic_visit(node)
 
@@ -301,9 +352,13 @@ def self_test(order, before):
     }
     stubs = {"server.py": "class App:\n    def change_queue(self, change):\n        pass\n"
                           "    def with_engine(self, f):\n        pass\n"
+                          "    def save_cfg(self):\n        save_json(self.cfg_path, self.cfg)\n"
                           "class Library:\n    def update(self):\n        with self.lock:\n            pass\n",
              "engine.py": "class Engine:\n    def stop(self, pode=None):\n        with self._lock:\n"
-                          "            with self._qlock:\n                pass\n",
+                          "            with self._qlock:\n                pass\n"
+                          "    def reopen(self):\n        with self._lock:\n            pass\n",
+             "automatico.py": "class Automatico:\n    def head_held(self):\n        with self.app.engine._qlock:\n"
+                              "            return True\n",
              "comandos.py": "def concilia(A, under, closed=None):\n    pass\n"}
     callbacks = {
         "a change passed to change_queue that stops the engine": (
@@ -324,6 +379,19 @@ def self_test(order, before):
         "a shelf method that takes its lock, called with the fila_lock held": (
             "def f(A):\n    with A.fila_lock:\n        A.lib.update()\n", 1),
         "a pode that only reads the platter": ("def f(A, E, tr):\n    E.stop(pode=lambda: E.track is tr)\n", 0),
+        "a pode that calls an engine method taking only the _lock": (
+            "def f(E):\n    E.stop(pode=lambda: E.reopen())\n", 1),
+        "a change passed to change_queue that asks the Automatico, which takes the _qlock": (
+            "def f(A):\n    A.change_queue(lambda: A.automatico.head_held())\n", 1),
+        "a pode that calls a local helper taking the shelf's lock": (
+            "def f(A, E):\n    def record():\n        with A.lib.lock:\n            return None\n"
+            "    E.stop(pode=lambda: record() is None)\n", 1),
+        "a file written with the fila_lock held": (
+            "def f(A, p, d):\n    with A.fila_lock:\n        save_json(p, d)\n", 1),
+        "a with_engine body that saves the settings": (
+            "def f(A):\n    def body(depois):\n        A.save_cfg()\n    A.with_engine(body)\n", 1),
+        "a copy under the fila_lock, written after it": (
+            "def f(A, p):\n    with A.fila_lock:\n        d = dict(A.cfg)\n    save_json(p, d)\n", 0),
     }
     for what, (code, expected) in callbacks.items():
         bad, *_ = scan(dict(stubs, **{"case.py": code}), order, before)
@@ -339,6 +407,14 @@ def self_test(order, before):
     bad, *_ = scan(real, swapped, before)
     check(bool(bad), f"with the _lock declared before the fila_lock in the model, the code breaks the order "
                      f"({len(bad)} places, the first {bad[:1]})")
+    helper = real["server.py"].replace(
+        "        def shelf_record():\n            return self.lib.get(",
+        "        def shelf_record():\n            with self.lib.lock:\n                pass\n"
+        "            return self.lib.get(")
+    bad, *_ = scan(dict(real, **{"server.py": helper}), order, before)
+    check(helper != real["server.py"] and bool(bad),
+          f"with the shelf's lock taken in the refused stream's shelf_record, which its pode calls, the check fails "
+          f"({bad[:1]})")
     waits = dict(real, **{"server.py": real["server.py"].replace("acquire(blocking=False)", "acquire()")})
     bad, *_ = scan(waits, order, before)
     check(waits["server.py"] != real["server.py"] and bool(bad),
@@ -351,8 +427,8 @@ def self_test(order, before):
 
 
 def main():
-    order, before = declared(MODEL.read_text(encoding="utf-8"))
-    check(order is not None, f"{MODEL.relative_to(ROOT)} declares LockOrder and BeforeQlockOnly")
+    order, before, audio = declared(MODEL.read_text(encoding="utf-8"))
+    check(order is not None, f"{MODEL.relative_to(ROOT)} declares LockOrder, BeforeQlockOnly and AudioLocks")
     if order is None:
         sys.exit(1)
     self_test(order, before)
@@ -363,8 +439,9 @@ def main():
                    f"acquisitions, {followed} calls followed, {walked} callbacks; {bad})")
     check(used == set(order) | before, f"the code takes exactly the locks the model declares ({sorted(used)})")
     seen, taken = audio_locks(sources["engine.py"])
-    check(set(taken) == {"_qlock"}, f"the audio thread ({'.'.join(AUDIO)} and the {len(seen) - 1} Engine methods it "
-                                    f"calls) takes only the _qlock ({ {k: sorted(v) for k, v in taken.items()} })")
+    check(set(taken) == audio, f"the audio thread ({'.'.join(AUDIO)} and the {len(seen) - 1} Engine methods it calls) "
+                               f"takes only the AudioLocks of the model, {sorted(audio)} "
+                               f"({ {k: sorted(v) for k, v in taken.items()} })")
     if failures:
         print(f"\n{len(failures)} failure(s)")
         sys.exit(1)

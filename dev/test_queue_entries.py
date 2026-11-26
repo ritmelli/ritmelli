@@ -39,6 +39,16 @@ class Scope:
         self.containers, self.entries = set(), set()
 
 
+def target_nodes(node):
+    if isinstance(node, (ast.Tuple, ast.List)):
+        for e in node.elts:
+            yield from target_nodes(e)
+    elif isinstance(node, ast.Starred):
+        yield from target_nodes(node.value)
+    else:
+        yield node
+
+
 def passed_to_change_queue(func):
     names, lambdas = set(), set()
     for node in ast.walk(func):
@@ -62,7 +72,12 @@ def own_nodes(func, skip=frozenset()):
 class Entries:
     def __init__(self, modules, attrs=CONTAINERS, owner_only=False):
         self.modules, self.attrs, self.owner_only = modules, attrs, owner_only
-        self.params, self.cparams = {}, {}
+        self.params, self.cparams, self.walks, self.scopes = {}, {}, {}, {}
+
+    def walk(self, func):
+        if id(func) not in self.walks:
+            self.walks[id(func)] = list(ast.walk(func))
+        return self.walks[id(func)]
 
     def functions(self):
         out = []
@@ -135,6 +150,11 @@ class Entries:
         return [a.arg for a in func.args.posonlyargs + func.args.args + func.args.kwonlyargs]
 
     def scope_of(self, func, parent=None, parents=None):
+        if id(func) not in self.scopes:
+            self.scopes[id(func)] = self.compute_scope(func, parent, parents)
+        return self.scopes[id(func)]
+
+    def compute_scope(self, func, parent, parents):
         scope = Scope()
         if parent is not None:
             outer = self.scope_of(parent, (parents or {}).get(id(parent)), parents)
@@ -142,7 +162,7 @@ class Entries:
         scope.entries |= self.params.get(func.name, set())
         scope.containers |= self.cparams.get(func.name, set())
         for _ in range(4):
-            for node in ast.walk(func):
+            for node in self.walk(func):
                 if isinstance(node, (ast.Assign, ast.AnnAssign)) and node.value is not None:
                     for t in node.targets if isinstance(node, ast.Assign) else [node.target]:
                         if isinstance(t, ast.Attribute) and t.attr in self.attrs:
@@ -160,16 +180,22 @@ class Entries:
         return scope
 
     def bind_params(self, funcs, parents):
+        by_name = {}
+        for f in funcs:
+            by_name.setdefault(f[1].name, []).append(f[1])
+        calls = {id(f): [n for n in self.walk(f) if isinstance(n, ast.Call) and called(n) in by_name]
+                 for _, f, _, _ in funcs}
         changed = True
         while changed:
             changed = False
+            self.scopes.clear()
             for _, func, _, parent in funcs:
+                if not calls[id(func)]:
+                    continue
                 scope = self.scope_of(func, parent, parents)
-                for node in ast.walk(func):
-                    if not isinstance(node, ast.Call):
-                        continue
+                for node in calls[id(func)]:
                     name = called(node)
-                    for _, target, _, _ in [f for f in funcs if f[1].name == name]:
+                    for target in by_name[name]:
                         names = self.param_names(target)
                         shift = 1 if isinstance(node.func, ast.Attribute) and names[:1] == ["self"] else 0
                         args = [(names[i + shift], a) for i, a in enumerate(node.args) if i + shift < len(names)]
@@ -203,7 +229,8 @@ class Entries:
             for node in own_nodes(func, skip if self.owner_only else frozenset()):
                 hit = None
                 if isinstance(node, (ast.Assign, ast.AugAssign, ast.AnnAssign, ast.Delete)):
-                    ts = node.targets if isinstance(node, (ast.Assign, ast.Delete)) else [node.target]
+                    roots = node.targets if isinstance(node, (ast.Assign, ast.Delete)) else [node.target]
+                    ts = [u for root in roots for u in target_nodes(root)]
                     if any(self.write_target(t, scope) for t in ts):
                         hit = "del" if isinstance(node, ast.Delete) else "assignment"
                     elif isinstance(node, ast.AugAssign) and isinstance(node.op, ast.BitOr) and \
@@ -231,17 +258,18 @@ def queue_attr(node, module, cls):
 
 
 def direct_aliases(func, module, cls, known):
-    out = set(known)
-    for node in ast.walk(func):
-        if not isinstance(node, (ast.Assign, ast.AnnAssign)) or node.value is None:
-            continue
-        for t in node.targets if isinstance(node, ast.Assign) else [node.target]:
-            pairs = list(zip(t.elts, node.value.elts)) if (
-                isinstance(t, ast.Tuple) and isinstance(node.value, ast.Tuple)) else [(t, node.value)]
-            for target, value in pairs:
-                if isinstance(target, ast.Name) and (
-                        queue_attr(value, module, cls) or (isinstance(value, ast.Name) and value.id in out)):
-                    out.add(target.id)
+    out, before = set(known), -1
+    assigns = [n for n in ast.walk(func) if isinstance(n, (ast.Assign, ast.AnnAssign)) and n.value is not None]
+    while len(out) != before:
+        before = len(out)
+        for node in assigns:
+            for t in node.targets if isinstance(node, ast.Assign) else [node.target]:
+                pairs = list(zip(t.elts, node.value.elts)) if (
+                    isinstance(t, ast.Tuple) and isinstance(node.value, ast.Tuple)) else [(t, node.value)]
+                for target, value in pairs:
+                    if isinstance(target, ast.Name) and (
+                            queue_attr(value, module, cls) or (isinstance(value, ast.Name) and value.id in out)):
+                        out.add(target.id)
     return out
 
 
@@ -282,8 +310,9 @@ class QueueChanges(ast.NodeVisitor):
             self.found.append(f"{self.module}:{node.lineno}: {what} outside a change_queue")
 
     def visit_Assign(self, node):
+        ts = [u for root in node.targets for u in target_nodes(root)]
         if any(queue_attr(t, self.module, self.cls) or (isinstance(t, ast.Subscript) and self.queue_ref(t.value))
-               for t in node.targets):
+               for t in ts):
             self.flag(node, "assignment to the queue")
         self.generic_visit(node)
 
@@ -300,7 +329,8 @@ class QueueChanges(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_Delete(self, node):
-        if any(isinstance(t, ast.Subscript) and self.queue_ref(t.value) for t in node.targets):
+        if any(isinstance(t, ast.Subscript) and self.queue_ref(t.value)
+               for root in node.targets for t in target_nodes(root)):
             self.flag(node, "del on the queue")
         self.generic_visit(node)
 
@@ -386,7 +416,8 @@ ENTRY_FORMS = {
                                                            "def f(A):\n    g(x=A.fila[0])\n"}, 1),
     "an entry passed to a function of another module": ({"comandos.py": "def marca(x):\n    x['audio'] = True\n",
                                                          "case.py": "def f(A):\n    cmd.marca(A.fila[0])\n"}, 1),
-    "a new dict from an entry": ({"case.py": "def f(A):\n    for m in A.mix:\n        m = dict(m, ordem=1)\n"}, 0),
+    "a tuple assignment to an entry": ({"case.py": "def f(A):\n    A.fila[0]['audio'], y = True, 1\n"}, 1),
+    "a new dict from an entry":({"case.py": "def f(A):\n    for m in A.mix:\n        m = dict(m, ordem=1)\n"}, 0),
     "a dict that is no entry": ({"case.py": "def f(A):\n    d = {}\n    d['k'] = 1\n    d.update(a=1)\n"}, 0),
     "a helper that writes the entries of the Mix it gets": (
         {"case.py": "def rewrite(items):\n    for m in items:\n        m['k'] = 1\n"
@@ -421,7 +452,11 @@ QUEUE_FORMS = {
                                          0),
     "the change passed by keyword to change_queue": (
         {"case.py": "def f(A, x):\n    def ch():\n        A.fila.append(x)\n    A.change_queue(change=ch)\n"}, 0),
-    "another class's own fila":({"fx.py": "class Fx:\n    def f(self):\n        self.fila = []\n"}, 0),
+    "a tuple assignment to the queue": (
+        {"server.py": "class App:\n    def f(self):\n        self.fila, self.fila_ordem = [], None\n"}, 1),
+    "an alias made inside a block and passed on": (
+        {"case.py": "def f(A, c):\n    if c:\n        q = A.fila\n    p = q\n    p.clear()\n"}, 1),
+    "another class's own fila": ({"fx.py": "class Fx:\n    def f(self):\n        self.fila = []\n"}, 0),
     "the App building its queue in __init__": (
         {"server.py": "class App:\n    def __init__(self):\n        self.fila = []\n"}, 0),
 }
@@ -448,6 +483,10 @@ def main():
     got, _ = scan(dict(sources, **{"server.py": direct}))
     check(direct != sources["server.py"] and len(got) == 1,
           f"with the App's audio version writing the entries without change_queue, the check fails ({got})")
+    direct = sources["server.py"].replace("self.change_queue(replace_queue)", "replace_queue()")
+    _, got = scan(dict(sources, **{"server.py": direct}))
+    check(direct != sources["server.py"] and len(got) == 1,
+          f"with the App replacing its queue without change_queue, the check fails ({got})")
     writes, changes = scan(sources)
     check(not writes, f"no module writes an entry of the queue or the Mix outside the {OWNER[1]} ({writes})")
     check(not changes, f"every change to the queue in the {len(sources)} modules goes through change_queue "

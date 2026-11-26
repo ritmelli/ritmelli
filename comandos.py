@@ -8,8 +8,6 @@ passagem (_volta_passagem), o stream da parecida que nao abriu (_abre_stream), a
 parado (_volta_auto) e o enfileirar com o prato parado passam por ela, com uma reserva so por deck e linha do prato
 (Reserva).
 
-No file is written under the fila_lock.
-
 The platter's line is read and checked through the engine's interface (Engine.line, Engine.on_line, with the deck
 and line a Captura already carries), and the switch the engine made on its own is reconciled in one loop
 (concilia)."""
@@ -45,6 +43,7 @@ class Reserva:
     def __init__(self, deck, linha, x):
         self.deck, self.linha, self.x = deck, linha, x
         self.entrada = None
+        self.erro = None
         self.feita = threading.Event()
         self.tocando = False  # a troca dela ja publicou o disco no prato (numa linha nova), e falta confirmar
         self.publicada = None  # o (deck, linha) que a troca dela publicou, anotado sob o _lock da troca
@@ -82,11 +81,17 @@ class Proximo(Reserva):
         self.r = None
         self.virada = None  # a virada pendente que ele viu: o avanco dele e ela, e nenhuma reserva o liga
 
-    def resolve(self, entrada):
+    def resolve(self, entrada, erro=None):
         """Com o _qlock: o resultado do grupo, uma vez so; os que esperam por ele voltam."""
         if not self.feita.is_set():
-            self.entrada = entrada
+            self.entrada, self.erro = entrada, erro
             self.feita.set()
+
+    def espera(self, prazo=None):
+        x = super().espera(prazo)
+        if self.erro is not None:
+            raise self.erro
+        return x
 
     def liga(self, r):
         """Com o _qlock: r e o avanco deste grupo. Ele resolve quando r resolver (ou agora, se r ja resolveu), sem
@@ -94,7 +99,7 @@ class Proximo(Reserva):
         self.r = r
         r.grupos.append(self)
         if r.feita.is_set():
-            self.resolve(r.entrada)
+            self.resolve(r.entrada, r.erro)
 
     def junta(self, E):
         """Com o _qlock do motor E: quem chega agora divide este avanco (o prato ainda na linha dele, ou na linha que a
@@ -290,7 +295,7 @@ def avanca(A, virada=None, historico=True, na_tela=False, visto=None, entrada=No
                 if vivo and grupo is not None:
                     grupo.liga(r0)
         if vivo:
-            return r0.espera()
+            return (r0 if grupo is None else grupo).espera()
 
     def reserve(v):  # under the _qlock, with the pending switch v (concilia)
         nonlocal em_curso, r
@@ -329,7 +334,7 @@ def avanca(A, virada=None, historico=True, na_tela=False, visto=None, entrada=No
         if res is not _CONTINUE_ADVANCE:
             return res
     if em_curso is not None:
-        return CEDEU if cede else em_curso.espera()
+        return CEDEU if cede else (em_curso if grupo is None else grupo).espera()
     try:
         tocou = A.tocar_entrada(r.x, historico=historico, entrada=r.x, reserva=r)
     except Exception as ex:  # nos vigias, entrada quebrada nao trava a fila
@@ -340,8 +345,10 @@ def avanca(A, virada=None, historico=True, na_tela=False, visto=None, entrada=No
             outra = A.reserva
             if outra is None or outra is r or outra.x is not r.x:  # a entrada de outra reserva em curso fica
                 A.remove_if_queued(r.x)
-            A.release_reservation(r, None)
+            A.release_reservation(r, None, None if na_tela else ex)
         if not na_tela:
+            if grupo is not None and r.erro is not ex:
+                return r.entrada
             raise
         E.error = i18n.msg("server.queue.playFailed", "Couldn't play \"{title}\" from the queue ({reason}).",
                            title=r.x.get("title") or "?", reason=i18n.motivo(ex, 120))
@@ -381,7 +388,7 @@ def pular(A):
     x = None
     try:
         if p.r is not None:
-            x = p.r.espera()
+            x = p.espera()
         elif vx is not None:
             x = avanca(A, virada=v) or vx
         else:

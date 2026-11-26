@@ -7,6 +7,8 @@ VARIABLES owner, orderBroken
 
 LockOrder == <<"fila_lock", "_lock", "_qlock">>
 BeforeQlockOnly == {"proximo_lock", "lib_lock"}
+AudioThread == "Mixer"
+AudioLocks == {"_qlock"}
 
 Ordered == {LockOrder[i] : i \in 1..Len(LockOrder)}
 Locks == Ordered \cup BeforeQlockOnly
@@ -21,14 +23,18 @@ InOrderWith(H, l) ==
             \/ h \in BeforeQlockOnly /\ l = "_qlock"
             \/ h \in Ordered /\ Rank(h) < Rank(l)
 
-Broken(p, a, b) == ~InOrderWith(Held(p), a) \/ ~InOrderWith(Held(p) \cup {a}, b)
+MayTake(p, l) == p /= AudioThread \/ l \in AudioLocks
+
+Takes(p, H, l) == InOrderWith(H, l) /\ MayTake(p, l)
+
+Broken(p, a, b) == ~Takes(p, Held(p), a) \/ ~Takes(p, Held(p) \cup {a}, b)
 
 Free(l) == owner[l] = NoProc
 
 Acquire(p, l) ==
     /\ Free(l)
     /\ owner' = [owner EXCEPT ![l] = p]
-    /\ orderBroken' = (orderBroken \/ ~InOrderWith(Held(p), l))
+    /\ orderBroken' = (orderBroken \/ ~Takes(p, Held(p), l))
 
 AcquireBoth(p, a, b) ==
     /\ Free(a) /\ Free(b)
@@ -48,13 +54,13 @@ ReleaseAll(p, S) ==
 Section(p, l) ==
     /\ Free(l)
     /\ UNCHANGED owner
-    /\ orderBroken' = (orderBroken \/ ~InOrderWith(Held(p), l))
+    /\ orderBroken' = (orderBroken \/ ~Takes(p, Held(p), l))
 
 SectionThenRelease(p, l, S) ==
     /\ Free(l)
     /\ \A x \in S : owner[x] = p
     /\ owner' = [x \in Locks |-> IF x \in S THEN NoProc ELSE owner[x]]
-    /\ orderBroken' = (orderBroken \/ ~InOrderWith(Held(p), l))
+    /\ orderBroken' = (orderBroken \/ ~Takes(p, Held(p), l))
 
 SectionBoth(p, a, b) ==
     /\ Free(a) /\ Free(b)

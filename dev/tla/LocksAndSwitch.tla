@@ -1,11 +1,12 @@
 ---------------------------- MODULE LocksAndSwitch ----------------------------
 EXTENDS Locks, Integers, TLC
 
-CONSTANTS Qids, NoQid, RIds, GIds,
+CONSTANTS Qids, NoQid, Raised, RIds, GIds,
           NextsJoin, NextsJoinAfterPublish, NextResolvesItsGroup, StopClosesSwitches, StopSavesItsRecord,
           ClosingRecordsTheSwitch, FailedSwapReleasesReservation,
           QueueChangeUnderQlock, ReserveReadsProximoWithoutLock, TakingTheSwitchClearsIt, Reopens,
-          PreparesAgain, ClosesTheSecondSwitch
+          PreparesAgain, ClosesTheSecondSwitch, MixerTakesOnlyQlock, PlayErrorReachesTheGroup,
+          RaisingNextTakesTheResolvedResult
 
 VARIABLES pc, s
 
@@ -72,14 +73,14 @@ Joins(S, g) ==
     IN IF ~NextsJoinAfterPublish
        THEN ~G.feita /\ G.line = S.line
        ELSE IF G.feita
-       THEN G.entrada /= NoQid /\ r /= 0 /\ S.res[r].publicada = S.line
+       THEN G.entrada \notin {NoQid, Raised} /\ r /= 0 /\ S.res[r].publicada = S.line
        ELSE \/ G.line = S.line
             \/ r /= 0 /\ ((S.res[r].tocando /\ ~S.res[r].feita) \/ S.res[r].publicada = S.line)
 
 SamePlatter(S, g) ==
     LET G == S.grp[g]
         r == G.r
-    IN /\ ~(G.feita /\ G.entrada = NoQid)
+    IN /\ ~(G.feita /\ G.entrada \in {NoQid, Raised})
        /\ \/ G.line = S.line
           \/ r /= 0 /\ ((S.res[r].tocando /\ ~S.res[r].feita) \/ S.res[r].publicada = S.line)
 
@@ -256,6 +257,21 @@ NextPlays(p) ==
         x == s.res[r].x
     IN \/ /\ WithEngineTry(p, "nx_play", "nx_troca", "nx_play_wait")
           /\ UNCHANGED s
+       \/ /\ At(p, "nx_play")
+          /\ UNCHANGED <<owner, orderBroken, s>>
+          /\ Goto(p, "nx_raise_lock")
+       \/ /\ At(p, "nx_raise_lock")
+          /\ Acquire(p, "fila_lock")
+          /\ UNCHANGED s
+          /\ Goto(p, "nx_raise_release")
+       \/ /\ At(p, "nx_raise_release")
+          /\ SectionThenRelease(p, "_qlock", {"fila_lock"})
+          /\ LET a == s.appRes
+                 S1 == IF a = 0 \/ a = r \/ s.res[a].x /= x THEN CheckPrepared([s EXCEPT !.fila = Without(@, x)])
+                       ELSE s
+             IN s' = SetN(ReleaseReservation(S1, r, IF PlayErrorReachesTheGroup THEN Raised ELSE NoQid),
+                          p, "x", IF RaisingNextTakesTheResolvedResult /\ s.res[r].feita THEN s.res[r].entrada ELSE Raised)
+          /\ Goto(p, "nx_finish")
        \/ /\ At(p, "nx_troca")
           /\ Section(p, "_qlock")
           /\ UNCHANGED s
@@ -320,7 +336,7 @@ NextProc(p) ==
 MixerProc ==
     /\ s.pronto /= NoQid
     /\ s.track.id /= 0
-    /\ Section("Mixer", "_qlock")
+    /\ IF MixerTakesOnlyQlock THEN Section("Mixer", "_qlock") ELSE SectionBoth("Mixer", "_lock", "_qlock")
     /\ s' = [Publish(s, s.pronto) EXCEPT !.virou = [tag |-> s.pronto, sai |-> s.track.id],
                                          !.switched = Append(@, s.track.id),
                                          !.badSwitch = @ \/ s.pronto /= HeadOutsideSwitch(s)]
@@ -328,7 +344,7 @@ MixerProc ==
 
 MoveOrRemove(S) ==
     {S.fila} \cup {Without(S.fila, q) : q \in Range(S.fila)}
-    \cup (IF Len(S.fila) = 2 /\ S.virou.tag = NoQid THEN {<<S.fila[2], S.fila[1]>>} ELSE {})
+    \cup (IF Len(S.fila) = 2 THEN {<<S.fila[2], S.fila[1]>>} ELSE {})
 
 StopOrChangeProc ==
     \/ /\ At("StopOrChange", "sq_start")

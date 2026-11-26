@@ -1294,7 +1294,7 @@ class App:
             return read() if read is not None else None
         return cmd.concilia(self, no_switch)
 
-    def release_reservation(self, r, entrada):
+    def release_reservation(self, r, entrada, erro=None):
         """Com fila_lock: a reserva de avanco r resolvida (a entrada que tocou, ou None), liberando quem espera, e os
         Proximos ligados a ela. Uma vez so: a resolvida fica como esta."""
         if r.feita.is_set():
@@ -1302,10 +1302,10 @@ class App:
         with self.engine._qlock:  # o mesmo trecho em que um Proximo se liga a ela (Proximo.liga): nenhum fica de fora
             if self.reserva is r:
                 self.reserva = None
-            r.entrada = entrada
+            r.entrada, r.erro = entrada, erro
             r.feita.set()
             for g in r.grupos:
-                g.resolve(entrada)
+                g.resolve(entrada, erro)
 
     def _confere_preparo_sob(self):
         """Com fila_lock e o _qlock, no mesmo trecho em que a fila mudou: a passagem preparada para quem nao e mais a
@@ -1323,7 +1323,7 @@ class App:
             self._confere_preparo_sob()
             return r
 
-    def apply_audio_version(self, vid, v, held):
+    def apply_audio_version(self, vid, v):
         e = self.engine
 
         def wants(x):
@@ -1336,7 +1336,7 @@ class App:
 
         def swap_entries():
             switch = e.virou[2] if e.virou is not None else None
-            kept = self.fila[0] if self.fila and held() else None
+            kept = self.fila[0] if self.fila and self.automatico.head_held() else None
             for x in self.fila:
                 if x.get("auto") and x is not kept and x["qid"] != switch and wants(x):
                     x.update(with_audio_version(x, v))

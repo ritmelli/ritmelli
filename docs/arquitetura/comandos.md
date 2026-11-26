@@ -55,7 +55,9 @@ carregando) e só para o prato com a fila vazia e sem avanço de outro em curso,
 confere a reserva e a entrada antes de fechar a virada e tirar a passagem preparada: a que já não vale não tira a
 preparada de quem vale. Os Próximos sobrepostos (o segundo chega antes de o primeiro voltar, mesmo com o primeiro já
 trocando o disco) dividem o mesmo avanço (`App.proximo`), se o prato ainda é a linha dele ou a que a reserva dele
-publicou: um só toca, e todos respondem a entrada dele. O Próximo depois de um Parar segue sozinho. O avanço já em curso
+publicou: um só toca, e todos respondem a entrada dele. Se tocar falha antes de publicar, o erro vai para todos eles
+(`Proximo.espera`); com a reserva já resolvida antes por outro (o Parar), o primeiro responde o mesmo que os outros. O
+Próximo depois de um Parar segue sozinho. O avanço já em curso
 que o Próximo encontra ao chegar (o do fim do disco) e a virada pendente que ele vê são o avanço dele, mesmo se
 terminarem antes de ele reservar, e também o que outro começa na linha dele antes de ele reservar; o prato que muda de
 linha antes disso fica como está se trocou de disco (o Parar), e com o mesmo disco (um seek) o Próximo segue, com o
@@ -113,8 +115,7 @@ contrário. Duas outras vêm logo antes do `_qlock` e nunca ficam na mão junto 
 chama método do motor que pegue o `_lock`. A thread do áudio (o `_mixa`) nunca pega a `fila_lock` nem o `_lock`. Sob a
 `fila_lock` não se grava arquivo: o `andamentos.json` e o `versoes_audio.json` são copiados sob ela e gravados fora
 dela. A medida entra na memória mesmo se a gravação falha (quem lê esses dicionários depois a vê); a troca das parecidas
-da fila pela versão de áudio e o `andamentos_versao`, que faz o Automático reordenar, só vêm com a gravação feita, como
-antes.
+da fila pela versão de áudio e o `andamentos_versao`, que faz o Automático reordenar, só vêm com a gravação feita.
 
 A ordem está declarada no modelo (`dev/tla/Locks.tla`, o `LockOrder` e o `BeforeQlockOnly`), e o
 `dev/test_lock_order.py` compara com ela cada `with` das travas (e o `_lock.acquire`) do `comandos.py`, do `server.py`,
@@ -123,7 +124,9 @@ método do `App`, da `Engine`, do `Automatico`, da prateleira ou do `comandos.py
 que pegue o `_lock` ou o próprio `_qlock`); com a `fila_lock` na mão, o `_lock` só se tenta, com
 `acquire(blocking=False)` (o `with_engine`). As funções que outro roda com as travas na mão contam com elas: as do
 `change_queue`, do `close_switches` e do `concilia` (a `fila_lock` e o `_qlock`), a do `with_engine` (a `fila_lock` e o
-`_lock`) e o `pode` dos métodos do motor (o `_lock` e o `_qlock`). Confere também que o `_mixa` e os métodos da `Engine` que ele chama só pegam o `_qlock`.
+`_lock`) e o `pode` dos métodos do motor (o `_lock` e o `_qlock`), e as funções locais que elas chamam também. Com a
+`fila_lock` na mão, nem o código nem o que ele chama grava arquivo (`save_json`, `_save`, `write_text`, `write_bytes`).
+Confere também que o `_mixa` e os métodos da `Engine` que ele chama só pegam o `_qlock`.
 
 ## O modelo das travas (`dev/tla/`)
 
@@ -135,11 +138,13 @@ posição do disco viram escolha não determinística, e os `qid` são simétric
   travas; que nenhum prato fica carregando com o job já terminado (em erro, ou baixado com ou sem o disco na prateleira)
   e o stream recusado; que o stream recusado só para ou troca o disco daquela tentativa; e que a entrada da virada
   pendente tem a mesma versão que o prato toca (as duas corridas da #211).
-- `LocksAndSwitch`: dois Próximos, o mixer, o Parar ou uma mudança da fila, o vigia da passagem e a reabertura do áudio
-  segurando o `_lock` (o `with_engine` como tentativa com recuo), com duas entradas. Confere a ordem das travas e a
-  falta de impasse; que a virada só vai para a cabeça da fila e que cada uma fecha uma vez, e todas fecham; que dois
-  Próximos sobrepostos (o segundo chega com o prato ainda na linha do primeiro, ou na linha que o avanço dele publicou)
-  dão um avanço só e o mesmo resultado; que o Anterior recebe cada disco que saiu do prato uma vez, na ordem em que saiu,
+- `LocksAndSwitch`: dois Próximos (o tocar de cada um pode falhar antes de publicar), o mixer, o Parar ou uma mudança
+  da fila, o vigia da passagem, uma segunda preparação da passagem e a reabertura do áudio segurando o `_lock` (o
+  `with_engine` como tentativa com recuo), com duas entradas. Confere a ordem das travas, que o mixer só pega as do
+  `AudioLocks` (o `_qlock`, as mesmas que o `dev/test_lock_order.py` acha no `_mixa`), e a falta de impasse; que a
+  virada só vai para a cabeça da fila e que cada uma fecha uma vez, e todas fecham; que dois Próximos sobrepostos (o
+  segundo chega com o prato ainda na linha do primeiro, ou na linha que o avanço dele publicou) dão um avanço só e o
+  mesmo resultado, também quando o tocar falha; que o Anterior recebe cada disco que saiu do prato uma vez, na ordem em que saiu,
   e nenhum fica de fora; e que toda reserva resolve, com justiça fraca.
 
 O `dev/test_tla.py` roda o TLC (o `tla2tools.jar` da versão fixada, conferido pelo sha256) nas duas, cada execução em
@@ -162,8 +167,8 @@ falha se escrever. Dentro do `App`, as entradas da fila só mudam numa função 
 fila (atribuição, fatia, `append`, `remove` e afins, também por um apelido dela ou por quem a recebe como argumento) só
 muda ali, em qualquer módulo. A versão de áudio das parecidas entra pelo `App.apply_audio_version`, que muda a fila pelo
 `change_queue` e, no mesmo trecho do `_qlock`, deixa como estão a entrada da virada pendente (pelo `qid`, a mesma versão
-que o prato toca) e a primeira da fila presa. O que ainda pega as travas do
-motor por fora (o `_qlock` dos trechos do Próximo, da reserva, do `concilia`, da troca, do `remember_pos`, do
+que o prato toca) e a primeira da fila presa. O que ainda pega as travas do motor por fora (o `_qlock` dos trechos do
+Próximo, da reserva, do `concilia`, da troca, do `remember_pos`, do
 `release_reservation` e do `change_queue`, e o `_lock` do `with_engine`) é contado pelo `dev/testa_ganchos.py`, que
 falha se o número muda: acima do teto entrou acesso novo; abaixo, o PR que tirou um baixa o teto junto. Os nomes
 privados do motor saem da árvore de sintaxe do `engine.py` (os métodos e os `self._x` que a `Engine` e a `MockEngine`
