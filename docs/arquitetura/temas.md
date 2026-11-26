@@ -168,7 +168,8 @@ antes de um seletor) é uma folha que não se lê.
 Ela sai 0 quando o head só muda código de lugar:
 - todo arquivo do tema que a página não lê (as imagens e as fontes) tem o mesmo conteúdo nos dois commits;
 - a marcação é a mesma, na mesma ordem (sem os cinco espaços do HTML nas pontas de cada linha), com cada script e cada
-  folha de estilo no mesmo lugar dela, colado no texto do lado (sem espaço do HTML entre os dois) nos mesmos lados;
+  folha de estilo no mesmo lugar dela e com o mesmo entre ela e o texto de cada lado: nada, espaços do HTML, ou espaços
+  do HTML com uma quebra de linha;
 - os scripts são os mesmos, na mesma ordem, cada um carregado do mesmo jeito (inline ou do mesmo arquivo), com os
   mesmos atributos e o mesmo modo estrito;
 - cada script declara as mesmas funções no alto, pelo nome que o V8 lê (com os escapes `\u` desfeitos); elas podem

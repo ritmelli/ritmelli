@@ -33,7 +33,7 @@ In a sheet, only CSS whitespace and comments may sit between and around the rule
 Exit 0 when the head only moves code: the two pages are the same, or
 - every file of the theme that the page does not read (images, fonts) has the same content;
 - the markup is the same, line by line and in order, with every script and stylesheet in the same place in it,
-  touching the text beside it (with no HTML space between) on the same sides;
+  with the same between it and the text on each side: nothing, HTML spaces, or HTML spaces with a line break;
 - the head has the same scripts in the same order, each loaded the same way (inline or from the same file), with the
   same attributes and the same strict mode;
 - each script declares the same functions at its top level (they may move inside it: a script's function declarations
@@ -133,7 +133,7 @@ class Block:
     folder: str = ""
     source: tuple = ()
     raw: list = field(default_factory=list)
-    touches: tuple = ()
+    edges: tuple = ()
 
     @property
     def text(self):
@@ -175,6 +175,13 @@ def block_of(kind, name, others):
                      else ("inline",))
     return Block("script", header("script" if kind == "script-open" else kind, name, others), tuple(others.items()),
                  type_of(others) in JS_TYPES, source=("file" if kind == "script" else "inline", name))
+
+
+def edge(text):
+    space = text[:len(text) - len(text.lstrip(HTML_SPACE))]
+    if len(space) == len(text):
+        return "a line break"
+    return "a line break" if "\n" in space else "a space" if space else "nothing"
 
 
 def type_of(attributes):
@@ -238,8 +245,7 @@ def assemble(read, files=None, theme="ritmelli"):
     closes = from_root("theme_page").CLOSES_ELEMENT
     blocks = [block_of(kind, name, others) for _, _, kind, name, others, _, _ in tags]
     for block, (begin, end, *_) in zip(blocks, tags):
-        block.touches = tuple(side for side, at in (("before", begin - 1), ("after", end))
-                              if 0 <= at < len(html) and html[at] not in HTML_SPACE)
+        block.edges = (edge(html[:begin][::-1]), edge(html[end:]))
     page = html
     for n, (begin, end, kind, name, others, body_start, body_end) in reversed(list(enumerate(tags))):
         opened, closed = f"\n\x00open {n}\x00\n", "\n\x00close\x00\n"
@@ -476,8 +482,8 @@ def markup(page):
         if item[0] == "open":
             kind = page.blocks[item[1]].kind
             block = page.blocks[item[1]]
-            touching = f" (touching the text {' and '.join(block.touches)} it)" if block.touches else ""
-            out.append(((kind, order[kind], block.touches), None, block.header + touching))
+            edges = f" (before it {block.edges[0]}, after it {block.edges[1]})"
+            out.append(((kind, order[kind], block.edges), None, block.header + edges))
             order[kind] += 1
         elif item[0] == "line" and item[2] is None and item[1].strip(HTML_SPACE):
             out.append((("line", item[1].strip(HTML_SPACE)), None, item[1].strip(HTML_SPACE)))
