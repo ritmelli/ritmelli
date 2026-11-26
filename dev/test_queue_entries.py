@@ -90,6 +90,7 @@ class Entries:
     def __init__(self, modules, attrs=CONTAINERS, owner_only=False):
         self.modules, self.attrs, self.owner_only = modules, attrs, owner_only
         self.params, self.cparams, self.walks, self.scopes, self.returns = {}, {}, {}, {}, set()
+        self.creturns = set()
 
     def walk(self, func):
         if id(func) not in self.walks:
@@ -123,6 +124,8 @@ class Entries:
             return self.is_container(node.left, scope) or self.is_container(node.right, scope)
         if isinstance(node, ast.BoolOp):
             return any(self.is_container(v, scope) for v in node.values)
+        if isinstance(node, ast.Call) and called(node) in self.creturns:
+            return True
         if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "copy"
                 and not node.args):
             return self.is_container(node.func.value, scope)
@@ -234,6 +237,20 @@ class Entries:
                                 into[name] |= new
                                 changed = True
 
+    def find_returns(self, funcs, parents):
+        found, changed = False, True
+        while changed:
+            changed = False
+            for _, func, _, parent in funcs:
+                scope = self.scope_of(func, parent, parents)
+                values = [n.value for n in own_nodes(func) if isinstance(n, ast.Return) and n.value is not None]
+                for into, test in ((self.returns, self.is_entry), (self.creturns, self.is_container)):
+                    if func.name not in into and any(test(v, scope) for v in values):
+                        into.add(func.name)
+                        self.scopes.clear()
+                        changed = found = True
+        return found
+
     def write_target(self, node, scope):
         return isinstance(node, ast.Subscript) and self.is_entry(node.value, scope)
 
@@ -241,18 +258,8 @@ class Entries:
         funcs = self.functions()
         parents = {id(f): p for _, f, _, p in funcs}
         self.bind_params(funcs, parents)
-        changed = True
-        while changed:
-            changed = False
-            for _, func, _, parent in funcs:
-                if func.name in self.returns:
-                    continue
-                scope = self.scope_of(func, parent, parents)
-                if any(isinstance(n, ast.Return) and n.value is not None and self.is_entry(n.value, scope)
-                       for n in own_nodes(func)):
-                    self.returns.add(func.name)
-                    self.scopes.clear()
-                    changed = True
+        while self.find_returns(funcs, parents):
+            self.bind_params(funcs, parents)
         allowed, skip = set(), set()
         for _, func, _, _ in funcs:
             names, lambdas = passed_to_change_queue(func)
@@ -443,6 +450,11 @@ class Automatico:
 '''
 
 ENTRY_FORMS = {
+    "an entry a helper returns, passed to another that writes it": (
+        {"case.py": "def head(A):\n    return A.fila[0]\ndef rewrite(entry):\n    entry.update(audio=True)\n"
+                    "def f(A):\n    rewrite(head(A))\n"}, 1),
+    "an entry of the queue a helper returns": (
+        {"case.py": "def entries(A):\n    return A.fila\ndef f(A):\n    entries(A)[0].update(audio=True)\n"}, 1),
     "the head of the queue by index": ({"case.py": "def f(A):\n    A.fila[0]['fixa'] = True\n"}, 1),
     "an entry found by next()": ({"case.py": "def f(A, q):\n    x = next((y for y in A.fila if y['qid'] == q), None)"
                                              "\n    x['fixa'] = True\n"}, 1),

@@ -192,6 +192,7 @@ class Deck:
         self.gen = 0
         self.linha = 0
         self.eof_gen = -1
+        self.file_wait = None
         self.ahead = AHEAD
         # o nivel de cada bloco decodificado (t0, quadros, rms), o ja tocado inclusive: a medicao do fim
         # precisa do trecho de antes da queda, que pode ja ter saido da fila
@@ -1198,7 +1199,6 @@ class Engine:
         self.ended = False
         self.pos = 0.0
         self._error = None
-        self._espera_arquivo = None
         # o primeiro som do disco que entrou no prato (09/11, a latencia do pedido falado): espera e load marcam
         # (id, hora do relogio), o _mixa troca pelo (titulo, stream?, entrou, soou) no primeiro bloco dele, e o
         # servidor tira e escreve no log (nada de print no callback)
@@ -2337,14 +2337,10 @@ class Engine:
                     self.sonoridade(track, med.lufs(), inteira=False)
                 med = None  # a volta do Repetir nao mede de novo
             if n == 0 and stream and track.get("job") and deck is self._deck:
-                # o download do mesmo disco esta a caminho (27/10: o YouTube deu 403 ao ffmpeg em 2 de ~15 streams, e
-                # o download chegava 2 s depois): sem erro e sem fim, o prato fica carregando e o trocar_fonte toca
-                # o arquivo de onde parou; se o download falhar, o servidor para o prato (esperando_arquivo). So o
-                # leitor que ainda e o do prato marca: o substituido nao apaga a espera do novo
                 with self._qlock:
                     waits = deck is self._deck and deck.gen == gen
                     if waits:
-                        self._espera_arquivo = (deck, gen)
+                        deck.file_wait = gen
                 if waits and self._stream_silent is not None:
                     self._stream_silent(track)
                 return
@@ -2486,7 +2482,8 @@ class Engine:
             self._limitador_zera = True
             self.pos = start
             self.ended = False
-            self._error = None
+            if nova_linha or self._error is self._stream_warning:
+                self._error = None
             if nova_linha:
                 self._solta_pausa()
         if not tr.get("path"):  # sem caminho, o disco ainda espera o stream abrir: sem leitor
@@ -3335,7 +3332,7 @@ class Engine:
                 if self._error is not None and self._error is self._stream_warning:
                     self._error = None
                 to_file = str(atual.get("path")).startswith("http") and not str(novo.get("path") or "").startswith("http")
-                if self.ended or d.eof_gen == d.gen or (not to_file and dur and t >= dur - 2):
+                if self.ended or d.eof_gen == d.gen or (dur and t >= dur - 2 and (not to_file or d.q)):
                     gen = None  # no fim (ou quase): o leitor de agora termina o disco
                 else:
                     d.gen += 1
@@ -3358,7 +3355,7 @@ class Engine:
 
     def esperando_arquivo(self):
         """O stream do disco no prato falhou e ele espera o download para tocar (ver o _reader)."""
-        return self._espera_arquivo == (self._deck, self._deck.gen)
+        return self._deck.file_wait == self._deck.gen
 
     def abaixa(self, db, ms):
         """Abaixa a musica no jogo db decibeis por ms milissegundos, sem gravar nada: no prazo, ela volta sozinha. Um

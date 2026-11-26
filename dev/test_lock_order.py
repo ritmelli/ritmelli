@@ -1,4 +1,5 @@
 import ast
+import copy
 import re
 import sys
 from pathlib import Path
@@ -58,6 +59,47 @@ def lock_of(node, cls):
             return "lib_lock"
         return ATTRS.get(node.attr)
     return None
+
+
+class LockAliases(ast.NodeTransformer):
+    def __init__(self):
+        self.cls, self.scopes = None, [{}]
+
+    def visit_ClassDef(self, node):
+        outer, self.cls = self.cls, node.name
+        self.generic_visit(node)
+        self.cls = outer
+        return node
+
+    def visit_FunctionDef(self, node):
+        self.scopes.append(dict(self.scopes[-1]))
+        self.generic_visit(node)
+        self.scopes.pop()
+        return node
+
+    visit_AsyncFunctionDef = visit_FunctionDef
+
+    def visit_Assign(self, node):
+        self.generic_visit(node)
+        if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+            if lock_of(node.value, self.cls):
+                self.scopes[-1][node.targets[0].id] = node.value
+            else:
+                self.scopes[-1].pop(node.targets[0].id, None)
+        return node
+
+    def visit_Name(self, node):
+        found = self.scopes[-1].get(node.id) if isinstance(node.ctx, ast.Load) else None
+        if found is None:
+            return node
+        new = copy.deepcopy(found)
+        for n in ast.walk(new):
+            ast.copy_location(n, node)
+        return new
+
+
+def parse(text, name="<unknown>"):
+    return ast.fix_missing_locations(LockAliases().visit(ast.parse(text, name)))
 
 
 def acquired(node, cls):
@@ -510,7 +552,7 @@ def scope_failures(trees):
 
 
 def scan(sources, order, before):
-    trees = {name: ast.parse(text, name) for name, text in sources.items()}
+    trees = {name: parse(text, name) for name, text in sources.items()}
     table = function_table(trees)
     summary = summaries(table)
     bad, used, nested, followed, walked = [], set(), 0, 0, 0
@@ -531,7 +573,7 @@ def methods(tree, cls):
 
 
 def audio_locks(text):
-    tree = ast.parse(text)
+    tree = parse(text)
     funcs = {("self", k): f for k, f in methods(tree, AUDIO[0]).items()}
     funcs.update({("module", f.name): f for f in tree.body if isinstance(f, ast.FunctionDef)})
     seen, todo, taken = set(), [("self", AUDIO[1])], {}
@@ -576,6 +618,10 @@ def self_test(order, before):
                                                            "        e._lock.acquire()\n", 1),
         "the fila_lock, then a with of the _lock": ("def f(A, e):\n    with A.fila_lock:\n        with e._lock:\n"
                                                     "            pass\n", 1),
+        "the _qlock through a local name, then the fila_lock": (
+            "def f(A, E):\n    q = E._qlock\n    with q:\n        with A.fila_lock:\n            pass\n", 1),
+        "a local name that no longer holds a lock": (
+            "def f(A, E):\n    q = E._qlock\n    q = A\n    with A.fila_lock:\n        with q:\n            pass\n", 0),
     })
     calls = {
         "an engine method that takes the _lock, called with the _qlock held": (
@@ -690,7 +736,7 @@ def main():
                    f"through the calls made with a lock held and the callbacks run under one ({nested} nested "
                    f"acquisitions, {followed} calls followed, {walked} callbacks; {bad})")
     check(used == set(order) | before, f"the code takes exactly the locks the model declares ({sorted(used)})")
-    trees = {m: ast.parse(sources[m], m) for m in MODULES}
+    trees = {m: parse(sources[m], m) for m in MODULES}
     inside = sources["engine.py"].replace(
         "                if waits and self._stream_silent is not None:\n                    self._stream_silent(track)\n",
         "                    if waits and self._stream_silent is not None:\n                        self._stream_silent(track)\n")
@@ -709,7 +755,7 @@ def main():
           f"every hook the engine calls resolves to the App method that the App puts on it ({sorted(hooked)}; "
           f"unresolved {unresolved})")
     unhooked = sources["server.py"].replace("        self.engine.religar_stream = self.religar_stream\n", "")
-    unresolved = unresolved_hooks(dict(trees, **{"server.py": ast.parse(unhooked)}))
+    unresolved = unresolved_hooks(dict(trees, **{"server.py": parse(unhooked)}))
     check(unhooked != sources["server.py"] and unresolved == ["religar_stream"],
           f"with the App no longer putting its religar_stream on the engine, the hook check fails ({unresolved})")
     for what, old, new, callee in (
@@ -727,7 +773,7 @@ def main():
               f"with {what} called under the _qlock, the check fails ({[b for b in bad if callee in b][:1]})")
     later = ("class App:\n    def change_queue(self, change):\n        pass\n    def f(self):\n"
              "        with self.fila_lock:\n            threading.Thread(target=lambda: self.change_queue(None)).start()\n")
-    callers = caller_failures({"server.py": ast.parse(later)})
+    callers = caller_failures({"server.py": parse(later)})
     check(len(callers) == 1 and "App.f" in callers[0],
           f"a lambda made under the fila_lock that calls the change_queue later, on its own thread, does not count "
           f"as holding it ({callers})")
@@ -736,7 +782,7 @@ def main():
                        f"up the calls to the entry points ({callers})")
     bare = sources["server.py"].replace("        with self.fila_lock:\n            return self.change_queue(move)\n",
                                         "        return self.change_queue(move)\n")
-    callers = caller_failures(dict(trees, **{"server.py": ast.parse(bare)}))
+    callers = caller_failures(dict(trees, **{"server.py": parse(bare)}))
     check(bare != sources["server.py"] and len(callers) == 1,
           f"with the App moving an entry through change_queue without the fila_lock, the check fails ({callers})")
     scope = scope_failures(trees) + outer_failures(trees)
@@ -744,7 +790,7 @@ def main():
                      f"gives it ({len(CALLBACKS)} functions; {scope})")
     moved = sources["server.py"].replace("        with self.engine.state_section():\n            r = change()\n",
                                          "        r = change()\n        with self.engine.state_section():\n")
-    scope = scope_failures(dict(trees, **{"server.py": ast.parse(moved)}))
+    scope = scope_failures(dict(trees, **{"server.py": parse(moved)}))
     check(moved != sources["server.py"] and len(scope) == 1,
           f"with the change_queue running its change before taking the _qlock, the scope check fails ({scope})")
     guarded = pode_guarantees(trees["engine.py"])
@@ -755,13 +801,19 @@ def main():
                                          "                return None, None\n",
                                          "        if pode is not None and not pode():\n            return None, None\n"
                                          "        with self._qlock:\n")
-    check(early != sources["engine.py"] and len(pode_failures(ast.parse(early))) >= 3,
+    check(early != sources["engine.py"] and len(pode_failures(parse(early))) >= 3,
           f"with the _restart running the pode before the _qlock, the check fails for the methods that hand it on "
-          f"({pode_failures(ast.parse(early))})")
+          f"({pode_failures(parse(early))})")
     seen, taken = audio_locks(sources["engine.py"])
     check(set(taken) == audio, f"the audio thread ({'.'.join(AUDIO)} and the {len(seen) - 1} Engine methods it calls) "
                                f"takes only the AudioLocks of the model, {sorted(audio)} "
                                f"({ {k: sorted(v) for k, v in taken.items()} })")
+    aliased = sources["engine.py"].replace("        buf = np.zeros((frames, 2), np.float32)\n        b = self._captura(frames)\n",
+                                           "        buf = np.zeros((frames, 2), np.float32)\n        audio_lock = self._lock\n"
+                                           "        with audio_lock:\n            pass\n        b = self._captura(frames)\n")
+    _, taken = audio_locks(aliased)
+    check(aliased != sources["engine.py"] and "_mixa" in taken.get("_lock", set()),
+          f"with the _mixa taking the _lock through a local name, the audio check fails ({taken})")
     if failures:
         print(f"\n{len(failures)} failure(s)")
         sys.exit(1)

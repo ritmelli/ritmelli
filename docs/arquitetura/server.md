@@ -31,19 +31,20 @@ cujo corpo chega a esses campos e manda a ela os corpos ruins, e falha com a rot
 `body()` chamado nessa função). O SSE manda o JSON só em ASCII:
 um texto que o UTF-8 não codifica não quebra a volta, que é montada uma vez para todas as conexões.
 
-- Tocar um vídeo que não está na prateleira começa na hora pelo stream do YouTube (o
-  yt-dlp dá o endereço do áudio em 1 a 3 s e o ffmpeg toca dele), com o download seguindo
-  por trás. Quando o arquivo chega, o motor passa para ele sem cortar, do ponto onde o
-  áudio já decodificado termina. O stream tenta três vezes (a última aceitando qualquer
-  formato de áudio) e cada falha vai para o `server.err` (nos logs, ver `pastas.py`) com o motivo; se não abrir, a
-  tela avisa e o disco toca quando o download chegar. Se o endereço sai mas o ffmpeg não
-  recebe nada dele (o YouTube às vezes responde 403), o leitor marca a espera do arquivo e passa pelo mesmo caminho do
-  stream recusado (o `Engine.on_silent_stream`, que o App liga ao `_stream_refused`), enquanto essa espera ainda é a do
-  prato, do deck e da leitura dele (um pulo na barra depois dela começa um leitor novo, que fica, e o deck que entra
-  numa passagem não herda a espera do outro): o prato fica carregando com o aviso e toca o
-  arquivo quando o download chega, com leitor novo sempre que o arquivo entra no lugar do stream (mesmo perto do fim, e
-  mesmo antes de o leitor do stream dizer que não deu áudio), e o aviso do stream sai com ele (outro aviso que veio
-  depois fica); se o download falhou, antes ou depois, o prato para.
+- Tocar um vídeo que não está na prateleira começa na hora pelo stream do YouTube (o yt-dlp dá o endereço do áudio em 1
+  a 3 s e o ffmpeg toca dele), com o download seguindo por trás. Quando o arquivo chega, o motor passa para ele sem
+  cortar, do ponto onde o áudio já decodificado termina. O stream tenta três vezes (a última aceitando qualquer formato
+  de áudio) e cada falha vai para o `server.err` (nos logs, ver `pastas.py`) com o motivo; se não abrir, a tela avisa e
+  o disco toca quando o download chegar. Se o download termina enquanto o stream abre, o stream que entrou no prato
+  confere o job e passa para o arquivo. Se o endereço sai mas o ffmpeg não recebe nada dele (o YouTube às vezes responde
+  403), o leitor marca a espera do arquivo e passa pelo mesmo caminho do stream recusado (o `Engine.on_silent_stream`,
+  que o App liga ao `_stream_refused`), enquanto essa espera ainda é a do prato, do deck e da leitura dele (um pulo na
+  barra depois dela começa um leitor novo, que fica, e o deck que entra numa passagem não herda a espera do outro): o
+  prato fica carregando com o aviso e toca o arquivo quando o download chega, com leitor novo sempre que o arquivo entra
+  no lugar do stream (mesmo perto do fim, e mesmo antes de o leitor do stream dizer que não deu áudio; só o stream cujo
+  áudio decodificado já chega perto do fim termina o disco com o leitor dele), e o aviso do stream sai com ele, venha o
+  arquivo no lugar do stream ou do disco que esperava (outro aviso que veio depois fica); se o download falhou, antes ou
+  depois, o prato para.
 - Fila (A seguir): quando o disco do prato acaba, o primeiro da fila entra, do arquivo
   ou pelo stream. O que entra na fila sem estar na prateleira já começa a baixar. O
   Repetir manda (ligado, o disco não acaba), mas vale só para o disco do prato: outro

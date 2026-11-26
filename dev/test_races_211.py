@@ -194,6 +194,106 @@ class AudioFfmpeg(SilentFfmpeg):
         return self.blocks.pop() if self.blocks else b""
 
 
+class HeldAudioFfmpeg(SilentFfmpeg):
+    def __init__(self, go, reading=None):
+        super().__init__(reading or threading.Event(), go)
+        self.blocks = [bytes(eng.BLOCK * 8)] * 2
+
+    def read(self, n):
+        if self.blocks:
+            return self.blocks.pop()
+        return super().read(n)
+
+
+def stream_opens_after_the_download_read_the_platter(A, E, readers):
+    check(play(A, E, readers, "d1"), "d1 is on the platter, read")
+    target = "ooooooooooo"
+    j = A.new_job("downloading", True, target)
+    captured, go, done = threading.Event(), threading.Event(), threading.Event()
+    reader, ended = real_stream_reader(E, E._reader)
+    swap = E.trocar_fonte
+
+    def holds(atual, novo):
+        if not atual.get("path") and not str(novo.get("path") or "").startswith("http"):
+            captured.set()
+            go.wait(WAIT_S)
+        return swap(atual, novo)
+    meta = {"youtube_id": target, "title": "the opened one", "channel": "c", "duration": 200.0}
+    info = dict(meta, url="https://stream.invalid/o", id=target)
+
+    def downloads():
+        try:
+            A.run_download(j, target)
+        finally:
+            done.set()
+    stream = StreamThread(A)
+    with (contextlib.redirect_stderr(io.StringIO()), mock.patch.object(E, "_reader", reader),
+          mock.patch.object(E, "trocar_fonte", holds), mock.patch.object(A, "download", return_value=A.lib.get("d2")),
+          mock.patch.object(A, "stream_info", side_effect=lambda *a, **kw: (captured.wait(WAIT_S), (info, {}))[1]),
+          mock.patch.object(eng.subprocess, "Popen", lambda *a, **kw: HeldAudioFfmpeg(go))):
+        check(cmd.play_downloading(A, j, target, meta), "the swap put the job's record on the platter")
+        threading.Thread(target=downloads, daemon=True).start()
+        check(captured.wait(WAIT_S) and stream.ended.wait(WAIT_S),
+              "the download finished and read the waiting record, and then the stream opened, with audio")
+        go.set()
+        check(done.wait(WAIT_S) and ended and ended[0].wait(WAIT_S), "the download's swap and the stream's reader ended")
+    del A._abre_stream
+    tr = E.track or {}
+    check(tr.get("id") == "d2" and str(tr.get("path", "")).endswith("d2.m4a") and readers.wait("d2"),
+          f"a download that finished while the stream was opening still puts its file on the platter "
+          f"({tr.get('id')}, {tr.get('path')})")
+
+
+def file_after_a_refused_stream(A, E, readers, device_warning=None):
+    check(play(A, E, readers, "d1"), "d1 is on the platter, read")
+    target = "ppppppppppp"
+    j = A.new_job("downloading", True, target)
+    stream = StreamThread(A)
+    with contextlib.redirect_stderr(io.StringIO()):
+        swapped = cmd.play_downloading(A, j, target, {"youtube_id": target, "title": "the refused one"})
+        check(swapped and stream.ended.wait(WAIT_S), "the swap put the job's record on the platter and its stream was "
+                                                      "refused")
+    del A._abre_stream
+    check((E.error or {}).get("key") == "server.player.streamRefused" and not (E.track or {}).get("path"),
+          f"the record waits for its download with the stream's warning ({E.error})")
+    if device_warning is not None:
+        E.set_error(device_warning)
+    with contextlib.redirect_stderr(io.StringIO()), mock.patch.object(A, "download", return_value=A.lib.get("d2")):
+        A.run_download(j, target)
+    check(readers.wait("d2") and E.error is device_warning,
+          f"the file that replaces the waiting record takes the stream's warning away and leaves "
+          f"{'the device warning that came after it' if device_warning else 'none'} ({E.error})")
+
+
+def file_near_the_end_of_a_stream_with_audio(A, E, readers):
+    check(play(A, E, readers, "d1"), "d1 is on the platter, read")
+    target = "qqqqqqqqqqq"
+    j = A.new_job("downloading", True, target)
+    reading, go = threading.Event(), threading.Event()
+    files, fake = [], E._reader
+
+    def file_reader(gen, track, start, deck):
+        files.append(track.get("id"))
+        return fake(gen, track, start, deck)
+    reader, ended = real_stream_reader(E, file_reader)
+    meta = {"youtube_id": target, "title": "the short one", "channel": "c", "duration": 1.0}
+    stream = StreamThread(A)
+    with (contextlib.redirect_stderr(io.StringIO()), mock.patch.object(E, "_reader", reader),
+          mock.patch.object(A, "stream_info", return_value=(dict(meta, url="https://stream.invalid/q", id=target), {})),
+          mock.patch.object(eng.subprocess, "Popen", lambda *a, **kw: HeldAudioFfmpeg(go, reading))):
+        check(cmd.play_downloading(A, j, target, meta) and stream.ended.wait(WAIT_S) and reading.wait(WAIT_S),
+              "the short one's stream opened and its reader queued its audio, up to the end, without the end yet")
+        with mock.patch.object(A, "download", return_value=dict(A.lib.get("d2"), duration=1.0)):
+            A.run_download(j, target)
+        tr = E.track or {}
+        check(str(tr.get("path", "")).endswith("d2.m4a") and files == [] and E.error is None,
+              f"the file that comes when the stream's audio already reaches the end starts no reader of its own, and no "
+              f"warning ({files}, {E.error})")
+        go.set()
+        ended[0].wait(WAIT_S)
+    del A._abre_stream
+
+
 def real_stream_reader(E, fake):
     ended = []
 
@@ -556,6 +656,11 @@ def main():
                 finished_download_forgotten_during_the_refusal(A, E, readers)
                 refused_stream_after_another_record(A, E, readers)
                 silent_stream_after_the_download_failed(A, E, readers)
+                stream_opens_after_the_download_read_the_platter(A, E, readers)
+                file_after_a_refused_stream(A, E, readers)
+                file_after_a_refused_stream(
+                    A, E, readers, server.i18n.msg("server.devices.notFound", "Couldn't find the device."))
+                file_near_the_end_of_a_stream_with_audio(A, E, readers)
                 silent_stream_then_a_seek(A, E, readers)
                 file_near_the_end_of_a_silent_stream(A, E, readers)
                 file_near_the_end_of_a_silent_stream(

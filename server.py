@@ -1151,6 +1151,13 @@ class App:
                     thumb=tr["thumb"] or thumb(yid), duration=tr["duration"] or info.get("duration"))
         if self.engine.trocar_fonte(tr, novo):
             self.canal_depois(novo, no_prato=True)
+            self._finished_file(novo)
+
+    def _finished_file(self, tr):
+        j = self.jobs.get(tr.get("job") or "")
+        it = self.lib.get(j["item_id"]) if j is not None and j["status"] == "done" else None
+        if it is not None:
+            self.engine.trocar_fonte(tr, dict(it, path=str(LIB / it["file"])))
 
     def _stream_refused(self, tr, reason, waiting=False):
         e = self.engine
