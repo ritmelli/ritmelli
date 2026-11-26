@@ -13,9 +13,9 @@ até 80 linhas (o `dev/garden.py` confere as duas).
 
 ## Regras
 
-- O processo do servidor não carrega o `yt_fora.py` nem as bibliotecas dele (yt-dlp, ytmusicapi, requests): o YouTube
-  roda no processo auxiliar (`ritmelli.py --yt`), que o `auxiliar` do `server.py` abre. O `dev/test_audio_imports.py`
-  falha se um módulo que o servidor carrega, também os de `microfone/`, importar um deles no topo.
+- O processo do servidor não carrega o `yt_fora.py` nem as bibliotecas dele (yt-dlp, ytmusicapi, requests), que rodam
+  num processo auxiliar ([engine.md](docs/arquitetura/engine.md)): o `dev/test_audio_imports.py` falha se um módulo que
+  esse processo carrega, também os de `microfone/`, importar um deles.
 - O anel tem dois lados, o `microfone/apo/anel.h` e o espelho dele em ctypes no `microfone/injeta.py`: o `testa_filtro`
   faz o filtro de verdade ler o que o `injeta.py` escreve.
 - Efeito de voz: as configurações moram no `fx.py`, e o `microfone/preset.py` as leva ao motor em C++. Etapa nova

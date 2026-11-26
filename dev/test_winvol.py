@@ -1,3 +1,4 @@
+import ctypes
 import sys
 import unittest
 from pathlib import Path
@@ -27,12 +28,33 @@ class Activated:
         return self.endpoint if interface is winvol.IAudioEndpointVolume else None
 
 
+class PropertyStore:
+    def __init__(self, name):
+        self.name = name
+        self.keys = []
+
+    def GetValue(self, key, value):
+        key, pv = key._obj, value._obj
+        self.keys.append((str(key.fmtid), key.pid))
+        if (str(key.fmtid), key.pid) == (str(winvol.PKEY_FRIENDLY_NAME.fmtid), winvol.PKEY_FRIENDLY_NAME.pid):
+            text = ctypes.create_unicode_buffer(self.name)
+            alloc = ctypes.windll.ole32.CoTaskMemAlloc
+            alloc.restype, alloc.argtypes = ctypes.c_void_p, [ctypes.c_size_t]
+            memory = alloc(ctypes.sizeof(text))
+            ctypes.memmove(memory, text, ctypes.sizeof(text))
+            pv.vt, pv.val = winvol.VT_LPWSTR, memory
+
+
 class Device:
     def __init__(self, endpoint, name=""):
         self.endpoint = endpoint
         self.name = name
         self.activations = 0
         self.iids = []
+        self.store = PropertyStore(name)
+
+    def OpenPropertyStore(self, mode):
+        return self.store if mode == winvol.STGM_READ else None
 
     def Activate(self, iid, context, params):
         self.activations += 1
@@ -90,7 +112,6 @@ class VolumeDoThroughTheEnumerator(Patched):
         enumerator = Enumerator({winvol.E_CAPTURE: [capture], winvol.E_RENDER: [speaker]})
         self.patch("comtypes", type("C", (), {"CoCreateInstance": staticmethod(lambda *a: enumerator),
                                              "COMError": winvol.comtypes.COMError}))
-        self.patch("_nome", lambda d: d.name)
         self.assertIs(winvol.volume_do("headset"), mic)
         self.assertEqual(enumerator.calls, [(winvol.E_CAPTURE, winvol.DEVICE_STATE_ACTIVE)])
         self.assertEqual(capture.iids, [winvol.IAudioEndpointVolume._iid_])
