@@ -69,23 +69,24 @@ atribuído uma vez a uma variável que o único comando `Add-Content` do `GITHUB
 depois como `parcial=`; toda chave das saídas tem uma gravação só); e os artefatos `Ritmelli-<versão>` (a
 pasta que o passo do `publica.py` recebe no `--saida`) e `ritmelli-exe-<versão>` (um caminho só, sem curinga,
 que termina no `ritmelli.exe`), cada um uma vez na execução inteira, contados como o server conta (sem o job
-ou o passo desligado), e nenhum outro artefato que a esteira tomaria pela versão (`Ritmelli-1.2.3`). Os dois
-artefatos (que também não podem sair de um job que deixe de rodar numa dessas montagens), o `congela`, o passo
-do `publica.py` e os passos das saídas `anterior` e `parcial` não podem ter `if:`, nenhum passo antes do
-`publica.py` o cita, e o que está em comentário do PowerShell não conta (no `--saida`, um comentário também
-reprova, porque o server o lê cru). O `--tela` junta o `fitcheck` e o `compara` do jeito do PR (no `testa.yml`
-o `compara` roda num job à parte, pelo `--compara`, com a referência da base no cache do Actions), e o
-`--areas` é o filtro por caminho do `.github/workflows/testa.yml`, que roda tudo isso em todo PR e na fila de
-merge. A fila leva a `main` ao mesmo commit que testou, então o push na `main` roda só a captura do `compara`
-desse commit para o cache (o `--capture`), e o "Testa o PR" do push reprova se nenhuma execução da fila passou
-nele. As bibliotecas da CI se instalam com as versões do `instalador/travas.txt` (`-c`), que entra na chave do
-cache delas e na da captura do `compara`, e o PR que muda esse arquivo dispara todas as áreas. No PR, só
-abrir, reabrir e um commit novo rodam o check: editar a descrição ou mexer numa etiqueta não roda, porque uma
-execução no mesmo commit vira a suite mais nova do workflow e o check exigido sai só dela (encobriria o "Testa
-o PR" de quem testou). A etiqueta `extracao-tema` e a base nova de um PR empilhado valem na fila de merge, que
-testa o merge de verdade; na entrada da fila, o `compara` compara com o commit de antes do PR, o da ref da
-entrada (`pr-<número>-<commit>`). No PR, a etiqueta vale no próximo commit, ao reabrir ou num re-run completo,
-e a base nova só no próximo commit ou ao reabrir (o re-run repete a base do evento antigo). A etiqueta
+ou o passo desligado), e nenhum outro artefato que a esteira tomaria pela versão (`Ritmelli-1.2.3`), nem outro
+`ritmelli-exe-` seguido de uma versão. Os dois artefatos (que também não podem sair de um job que deixe de
+rodar numa dessas montagens), o `congela`, o passo do `publica.py` e os passos das saídas `anterior` e
+`parcial` não podem ter `if:`, nenhum passo antes do `publica.py` o cita, e o que está em comentário do
+PowerShell não conta (no `--saida`, um comentário também reprova, porque o server o lê cru). O `--tela` junta
+o `fitcheck` e o `compara` do jeito do PR (no `testa.yml` o `compara` roda num job à parte, pelo `--compara`,
+com a referência da base no cache do Actions), e o `--areas` é o filtro por caminho do
+`.github/workflows/testa.yml`, que roda tudo isso em todo PR e na fila de merge. A fila leva a `main` ao mesmo
+commit que testou, então o push na `main` roda só a captura do `compara` desse commit para o cache (o
+`--capture`), e o "Testa o PR" do push reprova se nenhuma execução da fila passou nele. As bibliotecas da CI
+se instalam com as versões do `instalador/travas.txt` (`-c`), que entra na chave do cache delas e na da
+captura do `compara`, e o PR que muda esse arquivo dispara todas as áreas. No PR, só abrir, reabrir e um
+commit novo rodam o check: editar a descrição ou mexer numa etiqueta não roda, porque uma execução no mesmo
+commit vira a suite mais nova do workflow e o check exigido sai só dela (encobriria o "Testa o PR" de quem
+testou). A etiqueta `extracao-tema` e a base nova de um PR empilhado valem na fila de merge, que testa o merge
+de verdade; na entrada da fila, o `compara` compara com o commit de antes do PR, o da ref da entrada
+(`pr-<número>-<commit>`). No PR, a etiqueta vale no próximo commit, ao reabrir ou num re-run completo, e a
+base nova só no próximo commit ou ao reabrir (o re-run repete a base do evento antigo). A etiqueta
 `needs-owner` (prova que pede ação física, como plugar ou desligar um aparelho, ou decisão do dono) também
 vale na fila: o passo "Verdict" do "Testa o PR" relê as etiquetas do PR pela API na hora de decidir e reprova
 a entrada da fila cujo PR a tem ou cujas etiquetas não vieram, e também a que tem uma `extracao-tema` que os
