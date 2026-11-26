@@ -93,7 +93,7 @@ def output_lines(run, key):
     path = r"""(?:^|\s)-Path\s+("?)(?:\$env:GITHUB_OUTPUT|\$\{env:GITHUB_OUTPUT\})\1(?=\s|$)"""
     lines = re.finditer(r"[^\n;]*", code(run))
     return [(m.start(), m.group(0)) for m in lines if re.match(r"\s*Add-Content\b", m.group(0), re.I)
-            and re.search(path, m.group(0), re.I) and re.search(rf"""["']{key}=""", m.group(0))]
+            and re.search(path, m.group(0), re.I) for _ in re.finditer(rf"""["']{key}=""", m.group(0))]
 
 
 def writes_output(run, key):
@@ -117,7 +117,6 @@ def partial_probed(job, folder):
     written = r'"parcial=\$\(\${0}\.ToString\(\)\.ToLower\(\)\)"|"parcial=\${0}"'
     return any(normal_path(m.group(2)) == wanted
                and len(re.findall(rf"\${m.group(1)}\b\s*[-+*/]?=(?!=)", run, re.I)) == 1
-               and len(output_lines(run, "parcial")) == 1
                and any(at > m.start() and re.search(written.format(m.group(1)), line, re.I)
                        for at, line in output_lines(run, "parcial")) for m in probes)
 
@@ -545,6 +544,11 @@ def main():
             run=re.sub(r'("parcial=\$\(\$parcial[^"]*" -Encoding ascii)',
                        r'\1; Add-Content -Path $env:GITHUB_OUTPUT -Value "parcial=false"',
                        source_step(d, "parcial")["run"])),
+        "a second versao= in the -Value array": lambda d: step_by_id(d["jobs"]["monta"], "congela").update(
+            run=step_by_id(d["jobs"]["monta"], "congela")["run"].replace(
+                '-Value "versao=$v"', '-Value "versao=$v", "versao="')),
+        "a second parcial=false in the -Value array": lambda d: source_step(d, "parcial").update(
+            run=source_step(d, "parcial")["run"].replace(".ToLower())\"", '.ToLower())", "parcial=false"')),
         "a later parcial write from another variable": lambda d: source_step(d, "parcial").update(
             run=source_step(d, "parcial")["run"].rstrip("\n")
             + '\nAdd-Content -Path $env:GITHUB_OUTPUT -Value "parcial=$($other.ToString())" -Encoding ascii\n'),
