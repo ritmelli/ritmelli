@@ -7,6 +7,7 @@ import re
 import subprocess
 import sys
 import tokenize
+import types
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -1065,8 +1066,19 @@ def file_lines(name):
     return count
 
 
-def verification_names():
-    tudo = load_dev_module("testa_tudo")
+def measured_module(t, name):
+    text = t.files.get(f"dev/{name}.py")
+    path = ROOT / "dev" / f"{name}.py"
+    if text is None or (path.is_file() and text == path.read_text(encoding="utf-8-sig")):
+        return load_dev_module(name)
+    module = types.ModuleType(f"measured_{name}")
+    module.__file__ = str(path)
+    exec(compile(text, str(path), "exec"), module.__dict__)
+    return module
+
+
+def verification_names(t=None):
+    tudo = load_dev_module("testa_tudo") if t is None else measured_module(t, "testa_tudo")
     paths = [*tudo.STDLIB, *tudo.COMPLETO, *tudo.LONG_TESTS.values(), *tudo.MICROFONE, *tudo.TELA,
              *(p for p, *_ in tudo.PASSOS.values())]
     names = set()
@@ -1099,7 +1111,7 @@ def agents_rules(text):
 
 
 def agents_rules_without_check(t):
-    valid = verification_names() | workflow_jobs(t)
+    valid = verification_names(t) | workflow_jobs(t)
     items = []
     for n, rule in agents_rules(t.files.get("AGENTS.md", "")):
         cited = {name.replace("\\", "/") for c in re.findall(r"`([^`]+)`", rule) if c.split()

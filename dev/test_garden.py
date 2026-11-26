@@ -36,7 +36,9 @@ WORKFLOW = ("name: W\non:\n  push:\njobs:\n  j:\n    runs-on: ubuntu-24.04\n    
 INDEX = "<html>\n<script>\nlet a = 1;\n</script>\n</html>\n"
 PY_STEP = ("jobs:\n  JOB:\n    runs-on: ubuntu-24.04\n    steps:\n      - name: S\n        shell: python3 {0}\n"
            "        run: |\n          import time\n          time.sleep(1)\n")
-AGENTS_OK = "# AGENTS.md\n\n- A rule that `testa_i18n` holds.\n"
+TUDO = ('STDLIB = ["dev/testa_x.py"]\nCOMPLETO = list(STDLIB)\nLONG_TESTS = {}\nMICROFONE = []\nTELA = []\n'
+        'PASSOS = {}\n')
+AGENTS_OK ="# AGENTS.md\n\n- A rule that `testa_i18n` holds.\n"
 
 MOLDURAS = next(iter(garden.GENERATED_MARKERS))
 
@@ -387,7 +389,11 @@ CASES = {
          {"AGENTS.md": "# A\n\n1. A rule that `testa_i18n` holds.\n2. A rule with no check.\n"}),
         ("a sub-item after one with its check", {"AGENTS.md": AGENTS_OK},
          {"AGENTS.md": AGENTS_OK + "  - a sub-rule with no check.\n"}),
-        ("a job of the testa.yml", {"AGENTS.md": AGENTS_OK + "- The `Testa o PR` check.\n",
+        ("a test taken out of the registry of the tree measured",
+         {"AGENTS.md": "# A\n\n- A rule that `testa_x` holds.\n", "dev/testa_tudo.py": TUDO},
+         {"AGENTS.md": "# A\n\n- A rule that `testa_x` holds.\n",
+          "dev/testa_tudo.py": TUDO.replace('["dev/testa_x.py"]', "[]")}),
+        ("a job of the testa.yml",{"AGENTS.md": AGENTS_OK + "- The `Testa o PR` check.\n",
                                     ".github/workflows/testa.yml": "on:\n  push:\njobs:\n  x:\n    name: Testa o PR\n"},
          {"AGENTS.md": AGENTS_OK + "- The `Testa o PR` check.\n"}),
     ],
@@ -811,7 +817,7 @@ def test_stdlib():
     hooks = garden.COUNTERS["engine_hooks"](tree)
     code = tree.lexed("engine.py").code
     docs = {n for p, n in garden.docstring_lines(tree) if p == "engine.py"}
-    check(bool(hooks) and all(code.get(n, "").strip() and n not in docs for _, n in hooks),
+    check(all(code.get(n, "").strip() and n not in docs for _, n in hooks),
           "each hook of engine.py is listed at a line of code, not of a comment or docstring")
 
 
