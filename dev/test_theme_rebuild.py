@@ -12,7 +12,8 @@ TWO = "<script src='x.js'></script><script src='y.js'></script>"
 CALL, DECLARATION = "globalThis.result = f();", "function f() { return 1; }"
 FOUR_LINES = "function f() {\n  const x = 1;\n  return x;\n}"
 NESTED = "@media (min-width: 1px) {\n  a { color: red; }\n  @container (max-width: 1rem) { .b::after { content: %s; } }\n}\n"
-LEFT, CAME ="declaration left its script", "declaration came into the script"
+FONT = "@font-face { font-family: 'A'; src: url(fonts/a.woff2) format('woff2'); }\n"
+LEFT, CAME = "declaration left its script", "declaration came into the script"
 
 
 def inline(*scripts):
@@ -56,7 +57,7 @@ SAMPLES = (
     ("a function moved from inside one function to inside another",
      inline("function a() {\n  function f() { return 1; }\n  return f();\n}\nfunction b() {\n  return 2;\n}"),
      inline("function a() {\n  return f();\n}\nfunction b() {\n  function f() { return 1; }\n  return 2;\n}"),
-     [LEFT, LEFT, CAME, CAME]),
+     [LEFT, CAME, LEFT, CAME]),
     ("a function moved into a block", inline("function a() {}\nx();"), inline("x();\n{\n  function a() {}\n}"),
      [LEFT, "new"]),
     ("lines reindented", inline("f();\ng();"), inline("f();\n    g();"), []),
@@ -108,6 +109,18 @@ SAMPLES = (
     ("a block mark put in a string of an @container inside @media", styled(NESTED % '""'),
      styled(NESTED % '"/* X-INICIO */"'), ["gone", "new"]),
     ("a space put inside a rule", styled("a { color: red; }\n"), styled("a {  color: red; }\n"), []),
+    ("the space after + taken out of a calc()", styled("a { padding: calc(14px + env(safe-area-inset-bottom)); }\n"),
+     styled("a { padding: calc(14px +env(safe-area-inset-bottom)); }\n"), ["gone", "new"]),
+    ("a comment in place of the space before + in a calc()", styled("a { padding: calc(14px + 1px); }\n"),
+     styled("a { padding: calc(14px/* c */+ 1px); }\n"), ["gone", "new"]),
+    ("a stylesheet with a font moved to another folder", {"index.html": "<link rel='stylesheet' href='base.css'>\n",
+                                                          "base.css": FONT},
+     {"index.html": "<link rel='stylesheet' href='gerado/base.css'>\n", "gerado/base.css": FONT}, ["gone", "new"]),
+    ("a line break put after throw", inline("function g(x) {\n  throw x;\n}"),
+     inline("function g(x) {\n  throw\n  x;\n}"), ["does not parse"]),
+    ("two functions of one name swapped", inline("function f() { return 1; }\nfunction f() { return 2; }\nf();"),
+     inline("function f() { return 2; }\nfunction f() { return 1; }\nf();"),
+     ["declarations of one name in another order"]),
 )
 
 
@@ -136,25 +149,29 @@ def binder(text):
 
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
-    results = []
-    for title, base, head, expected in SAMPLES:
-        report = theme_rebuild.compare(theme_rebuild.assemble(base.__getitem__),
-                                       theme_rebuild.assemble(head.__getitem__))
-        found = [kind for kind, _, _ in report.changes]
-        results.append((found == expected, f"{title}: {found or 'only moves code'}"))
+    samples = [(title, theme_rebuild.assemble(base.__getitem__), theme_rebuild.assemble(head.__getitem__), expected)
+               for title, base, head, expected in SAMPLES]
     theme = theme_rebuild.assemble(theme_rebuild.reader(None, "ritmelli"))
     shelf_moved = {"shelf.js": lambda text, _: text.replace(binder(text), "") if binder(text) else "",
                    "start.js": lambda text, read: text + binder(read("shelf.js"))}
-    for title, changes, expected in (
-            ("notice.js and covers.js swapped", {"index.html": swapped}, "moved to another script"),
-            ("desk-buttons.js and start.js before ui-events.js", {"index.html": early}, "moved to another script"),
-            ("bindShelfClick moved from shelf.js to the end of start.js", shelf_moved, LEFT)):
-        head = theme_rebuild.assemble(theme_mutant(changes))
-        report = theme_rebuild.compare(theme, head)
-        found = sorted({kind for kind, _, _ in report.changes})
+    mutants = [(title, theme_rebuild.assemble(theme_mutant(changes)), expected) for title, changes, expected in (
+        ("notice.js and covers.js swapped", {"index.html": swapped}, "moved to another script"),
+        ("desk-buttons.js and start.js before ui-events.js", {"index.html": early}, "moved to another script"),
+        ("bindShelfClick moved from shelf.js to the end of start.js", shelf_moved, LEFT),
+        ("a line break after the first throw of api.js",
+         {"api.js": lambda text, _: text.replace("throw x;", "throw\nx;", 1) if "throw x;" in text else ""},
+         "does not parse"))]
+    compiles = theme_rebuild.syntax([theme, *(page for _, a, b, _ in samples for page in (a, b)),
+                                     *(page for _, page, _ in mutants)])
+    results = []
+    for title, base, head, expected in samples:
+        found = [kind for kind, _, _ in theme_rebuild.compare(base, head, compiles).changes]
+        results.append((found == expected, f"{title}: {found or 'only moves code'}"))
+    for title, head, expected in mutants:
+        found = sorted({kind for kind, _, _ in theme_rebuild.compare(theme, head, compiles).changes})
         results.append((len(head.blocks) == len(theme.blocks) and expected in found,
                         f"the theme with {title} does more than move code ({found})"))
-    report = theme_rebuild.compare(theme, theme)
+    report = theme_rebuild.compare(theme, theme, compiles)
     results.append((not report.changes and report.declarations > 100,
                     f"the theme against itself only moves code ({report.declarations} declarations compared)"))
     for ok, message in results:

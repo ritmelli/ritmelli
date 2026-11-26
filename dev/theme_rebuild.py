@@ -1,9 +1,13 @@
 import argparse
+import asyncio
 import collections
 import difflib
+import importlib
+import posixpath
 import re
 import subprocess
 import sys
+import types
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from pathlib import Path
@@ -23,12 +27,14 @@ Exit 0 when the head only moves code: the two pages are the same, or
 - each script declares the same functions at its top level (they may move inside it: a script's function declarations
   exist before any of its statements runs, and only there);
 - every other top-level statement of the base is in the head, in the same order and in the same script;
-- every style rule of the base is in the head, in the same order and under the same stylesheet attributes (it may move
-  to another stylesheet).
+- every style rule of the base is in the head, in the same order, under the same stylesheet attributes and in a
+  stylesheet of the same folder (it may move to another stylesheet there: its relative URLs keep their target).
 Statements and rules are compared as syntax trees (tree-sitter), without comments and whitespace outside strings and
 templates, so a block mark, a blank line or a new indentation is no change, while a space inside a template literal,
-or a mark that joins two tokens, is. A part the CSS grammar does not know (an @container inside @media) is compared
-by its tokens too. A script that does not parse is a change. Anything else is a change, printed, and the exit is 1."""
+or a mark that joins two tokens, is. In CSS, whether a token follows whitespace counts too (calc() needs the spaces
+around + and -). A part the CSS grammar does not know (an @container inside @media) is compared by its tokens too.
+Declarations of one name keep their order (the last one wins). A script that V8, in a headless Chrome, does not
+compile, or that tree-sitter does not parse, is a change. Anything else is a change, printed, and the exit is 1."""
 
 INLINE_SCRIPT = re.compile(r"<!-- inline-script: ([\w-]+\.js) -->")
 MARK = re.compile(r"/\*\s*(?:[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-(?:INICIO|FIM)|[a-z]+:(?:inicio|fim))\b[^*]*\*/")
@@ -38,6 +44,7 @@ CSS_TYPES = (None, "", "text/css")
 DECLARATIONS = ("function_declaration", "generator_function_declaration")
 COMMENTS = ("comment", "html_comment")
 STRICT = ("'use strict'", '"use strict"')
+CSS_COMMENT = re.compile(r"/\*.*?\*/", re.S)
 MIN_PIECE = 2
 
 
@@ -60,6 +67,7 @@ class Block:
     header: str
     others: tuple
     code: bool
+    folder: str = ""
     raw: list = field(default_factory=list)
 
     @property
@@ -122,7 +130,7 @@ def header(kind, name, others):
 def block_of(kind, name, others):
     if kind in ("link", "style-open"):
         return Block("style", header("link" if kind == "link" else "style", name, others), tuple(others.items()),
-                     others.get("type") in CSS_TYPES)
+                     others.get("type") in CSS_TYPES, posixpath.dirname(name) if kind == "link" else "")
     return Block("script", header("script" if kind == "script-open" else kind, name, others), tuple(others.items()),
                  others.get("type") in JS_TYPES)
 
@@ -227,10 +235,25 @@ def parsers():
             "style": tree_sitter.Parser(tree_sitter.Language(tree_sitter_css.language()))}
 
 
-def shape(node, src):
+def shape(node, src, spaced=None):
     if not node.children:
-        return node.type, src[node.start_byte:node.end_byte].decode("utf-8")
-    return node.type, tuple(shape(x, src) for x in node.children if x.type not in COMMENTS)
+        token = node.type, src[node.start_byte:node.end_byte].decode("utf-8")
+        if spaced is None:
+            return token
+        gap = CSS_COMMENT.sub("", src[spaced[0]:node.start_byte].decode("utf-8"))
+        spaced[0] = node.end_byte
+        return *token, any(x.isspace() for x in gap)
+    return node.type, tuple(shape(x, src, spaced) for x in node.children if x.type not in COMMENTS)
+
+
+def syntax(pages):
+    texts = sorted({x.text for page in pages for x in page.blocks if x.kind == "script" and x.code})
+    missing_script = importlib.import_module("missing_script")
+
+    async def run(tab):
+        return {text: "exceptionDetails" not in await tab.cmd("Runtime.compileScript", expression=text, sourceURL="",
+                                                                persistScript=False) for text in texts}
+    return asyncio.run(missing_script.with_tab(types.SimpleNamespace(base="http://127.0.0.1:9"), run))
 
 
 @dataclass
@@ -238,6 +261,7 @@ class Unit:
     shape: tuple
     where: int
     text: str
+    name: str = ""
 
 
 @dataclass
@@ -248,10 +272,10 @@ class Parsed:
     units: list = field(default_factory=list)
 
 
-def parse(parser, block, n):
+def parse(parser, block, n, compiles):
     src = block.text.encode("utf-8")
     tree = parser.parse(src)
-    out = Parsed(error=block.kind == "script" and tree.root_node.has_error)
+    out = Parsed(error=block.kind == "script" and (tree.root_node.has_error or not compiles[block.text]))
     prologue = block.kind == "script"
     for node in tree.root_node.children:
         if node.type in COMMENTS:
@@ -262,7 +286,10 @@ def parse(parser, block, n):
             out.strict = out.strict or src[named[0].start_byte:named[0].end_byte].decode("utf-8") in STRICT
         else:
             prologue = False
-        unit = Unit(shape(node, src), n, text.split("\n")[0][:120])
+        name = node.child_by_field_name("name")
+        unit = Unit(shape(node, src, [node.start_byte] if block.kind == "style" else None), n,
+                    text.split("\n")[0][:120],
+                    src[name.start_byte:name.end_byte].decode("utf-8") if name else "")
         (out.declarations if block.kind == "script" and node.type in DECLARATIONS else out.units).append(unit)
     return out
 
@@ -304,13 +331,13 @@ def markup(page):
     return out
 
 
-def compare(a, b):
+def compare(a, b, compiles):
     report = Report()
     found = parsers()
     sides = []
     for page in (a, b):
         scripts = [n for n, x in enumerate(page.blocks) if x.kind == "script"]
-        parsed = {n: parse(found[x.kind], x, n) for n, x in enumerate(page.blocks) if x.code}
+        parsed = {n: parse(found[x.kind], x, n, compiles) for n, x in enumerate(page.blocks) if x.code}
         sides.append((scripts, parsed))
     (scripts_a, parsed_a), (scripts_b, parsed_b) = sides
     compare_sequences(report, "markup", markup(a), markup(b), lambda _: "the page", lambda _: "the page")
@@ -326,19 +353,25 @@ def compare(a, b):
                                    f"{by.header} (strict: {sy})", []))
         if not bx.code and [r.strip() for r in bx.raw if r.strip()] != [r.strip() for r in by.raw if r.strip()]:
             report.changes.append(("script content", f"script {k + 1}: {bx.header}", []))
-        mine = collections.Counter(u.shape for u in parsed_a[x].declarations) if x in parsed_a else collections.Counter()
-        theirs = collections.Counter(u.shape for u in parsed_b[y].declarations) if y in parsed_b else collections.Counter()
-        report.declarations += sum(mine.values())
-        texts = {u.shape: u.text for u in [*(parsed_a.get(x) or Parsed()).declarations,
-                                           *(parsed_b.get(y) or Parsed()).declarations]}
-        report.changes += [("declaration left its script", bx.header, [texts[s]]) for s in (mine - theirs).elements()]
-        report.changes += [("declaration came into the script", by.header, [texts[s]])
-                           for s in (theirs - mine).elements()]
+        mine, theirs = collections.defaultdict(list), collections.defaultdict(list)
+        for unit in (parsed_a.get(x) or Parsed()).declarations:
+            mine[unit.name].append(unit)
+        for unit in (parsed_b.get(y) or Parsed()).declarations:
+            theirs[unit.name].append(unit)
+        report.declarations += sum(len(v) for v in mine.values())
+        for name in sorted(set(mine) | set(theirs)):
+            before, after = [u.shape for u in mine[name]], [u.shape for u in theirs[name]]
+            texts = {u.shape: u.text for u in mine[name] + theirs[name]}
+            left, came = collections.Counter(before) - collections.Counter(after), collections.Counter(after) - collections.Counter(before)
+            report.changes += [("declaration left its script", bx.header, [texts[s]]) for s in left.elements()]
+            report.changes += [("declaration came into the script", by.header, [texts[s]]) for s in came.elements()]
+            if before != after and not left and not came:
+                report.changes.append(("declarations of one name in another order", f"{by.header}: {name}", []))
     for kind, what in (("script", "statement"), ("style", "style rule")):
         units = []
         for page, scripts, parsed in ((a, scripts_a, parsed_a), (b, scripts_b, parsed_b)):
             rank = {n: k for k, n in enumerate(scripts)}
-            units.append([((u.shape, page.blocks[n].others) if kind == "style" else u.shape,
+            units.append([((u.shape, page.blocks[n].others, page.blocks[n].folder) if kind == "style" else u.shape,
                            rank[n] if kind == "script" else None, u.text)
                           for n, p in sorted(parsed.items()) if page.blocks[n].kind == kind for u in p.units])
         compare_sequences(report, what, *units,
@@ -360,7 +393,7 @@ def main(argv=None):
     if a == b:
         print("the pages are equal")
         return 0
-    report = compare(a, b)
+    report = compare(a, b, syntax([a, b]))
     print(f"{report.declarations} top-level function declaration(s) compared by script; {report.moved} block(s) "
           f"moved out of order; {len(report.changes)} change(s)")
     for kind, where, lines in report.changes:

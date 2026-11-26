@@ -86,13 +86,16 @@ head só muda código de lugar:
 - cada script declara as mesmas funções no alto (elas podem mudar de lugar dentro dele, porque existem antes de qualquer
   instrução dele rodar, e só nele);
 - toda outra instrução do alto está no head, na mesma ordem e no mesmo script;
-- toda regra de estilo está no head, na mesma ordem e com os mesmos atributos de folha (pode mudar de folha).
+- toda regra de estilo está no head, na mesma ordem, com os mesmos atributos de folha e numa folha da mesma pasta
+  (pode mudar de folha ali: as URLs relativas dela continuam apontando para o mesmo arquivo).
 
 Instruções e regras são comparadas como árvores de sintaxe (o tree-sitter, do `requirements-dev.txt`), sem os
 comentários e os espaços fora de strings e templates. Assim, uma marca de bloco, uma linha em branco ou uma indentação
-nova não são mudança, e um espaço dentro de um template literal, ou uma marca que junta dois tokens, são. A parte do CSS
+nova não são mudança, e um espaço dentro de um template literal, ou uma marca que junta dois tokens, são. No CSS
+conta também se um token vem depois de espaço (o `calc()` pede os espaços em volta do `+` e do `-`). Declarações de
+função de mesmo nome guardam a ordem (vale a última). A parte do CSS
 que a gramática não conhece (um `@container` dentro de `@media`) também é comparada pelos tokens, e um script que
-não analisa é mudança. O resto sai 1, com cada mudança impressa. O `dev/test_theme_rebuild.py`, do COMPLETO do
+não analisa, ou que o V8 (num Chrome sem tela) não compila, é mudança. O resto sai 1, com cada mudança impressa. O `dev/test_theme_rebuild.py`, do COMPLETO do
 `dev/testa_tudo.py`, confere o veredito em páginas pequenas e no tema com o `notice.js` trocado com o `covers.js`, com o
 `desk-buttons.js` e o `start.js` antes do `ui-events.js` e com o `bindShelfClick` levado do `shelf.js` para o fim do
 `start.js`.
