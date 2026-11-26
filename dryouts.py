@@ -14,6 +14,10 @@ def tell(line):
     print(line, file=sys.stderr, flush=True)
 
 
+def up_after(up_at, sent):
+    return sent is not None and round(up_at * 1000) > round(sent * 1000)
+
+
 class VoicePedalStart:
     def __init__(self, clock=time.monotonic):
         self.clock = clock
@@ -48,10 +52,10 @@ class VoicePedalStart:
         if new:
             up_at = now - (round(now * 1000) - (stamp - 1)) % (2**32 - 1) / 1000 if stamp else now
             on, ended = self._on, self._ended
-            if on is not None and on[3] is not None and up_at >= on[3] and (on[1] is None or up_at <= on[1] + TICK_S):
+            if on is not None and up_after(up_at, on[3]) and (on[1] is None or up_at <= on[1] + TICK_S):
                 owner = on
             else:
-                owner = next((e for e in reversed(ended) if e[3] is not None and e[3] <= up_at <= e[1] + TICK_S), None)
+                owner = next((e for e in reversed(ended) if up_after(up_at, e[3]) and up_at <= e[1] + TICK_S), None)
             if owner is not None:
                 tell(f"voice pedal: its voice track came up {up_at - owner[0]:.2f} s after the pedal turned on")
                 owner[2] = up_at
@@ -127,6 +131,7 @@ class RingDryOuts:
         served, changes = self._readers
         if owners != served:
             self._readers = (owners, changes + 1)
+            self.filled_at = None
         return owners
 
     def read_ring(self, read):

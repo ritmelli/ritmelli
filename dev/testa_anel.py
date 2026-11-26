@@ -579,14 +579,16 @@ class TestVoicePedalStart(unittest.TestCase):
         self.assertIn("and off 0.05 s ago,", log)
 
     def test_the_track_is_up_only_once_its_line_is_told(self):
-        pedal = dryouts.VoicePedalStart(clock=lambda: 5.0)
+        now = [4.99]
+        pedal = dryouts.VoicePedalStart(clock=lambda: now[0])
         pedal.sent(pedal.pedal(True))
+        now[0] = 5.0
         seen = []
         with mock.patch.object(dryouts, "tell",
                                side_effect=lambda line: seen.append((pedal.track_up_at, pedal.starting()[1]))):
             pedal.track(True, stamp(5.0))
         self.assertEqual((seen, pedal.track_up_at),
-                         ([(None, "the pedal turned on 0.00 s ago, its voice track isn't up yet")], 5.0))
+                         ([(None, "the pedal turned on 0.01 s ago, its voice track isn't up yet")], 5.0))
 
     def test_a_track_read_after_its_pedal_turned_on_again_is_told_for_its_start(self):
         now = [1.0]
@@ -737,6 +739,37 @@ class TestVoicePedalStart(unittest.TestCase):
             now[0] = 1.5
             pedal.track(True, stamp(1.1))
         self.assertNotIn("voice pedal:", log.getvalue(), "both tracks came up before the start's liga(True) was sent")
+
+    def test_a_stamp_in_the_millisecond_its_start_was_sent_is_not_its(self):
+        for up_at, told in ((2.4996, False), (2.501, True)):
+            with self.subTest(up_at=up_at):
+                now = [2.0]
+                pedal = dryouts.VoicePedalStart(clock=lambda: now[0])
+                with mock.patch("sys.stderr", io.StringIO()) as log:
+                    start = pedal.pedal(True)
+                    now[0] = 2.4999
+                    pedal.sent(start)
+                    now[0] = 2.6
+                    pedal.track(True, stamp(up_at))
+                self.assertEqual("voice pedal:" in log.getvalue(), told)
+
+    def test_a_fill_for_the_readers_before_a_change_does_not_bound_the_next_dry_out(self):
+        now = [1.0]
+        pedal = dryouts.VoicePedalStart(clock=lambda: now[0])
+        dry = dryouts.RingDryOuts(pedal)
+        with mock.patch("sys.stderr", io.StringIO()):
+            pedal.sent(pedal.pedal(True))
+            dry.served((1,))
+            now[0] = 1.1
+            pedal.track(True, stamp(1.1))
+            dry.read_ring(lambda: 1)
+            now[0] = 10.0
+            dry.served((2,))
+            dry.read_ring(lambda: 0)
+            now[0] = 10.05
+            dry.read_ring(lambda: 0)
+            dry.ran_dry(0.05, 1, 0.0)
+        self.assertEqual(dry.while_pedal_starting, 0, "the track came up 8.9 s before the ring was seen empty")
 
     def test_a_start_sent_again_keeps_when_it_was_first_sent(self):
         now = [1.0]
@@ -928,9 +961,9 @@ class TestVoicePedalDryOut(unittest.TestCase):
         self.seen_up()
 
     def pedal_on(self, seconds_ago):
-        self.now -= seconds_ago
+        self.now -= seconds_ago + 0.001
         self.motor.voice_pedal.sent(self.motor.voice_pedal.pedal(True))
-        self.now += seconds_ago
+        self.now += seconds_ago + 0.001
 
     def pedal_lines(self):
         return [ln for ln in self.logged().splitlines() if "while the voice pedal was starting" in ln]
