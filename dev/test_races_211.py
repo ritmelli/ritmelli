@@ -271,13 +271,13 @@ def audio_version_while_the_passage_reads_the_source(A, E, readers):
         t = threading.Thread(target=A._prepara, args=(cap.track, x, (id(cap.track), x["qid"]), cap))
         t.start()
         read.wait(WAIT_S)
-        cmd.mover_na_fila(A, x["qid"], 1)
+        cmd.mover_na_fila(A, y["qid"], 0)
         with A.fila_lock:
             A.automatico._troca_audio("aaaaaaaaaaa", v)
-        cmd.mover_na_fila(A, x["qid"], 0)
+        cmd.mover_na_fila(A, y["qid"], 1)
         go.set()
         t.join(WAIT_S)
-    check(A.fila[0] is x and x["youtube_id"] == "fffffffffff" and E.pronto_tag is None,
+    check(A.fila[0] is x and x["youtube_id"] == "fffffffffff" and "fixa" not in x and E.pronto_tag is None,
           f"an entry that left the head, took the audio version and came back while the passage read its source is "
           f"not prepared with the source of before ({x['youtube_id']} in the queue, prepared {E.pronto_tag})")
 

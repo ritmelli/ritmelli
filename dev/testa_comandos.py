@@ -33,6 +33,7 @@ with contextlib.redirect_stderr(io.StringIO()):  # o aviso das vozes do pedal, q
     import automatico
     import comandos as cmd
     import engine as eng
+    import i18n
     import pastas
     import server
 
@@ -1174,6 +1175,8 @@ class Segura:
                 self.vez.pop()
                 self.dentro.set()
                 self.libera.wait(5)
+                if isinstance(quebra, Exception):
+                    raise quebra
                 if quebra:
                     raise ValueError("the queue entry has no video and no link")
             return real(x, **kw)
@@ -1374,6 +1377,12 @@ def avanco(A, E):
     confere(res and isinstance(res[0], ValueError) and type(segundo) is type(res[0]) and segundo.__cause__ is res[0]
             and fila(A) == ["d3"],
             f"the broken entry: the Next that waited gets the same error as the first, and it leaves the queue "
+            f"({segundo!r}, {res}, {fila(A)})")
+    refused = i18n.Recusa("server.queue.empty", "The queue is empty: there's no next record.")
+    x, y, livre, segundo, res = dois_proximos(quebra=refused)
+    confere(res == [refused] and type(segundo) is i18n.Recusa and segundo.msg == refused.msg
+            and segundo.__cause__ is refused and fila(A) == ["d3"],
+            f"an entry refused with a message for the screen: the Next that waited gets a copy with the same message "
             f"({segundo!r}, {res}, {fila(A)})")
     x, y, livre, segundo, res = dois_proximos(invalida=lambda: E.load(arquivo(A, "d3")))
     confere(segundo[0] == 409 and res and res[0] is None and no_prato(E) == "d3" and fila(A) == ["d2", "d3"],
