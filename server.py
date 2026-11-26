@@ -66,17 +66,38 @@ TEMA_DE_ANTES = "/t/vitrola"
 SCRIPT_TAG = re.compile(r'<script src="([^"]+)">')
 SHEET_TAG = re.compile(r'<link rel="stylesheet" href="([^"]+)">')
 CLOSES_ELEMENT = {"script": re.compile(r"</script|<!--", re.IGNORECASE), "style": re.compile(r"</style", re.IGNORECASE)}
-RELATIVE_URL = re.compile(r"""url\((?!\s*['"]?(?:[a-z][a-z0-9+.-]*:|/|#))""", re.IGNORECASE)
 IMPORT_RULE = re.compile(r"@import\b", re.IGNORECASE)
-CSS_COMMENT = re.compile(r"/\*.*?(?:\*/|$)", re.DOTALL)
-CSS_STRING = re.compile(r"""\"(?:[^"\\\n]|\\.)*\"|'(?:[^'\\\n]|\\.)*'""", re.DOTALL)
-CSS_ESCAPE = re.compile(r"\\(?:([0-9a-fA-F]{1,6})[ \t\r\n\f]?|(.))", re.DOTALL)
+CSS_COMMENT_OR_STRING = re.compile(r"""/\*.*?(?:\*/|$)"""
+                                   r"""|"(?P<double>[^"\\\n]*(?:\\(?:\r\n|.)[^"\\\n]*)*)"?"""
+                                   r"""|'(?P<single>[^'\\\n]*(?:\\(?:\r\n|.)[^'\\\n]*)*)'?""", re.DOTALL)
+CSS_ESCAPE = re.compile(r"\\(?:([0-9a-fA-F]{1,6})(?:\r\n|[ \t\r\n\f])?|(.))", re.DOTALL)
+STRING_MARK = "\ue000"
+URL_VALUE = re.compile(r"url\(\s*(?:" + STRING_MARK + r"(\d+)" + STRING_MARK + r"|([^)\s]*))", re.IGNORECASE)
+NOT_RELATIVE = re.compile(r"\s*(?:[a-z][a-z0-9+.-]*:|/|#)", re.IGNORECASE)
 
 
-def css_as_read(text):
-    def char(m):
-        return chr(min(int(m.group(1), 16), 0xFFFD)) if m.group(1) else m.group(2)
-    return CSS_ESCAPE.sub(char, CSS_COMMENT.sub(" ", text))
+def css_unescape(text):
+    return CSS_ESCAPE.sub(lambda m: chr(min(int(m.group(1), 16), 0xFFFD)) if m.group(1) else m.group(2), text)
+
+
+@functools.lru_cache(maxsize=256)
+def sheet_problem(text, outside_page_folder):
+    strings = []
+
+    def token(m):
+        body = m.group("double") if m.group("double") is not None else m.group("single")
+        if body is None:
+            return " "
+        strings.append(css_unescape(body))
+        return f"{STRING_MARK}{len(strings) - 1}{STRING_MARK}"
+    plain = css_unescape(CSS_COMMENT_OR_STRING.sub(token, text))
+    if IMPORT_RULE.search(plain):
+        return "an @import, which the browser would fetch outside the page"
+    for m in URL_VALUE.finditer(plain) if outside_page_folder else ():
+        value = strings[int(m.group(1))] if m.group(1) is not None else m.group(2)
+        if value.strip() and not NOT_RELATIVE.match(value):
+            return "a relative url(), which the page would resolve from its own folder"
+    return None
 
 
 class ThemePageError(Exception):
@@ -132,14 +153,19 @@ def inline_files(html, folder):
         path, text = theme_file(folder, name)
         if closes := CLOSES_ELEMENT[tag].search(text):
             raise ThemePageError(f"{name} has {closes.group(0)}, which its <{tag}> cannot hold")
-        read = css_as_read(text) if tag == "style" else ""
-        if IMPORT_RULE.search(CSS_STRING.sub('""', read)):
-            raise ThemePageError(f"{name} has an @import, which the browser would fetch outside the page")
-        if read and path.parent != folder.resolve() and RELATIVE_URL.search(read):
-            raise ThemePageError(f"{name} has a relative url(), which the page would resolve from its own folder")
+        if tag == "style" and (problem := sheet_problem(text, path.parent != folder.resolve())):
+            raise ThemePageError(f"{name} has {problem}")
         parts += [html[done:start], f"<{tag}>\n{text}</{tag}>"]
         done = end
     return "".join(parts) + html[done:]
+
+
+def theme_of_template(rel):
+    with contextlib.suppress(OSError, ValueError):
+        parts = (THEMES / rel).resolve().relative_to(THEMES.resolve()).parts
+        if len(parts) == 2 and os.path.samefile(THEMES / rel, THEMES / parts[0] / "index.html"):
+            return parts[0]
+    return None
 
 
 def theme_page(page, texts, language):
@@ -2640,12 +2666,9 @@ def build(app_state):
 
     @web.middleware
     async def built_page_only(request, handler):
-        rel = request.path.removeprefix("/t/")
-        if rel != request.path and "/" in rel:
-            slug = rel.split("/", 1)[0]
-            with contextlib.suppress(OSError, ValueError):
-                if os.path.samefile(THEMES / rel, THEMES / slug / "index.html"):
-                    raise web.HTTPFound(request.rel_url.with_path(f"/t/{slug}/").with_query(request.rel_url.query))
+        if isinstance(request.match_info.route.resource, web.StaticResource):
+            if slug := await asyncio.to_thread(theme_of_template, request.path.removeprefix("/t/")):
+                raise web.HTTPFound(request.rel_url.with_path(f"/t/{slug}/").with_query(request.rel_url.query))
         return await handler(request)
 
     app = web.Application(middlewares=[guard, built_page_only])

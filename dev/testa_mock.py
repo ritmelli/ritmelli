@@ -1147,13 +1147,27 @@ def the_theme_page_build():
             "a sheet in a subfolder with an escaped relative url()": ('<link rel="stylesheet" href="sub/b.css">',
                                                                       {"sub/b.css": "a { b: \\75rl(x.png); }\n"},
                                                                       "relative url()"),
+            "a sheet with an @import escaped across a CRLF": ('<link rel="stylesheet" href="a.css">',
+                                                              {"a.css": '@im\\70\r\nort "p.css";\n'}, "a.css has an @import"),
+            "a sheet with an escaped quote before an @import": ('<link rel="stylesheet" href="a.css">',
+                                                                {"a.css": '@layer x\\22; @import "p.css";\n'},
+                                                                "a.css has an @import"),
+            "a sheet with an @import between strings of escaped quotes": (
+                '<link rel="stylesheet" href="a.css">',
+                {"a.css": 'a { content: "\\""; } @import "p.css"; a { content: "\\""; }\n'}, "a.css has an @import"),
+            "a sheet with an @import between strings of /* and */": (
+                '<link rel="stylesheet" href="a.css">',
+                {"a.css": 'a { content: "/*"; } @import "p.css"; a { content: "*/"; }\n'}, "a.css has an @import"),
+            "a sheet in a subfolder with /* in a string, then a relative url()": (
+                '<link rel="stylesheet" href="sub/b.css">',
+                {"sub/b.css": '.a { content: "/*"; } .b { background: url(x.png); } /* */\n'}, "relative url()"),
         }
         (folder / "sub").mkdir()
         for what, (tag, files, said) in refused.items():
             script.write_text("const first = 1;\n", encoding="utf-8")
             sheet.write_text("a { b: c; }\n", encoding="utf-8")
             for name, text in files.items():
-                (folder / name).write_text(text, encoding="utf-8")
+                (folder / name).write_text(text, encoding="utf-8", newline="")
             try:
                 server.inline_files(f"<head>\n{tag}\n", folder)
                 error = "no error"
@@ -1164,9 +1178,17 @@ def the_theme_page_build():
                                               encoding="utf-8")
         sheet.write_text("a { b: url(fonts/x.woff2); }\n", encoding="utf-8")
         (folder / "d.css").write_text("/* @import x; */ a::after { content: \"@import\"; }\n", encoding="utf-8")
+        (folder / "e.css").write_text('a::after { content: "\\" @import \\""; }\n', encoding="utf-8")
+        (folder / "sub" / "f.css").write_text('a::after { content: "url(example.png)"; }\n', encoding="utf-8")
         kept = {"a tag written inside an attribute": ("<div title='<script src=\"first.js\"></script>'></div>", None),
                 "a sheet of the page folder with a relative url()": ('<link rel="stylesheet" href="a.css">',
                                                                      "<style>\na { b: url(fonts/x.woff2); }\n</style>"),
+                "a sheet with @import in a string of escaped quotes": (
+                    '<link rel="stylesheet" href="e.css">',
+                    '<style>\na::after { content: "\\" @import \\""; }\n</style>'),
+                "a sheet in a subfolder with url() only inside a string": (
+                    '<link rel="stylesheet" href="sub/f.css">',
+                    '<style>\na::after { content: "url(example.png)"; }\n</style>'),
                 "a sheet with @import only in a comment and a string": (
                     '<link rel="stylesheet" href="d.css">',
                     "<style>\n/* @import x; */ a::after { content: \"@import\"; }\n</style>"),
@@ -1179,6 +1201,12 @@ def the_theme_page_build():
             except server.ThemePageError as ex:
                 out = f"error: {ex}"
             confere(out == (expected or tag), f"{what} builds as it should ({out[:90]!r})")
+        real = server.THEMES / "ritmelli" / "index.html"
+        server.theme_page(real, real.parent / "i18n", "en")
+        misses = server.sheet_problem.cache_info().misses
+        server.theme_page(real, real.parent / "i18n", "en")
+        confere(server.sheet_problem.cache_info().misses == misses,
+                f"a second build of the unchanged page reads no sheet again ({server.sheet_problem.cache_info()})")
         asyncio.run(a_missing_file_answers_500(server, folder))
 
 
@@ -1207,13 +1235,24 @@ async def a_missing_file_answers_500(server, folder):
         logger.addHandler(handler)
         try:
             A.port = so_mock.free_port()
+            compared = []
+            samefile = os.path.samefile
+
+            def recorded(a, b):
+                compared.append(threading.current_thread() is threading.main_thread())
+                return samefile(a, b)
             async with TestClient(TestServer(server.build(A), host="127.0.0.1", port=A.port)) as client:
                 resp = await client.get("/t/broken/", headers={"Host": f"localhost:{A.port}"})
                 status = resp.status
+                with mock.patch.object(server.os.path, "samefile", recorded):
+                    sent = await client.get("/t/broken/index.html", headers={"Host": f"localhost:{A.port}"},
+                                            allow_redirects=False)
         finally:
             logger.removeHandler(handler)
     confere(status == 500 and "gone.js is missing" in log.getvalue(),
             f"through the route, a missing theme file answers 500 and the log names it ({status})")
+    confere(sent.status == 302 and compared == [False],
+            f"the index.html redirect compares the file off the server's loop ({sent.status}, on the loop: {compared})")
 
 
 def index_names():
@@ -1225,7 +1264,7 @@ def index_names():
         short = ctypes.create_unicode_buffer(1024)
         if ctypes.windll.kernel32.GetShortPathNameW(str(page), short, len(short)):
             names.append("/t/ritmelli/" + Path(short.value).name)
-        names.append("/t/ritmelli/index.html::$DATA")
+        names += ["/t/ritmelli/index.html::$DATA", "/t/other/..%5Critmelli%5Cindex.html"]
     return names
 
 

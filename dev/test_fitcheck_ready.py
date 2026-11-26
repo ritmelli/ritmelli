@@ -138,8 +138,6 @@ class ThemeProxy:
 
     def hold_for(self, request):
         from_browser = "Chrome" in request.headers.get("User-Agent", "")
-        if self.hold_page_s and request.path == "/t/ritmelli/":
-            return 0 if self.held else self.hold_page_s
         if self.hold_state_s and from_browser and request.path == "/api/state":
             return self.hold_state_s
         return 0
@@ -159,7 +157,14 @@ class ThemeProxy:
             response = web.StreamResponse(status=upstream.status, headers={
                 k: v for k, v in upstream.headers.items() if k.lower() not in HOP_HEADERS})
             await response.prepare(request)
-            if self.late_notice and request.path == "/t/ritmelli/":
+            if self.hold_page_s and request.path == "/t/ritmelli/" and not self.held:
+                page = await upstream.read()
+                cut = page.index(b"</head>")
+                await response.write(page[:cut])
+                self.held.append(request.path)
+                await asyncio.sleep(self.hold_page_s)
+                await response.write(page[cut:])
+            elif self.late_notice and request.path == "/t/ritmelli/":
                 page = (await upstream.read()).decode("utf-8")
                 await response.write(page.replace("<head>", "<head>" + LATE_NOTICE, 1).encode("utf-8"))
             else:
@@ -205,7 +210,8 @@ def notice_through(proxy_options, config, button=None):
 def notice_on_slow_load():
     r, proxy = notice_through({"hold_page_s": LATE_S}, {"boas_vindas": True})
     check(bool(proxy.held) and r["abriu"] is True and not r["erros"],
-          f"with the theme page, which carries every script, held {LATE_S:.0f} s ({proxy.held}), longer than the "
+          f"with the theme page, which carries every script, held {LATE_S:.0f} s after its <head> ({proxy.held}), "
+          f"longer than the "
           f"{fitcheck.AVISO_ESPERA_S:.0f} s wait for the notice, the notice is still seen opening on load ({r})")
 
 
