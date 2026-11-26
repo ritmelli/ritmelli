@@ -34,8 +34,10 @@ um texto que o UTF-8 não codifica não quebra a volta, que é montada uma vez p
   formato de áudio) e cada falha vai para o `server.err` (nos logs, ver `pastas.py`) com o motivo; se não abrir, a
   tela avisa e o disco toca quando o download chegar. Se o endereço sai mas o ffmpeg não
   recebe nada dele (o YouTube às vezes responde 403), o leitor marca a espera do arquivo e passa pelo mesmo caminho do
-  stream recusado (o `Engine.on_silent_stream`, que o App liga ao `_stream_refused`): o prato fica carregando com o aviso e toca o arquivo
-  quando o download chega; se o download falhou, antes ou depois, o prato para.
+  stream recusado (o `Engine.on_silent_stream`, que o App liga ao `_stream_refused`), enquanto essa espera ainda é a do
+  prato (um pulo na barra depois dela começa um leitor novo, que fica): o prato fica carregando com o aviso e toca o
+  arquivo quando o download chega, com leitor novo mesmo perto do fim; se o download falhou, antes ou depois, o prato
+  para.
 - Fila (A seguir): quando o disco do prato acaba, o primeiro da fila entra, do arquivo
   ou pelo stream. O que entra na fila sem estar na prateleira já começa a baixar. O
   Repetir manda (ligado, o disco não acaba), mas vale só para o disco do prato: outro

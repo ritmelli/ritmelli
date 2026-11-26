@@ -6,8 +6,8 @@ video for its audio-only version.
 
 Most of the Automatico's state still lives on the App (auto, semente, mix, mix_base, ponte, mix_buscando, mix_falhou,
 fora, fora_musica, andamentos, andamentos_versao, versoes), because the state read, save_cfg and _recusar read it; the
-Automatico reads and changes it through the app, under app.fila_lock, in the lock order of comandos.py, and the queue
-changes through App.change_queue, except the entries _troca_audio changes in place (#211). The Mix order counter
+Automatico reads and changes it through the app, under app.fila_lock, and the queue changes through
+App.change_queue. The Mix order counter
 (mix_seq) is its own. mix_do is resolved on every call (the test swaps the App's). Its constants live here and the
 music functions (chaves_musica, autores, find_track, track_artists) in music.py; the shelf's folder (pastas.LIB,
 read when it is used) and save_json come from pastas.py, and the error text (yt_msg) from yt_erros.py. What is still

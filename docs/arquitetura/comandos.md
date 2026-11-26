@@ -129,10 +129,12 @@ que pegue o `_lock` ou o próprio `_qlock`); com a `fila_lock` na mão, o `_lock
 `change_queue`, do `close_switches` e do `concilia` (a `fila_lock` e o `_qlock`), a do `with_engine` (a `fila_lock` e o
 `_lock`) e o `pode` dos métodos do motor (o `_lock` e o `_qlock`), e as funções locais que elas chamam também; e confere
 essas travas no código que roda cada função (o `change_queue` chama a dele dentro do `_qlock`, e cada método público do
-motor que recebe um `pode` o roda sob o `_lock` e o `_qlock`, também pelo `_restart`). Com a `fila_lock`, o `_lock` ou o
-`_qlock` na mão, nem o código nem o que ele chama grava arquivo (`save_json`, `_save`, `write_text`, `write_bytes`).
-Confere também que o `_mixa` e os métodos e as funções do `engine.py` que ele chama, das travas do modelo, só pegam o
-`_qlock` (o `AudioLocks` do `Locks.tla`); o `_slock` dos sons por cima não entra no modelo.
+motor que recebe um `pode` o roda sob o `_lock` e o `_qlock`, também pelo `_restart`), e que quem chama o
+`change_queue`, o `close_switches` e o `concilia` tem a `fila_lock` na mão, subindo pelas chamadas até o ponto de
+entrada (a thread, a rota). Com a `fila_lock`, o `_lock` ou o `_qlock` na mão, nem o código nem o que ele chama grava
+arquivo (`save_json`, `_save`, `write_text`, `write_bytes`). Confere também que o `_mixa` e os métodos e as funções do
+`engine.py` que ele chama, das travas do modelo, só pegam o `_qlock` (o `AudioLocks` do `Locks.tla`); o `_slock` dos
+sons por cima não entra no modelo.
 
 ## O modelo das travas (`dev/tla/`)
 
@@ -156,10 +158,12 @@ posição do disco viram escolha não determinística, e os `qid` são simétric
   resolve, com justiça fraca.
 
 O `dev/test_tla.py` roda o TLC (o `tla2tools.jar` da versão fixada, conferido pelo sha256) nas duas, cada execução em
-menos de 60 s, e roda também os mutantes: cada propriedade tem um que desfaz o que ela protege, e o mutante tem de ser
-pego. No PR, o job `tla` do `testa.yml` roda isso numa máquina ubuntu (`python dev/testa_tudo.py --passo tla`). No PC,
-precisa do Java no PATH; o `TLA2TOOLS` aponta para um `tla2tools.jar` já baixado. As duas corridas da #211 se repetem no
-App de verdade no `dev/test_races_211.py`, com os passos do contraexemplo, um de cada vez.
+menos de 60 s (a `Races211` em duas: o download, o stream e a troca, sem as trocas de lugar na fila; e as trocas de
+lugar, a preparação da passagem e a versão de áudio, sem o job), e roda também os mutantes: cada propriedade tem um que
+desfaz o que ela protege, e o mutante tem de ser pego. No PR, o job `tla` do `testa.yml` roda isso numa máquina ubuntu
+(`python dev/testa_tudo.py --passo tla`). No PC, precisa do Java no PATH; o `TLA2TOOLS` aponta para um `tla2tools.jar`
+já baixado. As duas corridas da #211 se repetem no App de verdade no `dev/test_races_211.py`, com os passos do
+contraexemplo, um de cada vez.
 
 ## O que o servidor lê do motor
 

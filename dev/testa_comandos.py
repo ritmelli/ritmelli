@@ -1420,6 +1420,20 @@ def avanco(A, E):
             f"o segundo Proximo com o primeiro no meio da troca: os dois devolvem a mesma entrada, e so ela sai da "
             f"fila ({no_prato(E)}, {fila(A)})")
 
+    group, late = cmd.Proximo(None, 0), RuntimeError("the entry would not play")
+
+    class TimesOut(threading.Event):
+        def wait(self, timeout=None):
+            group.resolve(None, late)
+            return False
+    group.feita = TimesOut()
+    try:
+        timed_out = group.espera(0.01)
+    except cmd.QueuePlayFailed as ex:
+        timed_out = ex
+    confere(timed_out is None, f"a Next whose wait ran out answers no entry (the 409), even with the failure published "
+                               f"right after the wait ({timed_out!r})")
+
     def joined_next_and_a_play_that_raises(stops, then_plays=False):
         limpa()
         toca("d1")

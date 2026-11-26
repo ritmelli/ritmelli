@@ -369,6 +369,38 @@ def outer_failures(trees):
                                                 and c.args[0].attr == "fila_lock")] + ([] if calls else ["no with_lock"])
 
 
+def caller_failures(trees):
+    table = function_table(trees)
+    edges, called = [], set()
+    for key, func in table.items():
+        module, cls, _ = key
+        sites = []
+        calls_with_locks(func, cls, set(), sites, passed_callbacks(func))
+        for call, held in sites:
+            for callee in resolve(table, call, module, cls):
+                if callee != key:
+                    edges.append((key, callee, held))
+                    called.add(callee)
+    needs = {k: set(v) for k, v in CALLER_HOLDS.items() if k in table}
+    why, changed = {}, True
+    while changed:
+        changed = False
+        for caller, callee, held in edges:
+            miss = needs.get(callee, set()) - held - needs.get(caller, set())
+            if miss:
+                needs.setdefault(caller, set()).update(miss)
+                why.setdefault(caller, callee)
+                changed = True
+
+    def chain(k):
+        out = [k]
+        while out[-1] in why and why[out[-1]] not in out:
+            out.append(why[out[-1]])
+        return " -> ".join(".".join(p for p in x[1:] if p) for x in out)
+    return [f"{k[0]}: {chain(k)} needs {sorted(v)} held, and nothing that calls {k[2]} holds it"
+            for k, v in needs.items() if k not in called]
+
+
 def scope_failures(trees):
     out = []
     for key, slots in CALLBACKS.items():
@@ -577,6 +609,14 @@ def main():
                    f"acquisitions, {followed} calls followed, {walked} callbacks; {bad})")
     check(used == set(order) | before, f"the code takes exactly the locks the model declares ({sorted(used)})")
     trees = {m: ast.parse(sources[m], m) for m in MODULES}
+    callers = caller_failures(trees)
+    check(not callers, f"whoever calls the change_queue, the close_switches and the concilia holds the fila_lock, also "
+                       f"up the calls to the entry points ({callers})")
+    bare = sources["server.py"].replace("        with self.fila_lock:\n            return self.change_queue(move)\n",
+                                        "        return self.change_queue(move)\n")
+    callers = caller_failures(dict(trees, **{"server.py": ast.parse(bare)}))
+    check(bare != sources["server.py"] and len(callers) == 1,
+          f"with the App moving an entry through change_queue without the fila_lock, the check fails ({callers})")
     scope = scope_failures(trees) + outer_failures(trees)
     check(not scope, f"each callback the check follows runs, in the code that calls it, under the locks the check "
                      f"gives it ({len(CALLBACKS)} functions; {scope})")

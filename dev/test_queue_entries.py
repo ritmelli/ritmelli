@@ -123,6 +123,9 @@ class Entries:
             return self.is_container(node.left, scope) or self.is_container(node.right, scope)
         if isinstance(node, ast.BoolOp):
             return any(self.is_container(v, scope) for v in node.values)
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "copy"
+                and not node.args):
+            return self.is_container(node.func.value, scope)
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in ("list", "sorted",
                                                                                               "reversed", "tuple"):
             return bool(node.args) and self.is_container(node.args[0], scope)
@@ -260,6 +263,10 @@ class Entries:
                 elif (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
                       and node.func.attr in MUTATORS and self.is_entry(node.func.value, scope)):
                     hit = f".{node.func.attr}()"
+                elif (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                      and isinstance(node.func.value, ast.Name) and node.func.value.id == "dict"
+                      and node.func.attr in MUTATORS and node.args and self.is_entry(node.args[0], scope)):
+                    hit = f"dict.{node.func.attr}()"
                 if hit:
                     where = "in the App outside a change_queue" if self.owner_only else "outside the App"
                     out.append(f"{module}:{node.lineno}: {hit} on an entry of the queue or the Mix {where}, in "
@@ -438,7 +445,12 @@ ENTRY_FORMS = {
     "an entry passed to a function of another module": ({"comandos.py": "def marca(x):\n    x['audio'] = True\n",
                                                          "case.py": "def f(A):\n    cmd.marca(A.fila[0])\n"}, 1),
     "a tuple assignment to an entry": ({"case.py": "def f(A):\n    A.fila[0]['audio'], y = True, 1\n"}, 1),
-    "an entry of the Mix from unpacking": ({"case.py": "def f(A):\n    x, _ = A.mix[0], None\n    x.update(a=1)\n"}, 1),
+    "dict.update called on an entry of the Mix": ({"case.py": "def f(A):\n    dict.update(A.mix[0], audio=True)\n"}, 1),
+    "an entry of a shallow copy of the queue": ({"case.py": "def f(A):\n    for x in A.fila.copy():\n"
+                                                            "        x['fixa'] = True\n"}, 1),
+    "a new dict made from an entry, then changed": ({"case.py": "def f(A):\n    y = dict(A.fila[0])\n"
+                                                                "    y['fixa'] = True\n"}, 0),
+    "an entry of the Mix from unpacking":({"case.py": "def f(A):\n    x, _ = A.mix[0], None\n    x.update(a=1)\n"}, 1),
     "a new dict from an entry":({"case.py": "def f(A):\n    for m in A.mix:\n        m = dict(m, ordem=1)\n"}, 0),
     "a dict that is no entry": ({"case.py": "def f(A):\n    d = {}\n    d['k'] = 1\n    d.update(a=1)\n"}, 0),
     "a helper that writes the entries of the Mix it gets": (

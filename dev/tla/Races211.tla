@@ -3,7 +3,7 @@ EXTENDS Locks, TLC
 
 CONSTANTS Qids, NoQid, StreamFailureChecksJob, AudioSwapThroughChangeQueue, StreamChecksItsTrack,
           RefusedStreamStopsWithoutTheFile, RefusedStreamTriesTheFileFirst, PrepareChecksTheVersion,
-          SilentStreamGoesToTheApp
+          SilentStreamGoesToTheApp, WithTheJob, WithTheMoves
 
 VARIABLES pc, track, nextId, line, pronto, nearEnd,
           jobStatus, shelf, stream, swTr, dlSaw, wrongTrack, fileWait,
@@ -55,7 +55,9 @@ Init ==
     /\ owner = [l \in Locks |-> NoProc]
     /\ orderBroken = FALSE
     /\ pc = [p \in Procs |->
-               CASE p = "Download" -> "dl_run"
+               CASE p \in {"Download", "Swap", "Stream", "Forget"} /\ ~WithTheJob -> "done"
+                 [] p = "Move" /\ ~WithTheMoves -> "done"
+                 [] p = "Download" -> "dl_run"
                  [] p = "Swap" -> "sw_try"
                  [] p = "Stream" -> "st_wait"
                  [] p = "Prepare" -> "pr_start"

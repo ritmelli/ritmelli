@@ -3331,7 +3331,7 @@ class Engine:
                 dur = novo.get("duration") or 0
                 self.track = d.track = novo
                 d.ganho_alvo = alvo
-                if self.ended or d.eof_gen == d.gen or (dur and t >= dur - 2):
+                if self._espera_arquivo != d.gen and (self.ended or d.eof_gen == d.gen or (dur and t >= dur - 2)):
                     gen = None  # no fim (ou quase): o leitor de agora termina o disco
                 else:
                     d.gen += 1
@@ -3345,9 +3345,9 @@ class Engine:
             threading.Thread(target=self._reader, args=(gen, novo, t, d), daemon=True).start()
         return True
 
-    def warn_on(self, track, message):
+    def warn_on(self, track, message, waiting=False):
         with self._qlock:
-            if self.track is not track:
+            if self.track is not track or (waiting and not self.esperando_arquivo()):
                 return False
             self._error = message
             return True

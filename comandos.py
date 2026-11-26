@@ -92,10 +92,11 @@ class Proximo(Reserva):
             self.feita.set()
 
     def espera(self, prazo=None):
-        x = super().espera(prazo)
+        if not self.feita.wait(AVANCO_ESPERA_S if prazo is None else prazo):
+            return None
         if self.error is not None:
             raise QueuePlayFailed(str(self.error)) from self.error
-        return x
+        return self.entrada
 
     def liga(self, r):
         """Com o _qlock: r e o avanco deste grupo. Ele resolve quando r resolver (ou agora, se r ja resolveu), sem

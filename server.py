@@ -648,7 +648,8 @@ class App:
             self.engine.relogio = relogio
         self.engine.porta = port  # a mina chama a API daqui pelas ferramentas dela
         self.engine.religar_stream = self.religar_stream
-        self.engine.on_silent_stream(lambda tr: self._stream_refused(tr, "the stream gave no audio"))
+        self.engine.on_silent_stream(lambda tr: self._stream_refused(
+            tr, i18n.msg("server.player.noAudio", "the stream gave no audio"), waiting=True))
         self.engine.sonoridade_de, self.engine.mediu = self.sonoridade_de, self.mediu
         self.engine.volume_auto = bool(self.cfg.get("volume_auto", True))
         self.cfg.pop("mic_vol", None)  # o nivel da voz e o do Windows, que guarda sozinho (18/10)
@@ -1172,7 +1173,7 @@ class App:
         if self.engine.trocar_fonte(tr, novo):
             self.canal_depois(novo, no_prato=True)
 
-    def _stream_refused(self, tr, reason):
+    def _stream_refused(self, tr, reason, waiting=False):
         e = self.engine
         j = self.jobs.get(tr["job"])
 
@@ -1184,13 +1185,13 @@ class App:
             return
 
         def no_file_will_come():
-            return e.track is tr and j is not None and (
+            return e.track is tr and j is not None and (not waiting or e.esperando_arquivo()) and (
                 j["status"] == "error" or (j["status"] == "done" and shelf_record() is None))
         if e.stop(pode=no_file_will_come) is not None:
             return
         e.warn_on(tr, i18n.msg("server.player.streamRefused", "YouTube didn't allow the audio to play right away "
                                                               "({reason}). It will play as soon as the download "
-                                                              "finishes.", reason=reason))
+                                                              "finishes.", reason=reason), waiting=waiting)
 
     def religar_stream(self, tr, pos, desistir):
         """O leitor do motor (na thread dele): o stream da parecida do Automatico caiu em pos, sem audio ou antes do
