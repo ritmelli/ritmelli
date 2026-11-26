@@ -358,7 +358,7 @@ class TestaMicrofone(unittest.TestCase):
 
                 def task(mic, result=result, v=v):
                     v.e.set_devices(mic="Mic2")
-                    v.e._error = other_error
+                    v.e.set_error(other_error)
                     return result
                 without_filter = {"filtro": False, "melhorias": True, "guid": "{a}"}
                 with mock.patch.object(eng, "_do_microfone", lambda mic: without_filter), \

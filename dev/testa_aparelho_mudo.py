@@ -1203,6 +1203,7 @@ class TestaInstalador(unittest.TestCase):
         log = self._log("denied", exit_code=9)
         self.assertIn("aparelhos: devices: 5 checked", log)
         self.assertIn("mic filter: failed: the filter wasn't installed on IN 1 (X): [Errno 13] Access is denied", log)
+        self.assertRegex(log, r"Parameters: .*--microfone instala-todos.*\s+.*Process exit code: 1")
 
     def test_filter_ok_logs_it(self):
         log = self._log([])
