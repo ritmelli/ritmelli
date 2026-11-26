@@ -229,8 +229,15 @@ class ThemeProxy:
         if "Origin" in request.headers:
             headers["Origin"] = self.target
         late = None
-        if self.stacks is not None and request.path == "/api/state":
+        if self.stacks is not None and request.path == "/api/state" and "Chrome" in request.headers.get("User-Agent", ""):
             late = asyncio.get_running_loop().call_later(LATE_STATE_S, self.stacks.ask)
+        try:
+            return await self.relay(request, headers, late)
+        finally:
+            if late is not None:
+                late.cancel()
+
+    async def relay(self, request, headers, late):
         async with self.session.request(request.method, self.target + request.path_qs, headers=headers,
                                         data=await request.read(), allow_redirects=False) as upstream:
             if late is not None:
@@ -283,23 +290,32 @@ def notice_through(proxy_options, config, button=None):
                     compara.para_servidor(srv)
                 finally:
                     stacks.close()
-        if server_stacks := stacks.of(tmp / "server.log"):
-            r["server_stacks"] = server_stacks[-6000:]
+                    found = stacks.of(tmp / "server.log")
+                    if found:
+                        print(found[-6000:], file=sys.stderr, flush=True)
+        if found:
+            r["server_stacks"] = found[-6000:]
     return r, proxy
 
 
-def child_stacks(code, stacks, *args):
+def child_stacks(code, stacks, ready, *args):
     child = subprocess.Popen([sys.executable, "-c", code, *args], env=dict(os.environ, **stacks.env()),
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8")
+    said, came = [], threading.Event()
+    threading.Thread(target=lambda: (said.append(child.stdout.readline()), came.set()), daemon=True).start()
+    if not (came.wait(10) and said[0].strip() == ready):
+        child.kill()
+        child.communicate()
+        stacks.close()
+        raise TimeoutError(f"the child did not say {ready!r} in 10 s ({said})")
     stacks.accepted.wait(10)
     return child
 
 
 def stacks_of_a_held_process():
     stacks = ServerStacks()
-    child = child_stacks(HELD_CHILD, stacks)
+    child = child_stacks(HELD_CHILD, stacks, "ready")
     try:
-        child.stdout.readline()
         stacks.ask()
         seen, dumped = [], threading.Event()
 
@@ -322,9 +338,8 @@ def stacks_of_a_held_process():
 
 def proxy_asks_when_the_state_is_late():
     stacks, port = ServerStacks(), so_mock.free_port()
-    child = child_stacks(SLOW_UPSTREAM, stacks, str(port), str(LATE_STATE_S + 1))
+    child = child_stacks(SLOW_UPSTREAM, stacks, "listening", str(port), str(LATE_STATE_S + 1))
     try:
-        child.stdout.readline()
         proxy = ThemeProxy(f"http://127.0.0.1:{port}", stacks=stacks)
         loop, stop = asyncio.new_event_loop(), asyncio.Event()
         thread = threading.Thread(target=loop.run_until_complete, args=(proxy.serve(stop),), daemon=True)
@@ -332,7 +347,8 @@ def proxy_asks_when_the_state_is_late():
         proxy.started.wait(10)
 
         async def state():
-            async with ClientSession() as session, session.get(proxy.base + "/api/state") as r:
+            async with ClientSession() as session, session.get(proxy.base + "/api/state",
+                                                               headers={"User-Agent": "Chrome"}) as r:
                 return r.status
 
         status = asyncio.run(state())
