@@ -344,8 +344,41 @@ def resume_cleanup_when_terminate_fails():
           f"and the process waited for ({raised!r}, closed {closed}, ended {ended})")
 
 
+def compara_folder_removed_when_the_stop_fails():
+    made, real_mkdtemp, real_prints, real_stop = [], compara.tempfile.mkdtemp, compara.prints, compara.para_servidor
+
+    def mkdtemp(*args, **kwargs):
+        made.append(real_mkdtemp(*args, **kwargs))
+        return made[-1]
+
+    async def no_prints(a, srv, destino):
+        return [], []
+
+    def stop_that_fails(srv):
+        real_stop(srv)
+        raise so_mock.Recusa("the test server stopped and left 1 process(es) it started running: ended")
+
+    argv = sys.argv
+    with tempfile.TemporaryDirectory(prefix="ritmelli-stop-check-") as folder:
+        compara.tempfile.mkdtemp, compara.prints, compara.para_servidor = mkdtemp, no_prints, stop_that_fails
+        sys.argv = ["compara.py", "--ref", "--sizes", "390x844@3", "--pasta", folder]
+        try:
+            compara.main()
+            refused = None
+        except so_mock.Recusa as ex:
+            refused = str(ex)
+        finally:
+            sys.argv = argv
+            compara.tempfile.mkdtemp, compara.prints, compara.para_servidor = real_mkdtemp, real_prints, real_stop
+    server_folders = [m for m in made if "ritmelli-compara-" in Path(m).name]
+    check(refused is not None and "left 1 process" in refused and len(server_folders) == 1
+          and not Path(server_folders[0]).exists(),
+          f"a compara whose server stop fails keeps that failure and still removes its temporary folder ({refused})")
+
+
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
+    compara_folder_removed_when_the_stop_fails()
     job_api_failures()
     resume_cleanup_when_terminate_fails()
     resume_that_fails()

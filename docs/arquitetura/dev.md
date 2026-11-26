@@ -45,9 +45,10 @@ no `fitcheck` e confere o relógio do aviso dos dados de uso: os 6 s contam da r
 o aviso ainda passa, e um aviso que abre 8 s depois do estado reprova. Todo servidor de teste que o `dev/so_mock.py` sobe nasce
 suspenso num job do Windows (o que ele abrir fica no job) e recebe o `--stop-on-stdin-eof`: desliga quando o teste
 fecha a entrada dele, sem pedido, e o papel do celular, que o `POST /api/shutdown` recusa, desliga do mesmo jeito.
-Toda parada esvazia o job; o servidor que não sai em 10 s, sai com erro ou deixa processo rodando reprova a
-parada dizendo isso. Um `server.py` mais velho, sem a flag (a base de um `compara`), desliga pelo
-`POST /api/shutdown`, só enquanto responde como `--mock` (`dev/testa_so_mock.py`, `dev/test_mock_stop.py`). O `dev/test_capture.py` roda o `--capture` de verdade (os prints,
+Toda parada esvazia o job. Na parada pela entrada, o servidor que não sai em 10 s, sai com erro ou deixa processo
+rodando reprova a parada dizendo isso. Um `server.py` mais velho, sem a flag (a base de um `compara`), desliga
+pelo `POST /api/shutdown`, só enquanto responde como `--mock`, e o job dele também sai vazio
+(`dev/testa_so_mock.py`, `dev/test_mock_stop.py`). O `dev/test_capture.py` roda o `--capture` de verdade (os prints,
 a chave e o `head_cache` que o workflow lê para salvar). O `dev/test_compara_push_steps.py` roda os
 passos do Compara que, no push, capturam sem calcular as áreas nem resolver a base. O
 `dev/test_release_workflow.py` lê os workflows e as ações locais como YAML: toda action fixada num
