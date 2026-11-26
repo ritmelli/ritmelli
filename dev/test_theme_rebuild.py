@@ -437,7 +437,7 @@ def tag_swap(first, second):
     return lambda html, _: html.replace(one, "\0").replace(other, one).replace("\0", other) if one in html else ""
 
 
-PINCEL = "export function pincel(W, H) {"
+PINCEL = "export function pincel("
 
 
 def pincel(text):
