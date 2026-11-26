@@ -165,25 +165,36 @@ CASES = {
          {"a.py": "ps = 'foreach($x in $y){while($true){try{f $x;break}catch{Start-Sleep 1}}}'\n"}),
         ("a do-while followed by another loop", {"a.py": "ps = 'do{f}while($a);while($b){Start-Sleep 1}'\n"},
          {"a.py": "ps = 'do{try{f}catch{};Start-Sleep 1}while($a);while($b){Start-Sleep 1}'\n"}),
-        ("a script's onerror that loads it again", {"a.js": "l.onerror = () => { l.remove(); };\nsetTimeout(go, 3000);\n"},
-         {"a.js": "l.onerror = () => { l.remove(); setTimeout(loadAgainWhenItAnswers, 3000); };\n"}),
-        ("a catch that reconnects", {"a.html": "<script>\ntry { f(); } catch (e) { setTimeout(() => g(), 1); }\n</script>\n"},
-         {"a.html": "<script>\ntry { es = T.eventos(u); } catch (e) { reconT = setTimeout(conectar, 3000); return; }\n"
-                    "</script>\n"}),
-        ("the theme's catch on several lines", {"a.js": "try { f(); } catch (e) { report(e); } setTimeout(refresh, 100);\n"},
-         {"a.js": "try {\n  es = T.eventos(u);\n} catch (e) {\n  reconT = setTimeout(conectar, 3000);\n  return;\n}\n"}),
-        ("an onerror function on several lines", {"a.js": "s.onerror = function () {\n  s.remove();\n};\n"},
-         {"a.js": "s.onerror = function () {\n  s.remove();\n  setTimeout(go, 1000);\n};\n"}),
+        ("a script's onerror that loads it again",
+         {"a.js": "const loadAgain = () => {\n  l.onerror = () => { l.remove(); };\n};\nsetTimeout(loadAgain, 3000);\n"},
+         {"a.js": "const loadAgain = () => {\n  l.onerror = () => { l.remove(); setTimeout(loadAgain, 3000); };\n};\n"}),
+        ("a catch that reconnects",
+         {"a.html": "<script>\nfunction conectar() {\n  try { f(); } catch (e) { setTimeout(() => g(), 1); }\n}\n</script>\n"},
+         {"a.html": "<script>\nfunction conectar() {\n  try { es = T.eventos(u); } catch (e) { reconT = setTimeout(conectar, 3000); "
+                    "return; }\n}\n</script>\n"}),
+        ("the theme's catch on several lines",
+         {"a.js": "function conectar() {\n  try { f(); } catch (e) { report(e); } setTimeout(conectar, 100);\n}\n"},
+         {"a.js": "function conectar() {\n  try {\n    es = T.eventos(u);\n  } catch (e) {\n"
+                  "    reconT = setTimeout(conectar, 3000);\n    return;\n  }\n}\n"}),
+        ("a timer that reports instead of trying again",
+         {"a.js": "function conectar() {\n  try { f(); } catch (e) { setTimeout(reportError, 1000); }\n}\n"},
+         {"a.js": "function conectar() {\n  try { f(); } catch (e) { setTimeout(conectar, 1000); }\n}\n"}),
+        ("an onerror that reschedules the caller",
+         {"a.js": "function carregar() {\n  s.onerror = function () {\n    s.remove();\n    setTimeout(avisar, 1000);\n"
+                  "  };\n}\nfunction conectar() { carregar(); }\nfunction avisar() { mostrar(); }\n"},
+         {"a.js": "function carregar() {\n  s.onerror = function () {\n    s.remove();\n    setTimeout(conectar, 1000);\n"
+                  "  };\n}\nfunction conectar() { carregar(); }\n"}),
         ("a handler exits", {"a.py": "import sys, time\nfor w in sizes:\n    try:\n        f(w)\n    except OSError:\n"
                                      "        sys.exit(1)\n    time.sleep(1)\n"},
          {"a.py": "import sys, time\nfor w in sizes:\n    try:\n        f(w)\n    except OSError:\n"
                   "        print('again')\n        time.sleep(1)\n"}),
-        ("a brace and a timer inside strings", {"a.js": "s.onerror = () => { report(\"setTimeout(go, 100)\"); };\n"},
-         {"a.js": "s.onerror = () => { report(\"}\"); setTimeout(go, 100); };\n"}),
-        ("the transport's aoFalhar", {"a.js": "es.aoFalhar(() => { online(false); });\n"},
-         {"a.js": "es.aoFalhar(() => {\n  if (S.pareando) return;\n  fonte.fechar();\n"
-                  "  api('GET', '/api/state').then(() => true, e => e.status !== 401)\n"
-                  "    .then(volta => { if (volta && !S.pareando) reconT = setTimeout(conectar, 3000); });\n});\n"}),
+        ("a brace and a timer inside strings",
+         {"a.js": "function go() {\n  s.onerror = () => { report(\"setTimeout(go, 100)\"); };\n}\n"},
+         {"a.js": "function go() {\n  s.onerror = () => { report(\"}\"); setTimeout(go, 100); };\n}\n"}),
+        ("the transport's aoFalhar", {"a.js": "function conectar() {\n  es.aoFalhar(() => { online(false); });\n}\n"},
+         {"a.js": "function conectar() {\n  es.aoFalhar(() => {\n    if (S.pareando) return;\n    fonte.fechar();\n"
+                  "    api('GET', '/api/state').then(() => true, e => e.status !== 401)\n"
+                  "      .then(volta => { if (volta && !S.pareando) reconT = setTimeout(conectar, 3000); });\n  });\n}\n"}),
         ("a promise catch that tries again", {"a.js": "fetch(u).then(go);\n"},
          {"a.js": "function go() { fetch(u).catch(() => setTimeout(go, 3000)); }\n"}),
     ],
@@ -209,6 +220,9 @@ CASES = {
          {"dev/t.py": "from unittest import expectedFailure\n@expectedFailure\ndef t():\n    pass\n"}),
         ("ficou de fora", {"dev/t.py": "print('--   o guard ficou de fora: #12')\nr = r'^--\\s.*ficou de fora'\n"},
          {"dev/t.py": "print(f'--   o guard ficou de fora: {e}')\n"}),
+        ("ficou de fora with its issue in the line's comment, in Python",
+         {"dev/t.py": "print('--   o guard ficou de fora')  # #219\n"},
+         {"dev/t.py": "print('--   o guard ficou de fora')  # no issue\n"}),
         ("a known failure", {"dev/t.py": "print('known failure #240: theme_rebuild counts a reindented line')\n"
                                          "ISSUE = 'https://github.com/o/r/issues/255'\n"
                                          "print(f'known failure, {ISSUE}: a refused dequeue fails the run')\n"},
@@ -398,6 +412,8 @@ def test_description():
         "a code block with only a claim": "## Proof\n\n```\nAll tests passed.\n```\n",
         "a code block that reports a claim": "## Proof\n\n```\nThe reviewer said 12 passed.\n```\n",
         "an option alone": "## Proof\n\n`--help`\n",
+        "a production file": "## Proof\n\n`engine.py` is fine.\n",
+        "a command with nothing to run": "## Proof\n\n`python`\n",
         "a proof hidden in an HTML comment": "## Proof\n<!-- `python dev/garden.py` fails on the base -->\n",
         "a code block that never closes": "## Proof\n\n```\npython dev/x.py\n```text\n",
         "a proof section only inside an example block": "```markdown\n## Proof\n`python dev/garden.py`\n```\n",
@@ -547,6 +563,11 @@ def test_base():
         check(garden.base_ceilings("", root=repo) is None, "no base, no ceilings")
         blob = subprocess.run(["git", "cat-file", "-p", f"{before}:a.py"], cwd=repo, capture_output=True).stdout
         check(blob == b"x = 1  # why\r\n", f"the fixture's blob keeps its CRLF ({blob!r})")
+        (repo / "b.iss").write_bytes("﻿; why\n[Setup]\n".encode("utf-8"))
+        seen = garden.working_tree(repo).get("b.iss", "")
+        check(seen.startswith(";") and count("comment_lines", {"b.iss": seen}) == 1,
+              f"a file with a BOM keeps its first line in the count ({seen[:8]!r})")
+        (repo / "b.iss").unlink()
         tree = garden.base_tree(before, root=repo)
         check(tree == {"a.py": "x = 1  # why\n", "engine.py": "x = 1\n"},
               f"the base tree is read from git, with its text files ({tree})")

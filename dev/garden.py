@@ -56,8 +56,8 @@ SECTION_LABEL = re.compile(r"^\s*(?:#{1,6}\s+(?P<heading>[^:]+?)(?::\s*(?P<rest>
                            r"|(?P<plain>[A-Z][\w ,'/-]{1,40}):(?:\s+(?P<rest3>.*))?$)")
 RUN_LINK = re.compile(r"https://github\.com/[\w.-]+/[\w.-]+/actions/runs/\d+")
 IMAGE = re.compile(r"!\[[^\]]*\]\([^)]+\)|<img\s|https://github\.com/user-attachments/")
-PROOF_SPAN = re.compile(r"^\s*(?:python|py|gh|git|pwsh|powershell|bash|node|npm|ruff|actionlint)\b"
-                        r"|[\w./\\-]+\.(?:py|ps1|yml|js|sh|bat|iss|cpp|html)\b|^\s*(?:test|testa|teste)_\w+")
+PROOF_COMMANDS = {"python", "py", "gh", "git", "pwsh", "powershell", "bash", "node", "npm", "ruff", "actionlint"}
+RUNNER_NAMES = {"testa_tudo", "testa_tudo.py", "dev/testa_tudo.py"}
 BLOCK_PROOF = re.compile(r"^\s*(?:\$|>|PS [^>]*>|[A-Z]:\\[^>]*>)\s*\S"
                          r"|^\s*(?:python|py|gh|git|pwsh|powershell|bash|node|npm|ruff|actionlint)\s"
                          r"|^\s*(?:ok|FAIL|FALHA)\s|^\s*(?:=+\s*)?\d+ (?:of|de) \d+\b|^\s*(?:=+\s*)?\d+ (?:passed|failed)\b"
@@ -685,7 +685,7 @@ def powershell_retries(code):
 
 JS_HANDLER = re.compile(r"\bonerror\s*=\s*(?:function\b[^(]*\([^)]*\)\s*|(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>\s*)"
                         r"|\bcatch\s*(?:\([^)]*\))?\s*(?=\{)|\.(?:catch|aoFalhar)\s*(?=\()")
-JS_RESCHEDULE = re.compile(r"\bsetTimeout\s*\(\s*[A-Za-z_$][\w$]*\s*,")
+JS_RESCHEDULE = re.compile(r"\bsetTimeout\s*\(\s*([A-Za-z_$][\w$]*)\s*,")
 
 
 def handler_body(code, start):
@@ -723,12 +723,31 @@ def mask_js_strings(code):
     return "".join(out)
 
 
+JS_FUNCTION = re.compile(r"\bfunction\s+([A-Za-z_$][\w$]*)\s*\([^)]*\)\s*(?=\{)"
+                         r"|\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?"
+                         r"(?:function\b[^{]*|\([^)]*\)\s*=>|[A-Za-z_$][\w$]*\s*=>)\s*(?=\{)")
+
+
+def js_functions(code):
+    spans = []
+    for m in JS_FUNCTION.finditer(code):
+        start = m.end()
+        spans.append((m.group(1) or m.group(2), start, closing(code, start, "{", "}")))
+    return spans
+
+
 def js_retries(code):
     found = []
     code = mask_js_strings(code)
+    functions = js_functions(code)
+    calls = {}
+    for name, a, b in functions:
+        calls.setdefault(name, set()).update(re.findall(r"\b([A-Za-z_$][\w$]*)\s*\(", code[a:b]))
     for m in JS_HANDLER.finditer(code):
         start, body = handler_body(code, m.end())
-        found += [code.count("\n", 0, start + r.start()) + 1 for r in JS_RESCHEDULE.finditer(body)]
+        enclosing = {name for name, a, b in functions if a < m.start() < b}
+        found += [code.count("\n", 0, start + r.start()) + 1 for r in JS_RESCHEDULE.finditer(body)
+                  if r.group(1) in enclosing or enclosing & calls.get(r.group(1), set())]
     return found
 
 
@@ -843,8 +862,9 @@ def skipped_tests(t):
                 if isinstance(node, ast.Call) or not any(
                         isinstance(c, ast.Call) and c.func is node for c in ast.walk(tree)):
                     items.append((p, node.lineno))
+        raw = t.files[p].splitlines()
         items += [(p, n) for n, s in python_strings(t, p) if (LEFT_OUT.match(s) or KNOWN_FAILURE.match(s))
-                  and not ISSUE.search(s)]
+                  and not ISSUE.search(s) and not ISSUE.search(raw[n - 1] if n <= len(raw) else "")]
     for p in t.paths(".yml", ".ps1", ".psd1"):
         raw = t.files[p].splitlines()
         items += [(p, n) for n, code in sorted(t.lexed(p).code.items())
@@ -1025,7 +1045,7 @@ def working_tree(root=ROOT):
         path = root / p
         if (suffix(p) in LEXERS or suffix(p) == ".md" or p in BIG_FILES.values()) and path.is_file():
             try:
-                files[p] = path.read_text(encoding="utf-8")
+                files[p] = path.read_text(encoding="utf-8-sig")
             except UnicodeDecodeError:
                 continue
     return files
@@ -1046,7 +1066,7 @@ def base_tree(base, root=ROOT):
             continue
         size = int(header[2])
         try:
-            files[p] = data[i:i + size].decode("utf-8").replace("\r\n", "\n")
+            files[p] = data[i:i + size].decode("utf-8-sig").replace("\r\n", "\n")
         except UnicodeDecodeError:
             pass
         i += size + 1
@@ -1234,7 +1254,16 @@ def has_proof(text):
     prose = "\n".join(body for kind, body in parts if kind == "text")
     if RUN_LINK.search(prose) or IMAGE.search(prose):
         return True
-    return any(PROOF_SPAN.search(span) for span in re.findall(r"`([^`\n]+)`", prose))
+    return any(proof_span(span) for span in re.findall(r"`([^`\n]+)`", prose))
+
+
+def proof_span(span):
+    words = span.replace("\\", "/").split()
+    if not words:
+        return False
+    if words[0] in PROOF_COMMANDS:
+        return len(words) > 1
+    return words[0] in verification_names() | RUNNER_NAMES
 
 
 def fence_opens(line):
