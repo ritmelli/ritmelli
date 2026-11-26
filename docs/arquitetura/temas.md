@@ -84,20 +84,26 @@ local dele. Um nome declarado em dois scripts (função, `var`, `let`, `const` o
 confere também que os ouvintes da busca e da gaveta são dos arquivos delas e só existem depois do arquivo que os liga,
 e que o `queue.js` vê o toque que fecha a busca na mesa.
 
-Para provar que um PR só mudou código de lugar, o `dev/theme_rebuild.py <base>` monta a página de novo nos dois
-commits, com cada `<!-- inline-script: -->` virando um `<script>` com o texto do arquivo, como o servidor manda, e cada
-`<script src>` e `<link>` trocado pelo texto do arquivo. Ela só julga a página escrita numa forma estrita, que
-o navegador lê de um jeito só: o `index.html` inteiro é texto sem `<` entre tags; a tag de início é `<nome>` em
-minúsculas com atributos `nome="valor"` (ou só o nome), separados por espaço, tab ou fim de linha; a de fim é
-`</nome>`; o comentário é `<!--` ... `-->`, sem `<!-->`, `<!--->` nem `--!>`; e o doctype é `<!doctype html>`. Um
-`<script>` e um `<style>` acabam no primeiro `</script>` e `</style>`, sem outro `</script` ou `</style` antes, sem
-`<!--` no script (nem nos arquivos que o servidor põe inline) e sem texto no `<script src>`; os elementos de texto
-(`title`, `textarea`, `noscript`, `xmp`, `iframe`, `noembed`, `noframes`, `plaintext`) não têm `<` dentro. Fora disso
-ela recusa, com o arquivo, a linha e o trecho, e sai 3 (não sei julgar): `<script/>` e `<style/>`, um script ou uma
-folha dentro de `<svg>` ou `<math>`, um `<base>`, um `<link>` de preload, um `&` que não é uma referência inteira num
-valor, e um `&`, um `%` ou uma `\` no `src` de um script ou no `href` de uma folha. O `src` e o `href` se leem como o
-caminho que o navegador pede (sem a busca e o `#`), um arquivo que não está lá é um script ou uma folha que o servidor
-não entrega, e um `\r` sozinho conta como fim de linha, como no navegador (lido do git ou da pasta).
+Para provar que um PR só mudou código de lugar, o `dev/theme_rebuild.py <base>` monta a página de novo nos dois commits,
+com cada `<!-- inline-script: -->` virando um `<script>` com o texto do arquivo, como o servidor manda, e cada `<script
+src>` e `<link>` trocado pelo texto do arquivo. Ela só julga a página escrita numa forma estrita, que o navegador lê de
+um jeito só: o `index.html` inteiro é texto sem `<` entre tags; a tag de início é `<nome>` em minúsculas com atributos
+`nome="valor"` (ou só o nome), cada um uma vez, em minúsculas (fora do `<svg>`, onde vale o `viewBox`), separados por
+espaço, tab ou fim de linha; a de fim é `</nome>`; o comentário é `<!--` ... `-->`, sem `<!-->`, `<!--->` nem `--`
+dentro; e o doctype é `<!doctype html>`. Os elementos são os que o tema e a galeria usam, uma lista para o HTML e outra
+para dentro do `<svg>` (`g`, `path`, `rect`, `circle` e `mask`): qualquer outro, de início ou de fim, fica de fora (um
+`<p>` ou um `</p>` tiraria o navegador do `<svg>`). Um `<script>` e um `<style>` acabam no primeiro `</script>` e
+`</style>`, sem outro `</script` ou `</style` antes, sem `<!--` no script (nem nos arquivos que o servidor põe inline) e
+sem texto no `<script src>`; o `<title>`, o `<iframe>` e o `<select>` não têm `<` dentro. O `src` de um script e o
+`href` de uma folha (com `rel="stylesheet"` e nada mais) são um caminho simples dentro do tema, como
+`gerado/molduras.css`, sem `/` no começo, `..`, busca, `#`, `%`, `&` nem `\`. Fora disso ela recusa, com o arquivo, a
+linha e o trecho, e sai 3 (não sei julgar): `<script/>` e `<style/>`, um `<base>`, um `<link>` de preload ou de
+prefetch, um `srcdoc`, um NUL num valor, um `&` num `rel`, `type` ou `as`, um `&` que não é uma referência inteira num
+valor, um script de tipo que não é JavaScript nem JSON (um módulo importa arquivos) e um `@import` numa folha, mesmo
+escapado ou num comentário (ele busca um arquivo que a ferramenta não lê). Um arquivo que não está lá é um script ou uma
+folha que o servidor não entrega, e um `\r` sozinho conta como fim de linha, como no navegador (lido do git ou da
+pasta). Numa folha, entre as regras e nas pontas, só cabem os espaços do CSS e comentários: outro caractere ali (um tab
+vertical antes de um seletor) é uma folha que não se lê.
 Ela sai 0 quando o head só muda código de lugar:
 - todo arquivo do tema que a página não lê (as imagens e as fontes) tem o mesmo conteúdo nos dois commits;
 - a marcação é a mesma, na mesma ordem (sem os cinco espaços do HTML nas pontas de cada linha), com cada script e cada

@@ -8,7 +8,6 @@ import re
 import subprocess
 import sys
 import types
-import urllib.parse
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from pathlib import Path
@@ -24,14 +23,16 @@ line that opens it ([script NAME], [inline-script NAME], [script], [link NAME] o
 attributes when it has any) and a [/script] or [/style] line. <base> and <head> are git commits (the head defaults to
 the working tree).
 
-The tool judges only a page in a strict form the browser reads one way: text with no < between tags, start tags in
-lower case with name="value" attributes (or a bare name) separated by ASCII spaces, end tags </name>, comments
-<!-- ... --> with no <!-->, <!---> or --!>, and <!doctype html>. A <script> or <style> ends at its first </script> or
-</style>, with no other </script or </style before it, no <!-- in a script (nor in the files the server inlines) and
-no text in a <script src>; a text element (title, textarea, noscript, xmp, iframe, noembed, noframes, plaintext) holds
-no <. Anything else, and <script/>, <style/>, a script or stylesheet inside <svg> or <math>, a <base>, a preload
-<link>, a & that is no whole reference in a value, or a &, a % or a backslash in a src or href, exits 3, naming the
-file, the line and the place.
+The tool judges only a page in a strict form the browser reads one way: text with no < between tags, start tags with
+name="value" attributes (or a bare name), each once and in lower case outside <svg>, separated by ASCII spaces, end
+tags </name>, comments <!-- ... --> with no -- inside, and <!doctype html>. The elements are the ones the theme and
+the gallery use, one list for HTML and one inside <svg>. A <script> or <style> ends at its first </script> or
+</style>, with no <!-- in a script (nor in the files the server inlines) and no text in a <script src>; a <title>,
+<iframe> or <select> holds no <. A script src and a stylesheet href (with rel="stylesheet" alone) are plain paths
+inside the theme, like gerado/base.css. Anything else, and <script/>, <style/>, a <base>, a preload or prefetch
+<link>, a srcdoc, a NUL in a value, a & in a rel, type or as, a & that is no whole reference in a value, a script type
+that is not JavaScript or JSON, or an @import in a sheet (even escaped or in a comment), exits 3, naming the file, the
+line and the place. In a sheet, only CSS whitespace and comments may sit between and around the rules.
 
 Exit 0 when the head only moves code: the two pages are the same, or
 - every file of the theme that the page does not read (images, fonts) has the same content;
@@ -58,17 +59,21 @@ printed, and the exit is 1."""
 INLINE_SCRIPT = re.compile(r"<!-- inline-script: ([\w-]+\.js) -->")
 INLINED = "data-theme-rebuild-inline-script"
 CANNOT_JUDGE = 3
-TAG = r"[a-z][a-z0-9-]*"
+TAG = r"[A-Za-z][A-Za-z0-9-]*"
 START_TAG = re.compile(rf'<({TAG})((?:[ \t\n]+[A-Za-z][A-Za-z0-9_:.-]*(?:="[^"]*")?)*)[ \t\n]*(/?)>')
 END_TAG = re.compile(rf"</({TAG})>")
-COMMENT_TAG = re.compile(r"<!--(?!-?>)(.*?)-->", re.S)
+COMMENT_TAG = re.compile(r"<!--(?![>-])((?:(?!--).)*)-->", re.S)
 DOCTYPE = re.compile(r"<!doctype html>", re.I)
 ATTRIBUTE = re.compile(r'([A-Za-z][A-Za-z0-9_:.-]*)(?:="([^"]*)")?')
+SCRIPT_TYPES = ("", "text/javascript", "application/json")
+CSS_ESCAPE = re.compile(r"\\(?:([0-9a-fA-F]{1,6})(?:\r\n|[ \t\r\n\f])?|(.))", re.S)
+PLAIN_PATH = re.compile(r"[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*\.[A-Za-z0-9]+")
 WHOLE_REFERENCE = re.compile(r"&(?:[A-Za-z][A-Za-z0-9]*|#[0-9]+|#[xX][0-9A-Fa-f]+);")
-TEXT_ONLY = ("textarea", "title", "xmp", "iframe", "noembed", "noframes", "noscript", "plaintext")
-FOREIGN = ("svg", "math")
-NOT_IN_FOREIGN = ("script", "style", "link", "foreignobject", "desc", "title", "annotation-xml", "mi", "mo", "mn", "ms",
-                  "mtext")
+TEXT_ONLY = ("title", "iframe")
+HTML_ELEMENTS = ("a", "b", "body", "button", "canvas", "dialog", "div", "form", "h1", "h2", "h3", "head", "header",
+                 "html", "iframe", "input", "kbd", "label", "li", "link", "main", "meta", "ol", "output", "p", "script",
+                 "section", "select", "small", "span", "style", "svg", "title", "ul")
+SVG_ELEMENTS = ("circle", "g", "mask", "path", "rect")
 TRAILING_SPACE = re.compile(r"(?<!\\)\s+$")
 CSS_SPACES = re.compile(r"[ \t\n\r\f]+")
 HTML_SPACE = " \t\n\r\f"
@@ -102,23 +107,38 @@ def strict(html, name):
             refuse(at, "not a tag of the strict form")
         if tag.re is COMMENT_TAG and "--!>" in tag.group(1):
             refuse(at, "a comment with --!>")
-        if tag.re is END_TAG and tag.group(1) in FOREIGN and foreign:
+        if tag.re in (START_TAG, END_TAG) and tag.group(1) not in (SVG_ELEMENTS if foreign else HTML_ELEMENTS) and \
+                not (foreign and tag.re is END_TAG and tag.group(1) == "svg"):
+            refuse(at, f"an element the theme does not use {'inside <svg>' if foreign else 'in its HTML'}")
+        if tag.re is END_TAG and tag.group(1) == "svg" and foreign:
             foreign.pop()
         if tag.re is START_TAG:
-            element, attributes = tag.group(1), dict(ATTRIBUTE.findall(tag.group(2)))
-            if element == "base" or element == "link" and {"preload", "modulepreload"} & set(
+            element, pairs = tag.group(1), ATTRIBUTE.findall(tag.group(2))
+            attributes = dict(pairs)
+            if len({k.lower() for k, _ in pairs}) < len(pairs):
+                refuse(at, "an attribute written twice")
+            if element != "svg" and not foreign and any(k != k.lower() for k, _ in pairs):
+                refuse(at, "an attribute name in capitals")
+            if element == "base" or element == "link" and {"preload", "modulepreload", "prefetch"} & set(
                     attributes.get("rel", "").lower().split()):
                 refuse(at, f"a <{element}> that changes or adds what the page fetches")
-            if foreign and element in NOT_IN_FOREIGN:
-                refuse(at, f"a <{element}> inside <{foreign[-1]}>")
-            if element in FOREIGN and not tag.group(3):
+            if element == "svg" and not tag.group(3):
                 foreign.append(element)
+            if "srcdoc" in attributes or any("\0" in v for v in attributes.values()):
+                refuse(at, "a srcdoc or a NUL in a value")
+            if any("&" in attributes.get(k, "") for k in ("rel", "type", "as")):
+                refuse(at, "a & in a rel, type or as")
+            if element == "script" and attributes.get("type", "").strip(" \t\n\r\f").lower() not in SCRIPT_TYPES:
+                refuse(at, "a script type that is not plain JavaScript or JSON (a module can import files)")
             if loose := [v for k, v in attributes.items() if "&" in WHOLE_REFERENCE.sub("", v)]:
                 refuse(at, f"a & that is not a whole reference in {loose[0]!r}")
-            if set("&%\\") & set(attributes.get("src" if element == "script" else "href" if element == "link"
-                                                  else "", "")):
-                refuse(at, "a &, % or \\ in the address of a file")
-            if element in ("script", "style") + TEXT_ONLY:
+            sheet = element == "link" and "stylesheet" in attributes.get("rel", "").lower().split()
+            if sheet and attributes["rel"] != "stylesheet":
+                refuse(at, "a stylesheet link whose rel is not just stylesheet")
+            address = attributes.get("src") if element == "script" else attributes.get("href") if sheet else None
+            if address is not None and not PLAIN_PATH.fullmatch(address):
+                refuse(at, "a file address that is not a plain path inside the theme (like gerado/base.css)")
+            if element in ("script", "style", "select") + TEXT_ONLY:
                 if tag.group(3):
                     refuse(at, f"a <{element}/>")
                 close = html.find(f"</{element}>", tag.end())
@@ -133,7 +153,13 @@ def strict(html, name):
 def body_problem(element, body, from_file):
     if element == "script":
         return from_file and body or re.search(r"</script|<!--", body, re.I)
-    return re.search(r"</style", body, re.I) if element == "style" else "<" in body
+    if element == "style":
+        return re.search(r"</style", body, re.I) or "@import" in css_unescape(body).lower()
+    return "<" in body
+
+
+def css_unescape(text):
+    return CSS_ESCAPE.sub(lambda m: chr(min(int(m.group(1), 16), 0xFFFD)) if m.group(1) else m.group(2), text)
 
 
 def text_of(data):
@@ -239,18 +265,11 @@ def header(kind, name, others):
     return f"[{title}: {list(others.items())!r}]" if others else f"[{title}]"
 
 
-def requested(url):
-    parts = urllib.parse.urlsplit(url)
-    path = posixpath.normpath(urllib.parse.unquote(parts.path)) if parts.path else ""
-    local = not (parts.scheme or parts.netloc or path.startswith(("/", "..")) or path in ("", "."))
-    return path if local else None
-
-
 def block_of(kind, name, others):
     if kind in ("link", "style-open"):
         return Block("style", header("link" if kind == "link" else "style", name, others), tuple(others.items()),
                      others.get("type") in CSS_TYPES, posixpath.dirname(name) if kind == "link" else "",
-                     source=("file", posixpath.splitext(requested(name) or "")[1].lower()) if kind == "link"
+                     source=("file", posixpath.splitext(name)[1].lower()) if kind == "link"
                      else ("inline",))
     return Block("script", header("script" if kind == "script-open" else kind, name, others), tuple(others.items()),
                  others.get("type") in JS_TYPES, source=("file" if kind == "script" else "inline", name))
@@ -265,11 +284,9 @@ def assemble(read, files=None):
             raise SystemExit(f"{name}: not in the theme")
         return text
 
-    def fetch(url):
-        name = requested(url)
-        if name is not None:
-            names.add(name)
-        return None if name is None else read(name)
+    def fetch(name):
+        names.add(name)
+        return read(name)
     html = need("index.html")
     strict(html, "index.html")
     for inlined in INLINE_SCRIPT.findall(html):
@@ -297,7 +314,9 @@ def assemble(read, files=None):
             end += len("</script>")
         body = f"\n\x00open {number[id(found)]}\x00\n"
         if kind in ("script", "link"):
-            if (text := fetch(name)) is None:
+            if (text := fetch(name)) is not None and kind == "link" and "@import" in css_unescape(text).lower():
+                raise Doubt(f"{name}: an @import, even escaped or in a comment, which fetches a file the tool does not read")
+            if text is None:
                 blocks[number[id(found)]].source += ("not served",)
             body += f"{text or ''}\n\x00close\x00\n"
         page = page[:begin] + body + page[end:]
@@ -452,6 +471,9 @@ def parse(parser, block, n, compiles):
     tree = parser.parse(src)
     out = Parsed(error=block.kind == "script" and (tree.root_node.has_error or not compiles[block.text]))
     prologue = block.kind == "script"
+    if block.kind == "style":
+        edges = [0, *(x for node in tree.root_node.children for x in (node.start_byte, node.end_byte)), len(src)]
+        out.error = any(src[a:b].strip(b" \t\n\r\f") for a, b in zip(edges[::2], edges[1::2]))
     for node in tree.root_node.children:
         if node.type in COMMENTS:
             continue

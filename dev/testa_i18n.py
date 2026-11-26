@@ -337,9 +337,9 @@ def check_theme_rebuild():
     files["a.js"] = "/* A-JS-INICIO */\nconst a = 1;\n/* A-JS-FIM */\n"
     if theme_rebuild.rebuild(files.__getitem__) == lines:
         falha("theme_rebuild.rebuild: a file that loses its 'use strict' rebuilds the same")
-    quoted = theme_rebuild.rebuild({"index.html": '<script src="a.js" title="x&quot; type=&quot;j"></script>',
+    quoted = theme_rebuild.rebuild({"index.html": '<script src="a.js" title="x&quot; type=&quot;text/javascript"></script>',
                                     "a.js": "const a = 1;\n"}.__getitem__)
-    split = theme_rebuild.rebuild({"index.html": '<script src="a.js" title="x" type="j"></script>',
+    split = theme_rebuild.rebuild({"index.html": '<script src="a.js" title="x" type="text/javascript"></script>',
                                    "a.js": "const a = 1;\n"}.__getitem__)
     if quoted == split:
         falha(f"theme_rebuild.rebuild: one attribute with &quot; inside rebuilds like two attributes ({quoted})")
