@@ -174,7 +174,7 @@ def finished_download_forgotten_during_the_refusal(A, E, readers):
 
 
 class SilentFfmpeg:
-    returncode = None
+    returncode, waited_alive = None, False
 
     def __init__(self, reading, go):
         self.reading, self.go, self.stdout = reading, go, self
@@ -189,7 +189,7 @@ class SilentFfmpeg:
 
     def wait(self):
         if self.returncode is None:
-            self.returncode = 0
+            self.returncode, self.waited_alive = 0, True
         return self.returncode
 
 
@@ -209,10 +209,10 @@ def silent_stream_after_the_download_failed(A, E, readers):
             read.set()
     meta = {"youtube_id": target, "title": "the silent one", "channel": "c", "duration": 200.0}
     info = dict(meta, url="https://stream.invalid/audio", id=target)
-    stream = StreamThread(A)
+    stream, made = StreamThread(A), []
     with (contextlib.redirect_stderr(io.StringIO()), mock.patch.object(E, "_reader", reader),
           mock.patch.object(A, "stream_info", return_value=(info, {})),
-          mock.patch.object(eng.subprocess, "Popen", lambda *a, **kw: SilentFfmpeg(reading, go))):
+          mock.patch.object(eng.subprocess, "Popen", lambda *a, **kw: made.append(SilentFfmpeg(reading, go)) or made[-1])):
         swapped = cmd.play_downloading(A, j, target, meta)
         check(swapped and stream.ended.wait(WAIT_S) and reading.wait(WAIT_S),
               "the swap put the job's record on the platter, its stream opened and the reader reads it")
@@ -224,6 +224,8 @@ def silent_stream_after_the_download_failed(A, E, readers):
         read.wait(WAIT_S)
     del A._abre_stream
     check(E.track is None, f"a stream that gives no audio after its download failed stops the platter ({E.track})")
+    check(made and not any(f.waited_alive for f in made),
+          "the reader of a stream that ends with no audio kills its ffmpeg before it waits for it")
 
 
 class AudioFfmpeg(SilentFfmpeg):

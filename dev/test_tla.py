@@ -41,6 +41,10 @@ RENAME_PLAY = (("WithTheRename", "TRUE"), ("WithTheJobOnThePlatter", "FALSE"), (
 RUNS = (
     Run("Races211, the code as it is: the download, the stream and the swap, with another record played", "Races211",
         constants=(("WithTheMoves", "FALSE"), ("WithTheSeek", "FALSE"), ("WithTheForget", "FALSE"))),
+    Run("Races211, the code as it is: a swap that finds the record on the shelf publishes its file",
+        "Races211", "invariant SwapLeavesTheShelfFileOff", invariants=("SwapLeavesTheShelfFileOff",),
+        constants=(("WithTheMoves", "FALSE"), ("WithTheSeek", "FALSE"), ("WithTheForget", "FALSE")),
+        action="SwapPublishesTheFile"),
     Run("Races211, the code as it is: the download, the stream and the swap, with the record leaving the shelf",
         "Races211", constants=(("WithTheMoves", "FALSE"), ("WithTheSeek", "FALSE"), ("WithThePlay", "FALSE"))),
     Run("Races211, the code as it is: the download, the stream and a seek", "Races211",

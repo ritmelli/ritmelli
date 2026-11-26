@@ -207,7 +207,7 @@ WithEngineTry(p, here, body, wait) ==
 SwapChooses ==
     /\ At("Swap", "sw_choose")
     /\ IF shelf
-       THEN pc' = [pc EXCEPT !["Swap"] = "done", !["Stream"] = "done", !["StreamReader"] = "done"]
+       THEN pc' = [pc EXCEPT !["Swap"] = "sw_file_try", !["Stream"] = "done", !["StreamReader"] = "done"]
        ELSE Goto("Swap", "sw_try")
     /\ UNCHANGED <<lockVars, platVars, jobVars, queueVars, localVars>>
 
@@ -220,6 +220,20 @@ CloseSwitches ==
        THEN fila' = Without(fila, virou.tag) /\ virou' = NoSwitch
        ELSE UNCHANGED <<fila, virou>>
     /\ pronto' = NoPronto
+
+SwapFileLocks ==
+    /\ WithEngineTry("Swap", "sw_file_try", "sw_file", "sw_file_wait")
+    /\ UNCHANGED <<platVars, jobVars, queueVars, localVars>>
+
+SwapPublishesTheFile ==
+    /\ At("Swap", "sw_file")
+    /\ SectionThenRelease("Swap", "_qlock", {"fila_lock", "_lock"})
+    /\ CloseSwitches
+    /\ Publish([id |-> nextId, job |-> FALSE, qid |-> NoQid, ver |-> "-", path |-> "file", rec |-> TRUE, name |-> shelfName])
+    /\ swTr' = nextId
+    /\ Goto("Swap", "done")
+    /\ UNCHANGED <<jobStatus, shelf, stream, dlSaw, wrongTrack, fileWait, stGen, refusedPlaying, ver, closing, preparando,
+                   localVars, shelfName, dlName>>
 
 SwapCloses ==
     /\ At("Swap", "sw_close")
@@ -601,7 +615,7 @@ Quiescent ==
 Step ==
     \/ DownloadEnds \/ DownloadMarksDone \/ DownloadFailedLock \/ DownloadFailedStop
     \/ DownloadDoneRead \/ DownloadDoneSkip \/ DownloadDoneLock \/ DownloadDoneFile
-    \/ SwapChooses \/ SwapLocks \/ SwapCloses \/ SwapPublishes \/ SwapReleases
+    \/ SwapChooses \/ SwapFileLocks \/ SwapPublishesTheFile \/ SwapLocks \/ SwapCloses \/ SwapPublishes \/ SwapReleases
     \/ StreamTries \/ StreamOpened \/ StreamReaderStarts \/ StreamReaderEnds \/ StreamRefusedToday \/ StreamRefusedChecksJob
     \/ PlayLocks \/ PlaySwaps \/ ForgetsTheRecord \/ MoveSwaps \/ Reserves \/ Seeks
     \/ MixerTime \/ MixerSwitches
@@ -636,6 +650,8 @@ NoPassageFromBeforeTheSeek == ~stalePrepared
 FinishedDownloadReachesThePlatter == Quiescent => ~(track.job /\ track.path = "stream" /\ FileReady)
 
 NameIsCurrentOutsideARename == pc["Rename"] /= "rn_platter" => (track.rec => track.name = shelfName)
+
+SwapLeavesTheShelfFileOff == ~(pc["Swap"] = "done" /\ track.id = swTr /\ track.id /= 0 /\ ~track.job)
 
 PlatterHasTheCurrentName == Quiescent => (track.rec => track.name = shelfName)
 

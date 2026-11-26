@@ -2299,7 +2299,8 @@ class Engine:
                         continue
                     b = blocos.pop(0) if blocos else ff.stdout.read(BLOCK * 8)
                     if not b:
-                        ff.wait()
+                        if not (n or stream):
+                            ff.wait()
                         break
                     arr = np.frombuffer(b[: len(b) // 8 * 8], np.float32).reshape(-1, 2)
                     rms = float(np.sqrt(np.mean(arr * arr))) if len(arr) else 0.0  # fora do lock do callback
@@ -2332,8 +2333,7 @@ class Engine:
                 med = None  # a volta do Repetir nao mede de novo
             if n == 0 and stream and track.get("job") and deck is self._deck:
                 with self._qlock:
-                    waits = deck is self._deck and deck.gen == gen
-                    if waits:
+                    if waits := (deck is self._deck and deck.gen == gen):
                         deck.file_wait = gen
                 if waits and self._stream_silent is not None:
                     self._stream_silent(track)

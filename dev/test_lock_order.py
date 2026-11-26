@@ -194,6 +194,13 @@ def section_yields_under_qlock(engine):
     return bool(yields) and all(id(y) in held for y in yields)
 
 
+def returned_callables(func):
+    local = {n.name: n for n in ast.walk(func) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n is not func}
+    values = [m for r in ast.walk(func) if isinstance(r, ast.Return) and r.value is not None for m in ast.walk(r.value)]
+    return [m for m in values if isinstance(m, ast.Lambda)] + \
+        [local[m.id] for m in values if isinstance(m, ast.Name) and m.id in local]
+
+
 def value_calls(value):
     if isinstance(value, ast.Call):
         return [value]
@@ -479,8 +486,7 @@ class Walker(ast.NodeVisitor):
                 out += [m for m in ast.walk(n.value) if isinstance(m, ast.Lambda)]
                 for call in value_calls(n.value):
                     out += [m for key in resolve(self.table, call, self.name, self.cls)
-                            for r in ast.walk(self.table[key]) if isinstance(r, ast.Return) and r.value is not None
-                            for m in ast.walk(r.value) if isinstance(m, ast.Lambda)]
+                            for m in returned_callables(self.table[key])]
         return out
 
     def mark_callbacks(self, func):
@@ -1117,6 +1123,14 @@ def main():
     bad, *_ = scan(dict(sources, **{"server.py": ternary}), order, before)
     check(ternary != locked and any("lib_lock" in b for b in bad),
           f"and through either branch of a conditional, fonte_de(seen) if seen else None "
+          f"({[b for b in bad if 'lib_lock' in b][:1]})")
+    named = sources["server.py"].replace(
+        '            return lambda: dict(it, path=str(LIB / it["file"]), **marca_auto(x))\n',
+        '            def build():\n                self.lib.update(it["id"])\n'
+        '                return dict(it, path=str(LIB / it["file"]), **marca_auto(x))\n            return build\n', 1)
+    bad, *_ = scan(dict(sources, **{"server.py": named}), order, before)
+    check(named != sources["server.py"] and any("lib_lock" in b for b in bad),
+          f"and with fonte_de returning a local function as the builder "
           f"({[b for b in bad if 'lib_lock' in b][:1]})")
     guarded = pode_guarantees(trees["engine.py"])
     check(len(guarded) >= 5 and not pode_failures(trees["engine.py"]),

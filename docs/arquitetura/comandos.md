@@ -128,8 +128,9 @@ que pegue o `_lock` ou o próprio `_qlock`); com a `fila_lock` na mão, o `_lock
 `acquire(blocking=False)` (o `with_engine`). As funções que outro roda com as travas na mão contam com elas: as do
 `change_queue`, do `close_switches` e do `concilia` (a `fila_lock` e o `_qlock`), a do `with_engine` (a `fila_lock` e o
 `_lock`), o `pode` dos métodos do motor e o construtor do disco que o `trocar_fonte`, o `preparar` e o `load` (e o
-`_troca`, que o passa ao `load`) recebem (o `_lock` e o `_qlock`; também o que uma função devolve, como o do
-`fonte_de`), e as funções locais que elas chamam também; e confere essas travas no código que roda cada função (o
+`_troca`, que o passa ao `load`) recebem (o `_lock` e o `_qlock`; também o que uma função devolve, uma lambda ou uma
+função local, como o do `fonte_de`, mesmo atrás de um `or` ou de um condicional), e as funções locais que elas chamam
+também; e confere essas travas no código que roda cada função (o
 `change_queue` chama a dele dentro do `_qlock`, e cada método público do motor que recebe um `pode` o roda sob o `_lock`
 e o `_qlock`, também pelo `_restart`; o `trocar_fonte`, o `preparar` e o `load` chamam o construtor sob as duas e
 publicam a própria chamada dele ali, não o que montaram na entrada), e que quem chama o `change_queue`, o
@@ -164,7 +165,10 @@ posição do disco viram escolha não determinística, e os `qid` são simétric
   nas mesmas configurações, conferem todas as outras propriedades. A preparação escolhe a fonte como o `fonte_de` (o
   arquivo da prateleira, o stream do download que corre, ou nenhuma), e a virada publica a que ela escolheu: com o disco
   já na prateleira antes de a preparação escolher a fonte (`DownloadEndsBeforeTheSourcePick`), a virada leva o arquivo.
-  Como no `download()`, o disco entra na prateleira antes de o job marcar o fim, e o `fonte_de` já o acha ali. O arquivo
+  Como no `download()`, o disco entra na prateleira antes de o job marcar o fim, e o `fonte_de` já o acha ali. O tocar
+  de um disco que baixa lê antes a prateleira, como o `tocar_entrada`: com o disco já ali, a troca fecha a virada
+  pendente e publica o arquivo da prateleira, sem job e sem stream, e uma execução mostra que esse caminho chega ao
+  prato (o `SwapLeavesTheShelfFileOff` quebra no `SwapPublishesTheFile`). O arquivo
   no prato, como no código, não leva o job (o `dict(item, path=...)` não tem a chave), e o download que termina só
   entrega o arquivo ao disco do job (`HandoverOnlyOntoTheJobsRecord`). A troca de nome na prateleira (`WithTheRename`: a
   prateleira, depois o `update_track` sob o `_qlock`) corre contra o download, o stream, a passagem e o tocar da
