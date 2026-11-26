@@ -414,14 +414,17 @@ def starts():
 class FakeKernel:
     """The kernel32 calls of so_mock._Job.left_after: a process per handle as (name or None, exit code, running)."""
 
-    def __init__(self, processes):
-        self.processes, self.named = processes, []
+    def __init__(self, processes, exits_on_first_name=None):
+        self.processes, self.named = {h: list(v) for h, v in processes.items()}, []
+        self.exits_on_first_name = exits_on_first_name
 
     def WaitForSingleObject(self, handle, ms):
         return 0x102 if self.processes[handle.value][2] else 0  # WAIT_TIMEOUT: the process still runs
 
     def QueryFullProcessImageNameW(self, handle, flags, buf, size):
         name = self.processes[handle.value][0]
+        if not self.named and self.exits_on_first_name is not None:
+            self.processes[self.exits_on_first_name][1:] = [0, False]
         self.named.append(handle.value)
         if name is None:
             ctypes.set_last_error(5)
@@ -437,9 +440,9 @@ class FakeKernel:
         return 1
 
 
-def leftovers(processes, active):
+def leftovers(processes, active, exits_on_first_name=None):
     job = object.__new__(so_mock._Job)
-    job.k = FakeKernel(processes)
+    job.k = FakeKernel(processes, exits_on_first_name)
     with mock.patch.object(so_mock._Job, "members", lambda self: list(processes)),             mock.patch.object(so_mock._Job, "active", lambda self: active):
         try:
             return job.left_after(0.01), job.k.named
@@ -457,6 +460,10 @@ def left_after_names():
                                  ("python.exe", False)],
           f"a process whose name cannot be read is listed as such, the others are still named, and one that ended with "
           f"code 259 is not taken for one still running ({seen})")
+    (left, seen), _ = leftovers({1: ("ffmpeg.exe", 259, True), 2: ("conhost.exe", 259, True)}, 2,
+                                exits_on_first_name=2)
+    check(seen == [("ffmpeg.exe", True), ("conhost.exe", True)],
+          f"each process is reported as it was when the wait ended, even one that exits while the names are read ({seen})")
 
 
 app_port()
