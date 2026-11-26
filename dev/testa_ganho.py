@@ -298,8 +298,10 @@ class TestaMotor(unittest.TestCase):
         ms = np.array(ts) * 1000
         print(f"\n  _mixa com ganho e limitador: {np.median(ms):.3f} ms na mediana, {ms.mean():.3f} em media, "
               f"{np.percentile(ms, 99):.3f} no p99", file=sys.stderr)
-        # the median: a call or two the runner stalls for tens of ms moves the mean, not what each call costs
+        # the median: a call or two the runner stalls for tens of ms moves the mean, not what each call costs; the mean
+        # without the 4 slowest still catches a slowdown that comes back every few calls
         self.assertLess(float(np.median(ms)), 0.15)
+        self.assertLess(float(np.sort(ms)[:-4].mean()), 0.3)
 
 
 if __name__ == "__main__":
