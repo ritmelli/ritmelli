@@ -251,7 +251,7 @@ def record(self, *args, **kwargs):
         if any(lines):
             notes[n] = [line for line in lines if line]
     call = {{"options": {{k: effective(k, v) for k, v in vars(options).items()}}, "notes": notes}}
-    Path("publica-call.json").write_text(json.dumps(call), encoding="utf-8")
+    Path(__file__).with_name("publica-call.json").write_text(json.dumps(call), encoding="utf-8")
     sys.exit(0)
 
 
@@ -280,7 +280,7 @@ def manifest_call(source, version="0.3.4", notas=None, notas_en=None, partial=Fa
     env.update({k: v for k, v in (("NOTAS", notas), ("NOTAS_EN", notas_en)) if v is not None})
     p = subprocess.run([sys.executable, str(scripts / "build_manifest.py")], cwd=root, capture_output=True, text=True,
                        env=env)
-    record = root / "publica-call.json"
+    record = scripts / "publica-call.json"
     call = json.loads(record.read_text(encoding="utf-8")) if record.exists() else {"options": {}, "notes": {}}
     return p.returncode, call["options"], call["notes"], output, p.stdout + p.stderr
 
@@ -331,7 +331,7 @@ def no_partial_case(source):
 
 
 def partial_case(source):
-    runs = ((VERSIONS[0], {}), (VERSIONS[1], dict(notas="Nota", notas_en="Note")), (VERSIONS[0], dict(notas_en="Note")))
+    runs = ((VERSIONS[0], {}), (VERSIONS[1], dict(notas="Nota", notas_en="Note")))
     results = [(v, manifest_call(source, version=v, partial=True, partial_info=True, **notes)) for v, notes in runs]
     return all(code == 0 and options.get("parcial") == (output / f"Ritmelli-{v}-parcial.exe").as_posix()
                and options.get("parcial_info") == (output / f"PARCIAL-{v}.json").as_posix()
@@ -339,6 +339,18 @@ def partial_case(source):
                and options.get("url") == f"{RELEASES}/v{v}/Ritmelli-{v}-setup.exe"
                and options.get("saida") == output.as_posix()
                for v, (code, options, _, output, _) in results), results
+
+
+def combinations_case(source):
+    runs = [(pt, en, partial) for pt in (False, True) for en in (False, True) for partial in (False, True)]
+    results = [(run, manifest_call(source, notas="Nota da versão" if run[0] else None,
+                                   notas_en="Release note" if run[1] else None, partial=run[2], partial_info=run[2]))
+               for run in runs]
+    return all(code == 0 and notes == {**({"notas": ["Nota da versão"]} if pt else {}),
+                                       **({"notas_en": ["Release note"]} if en else {})}
+               and options.get("parcial") == ((output / "Ritmelli-0.3.4-parcial.exe").as_posix() if partial else None)
+               and options.get("parcial_info") == ((output / "PARCIAL-0.3.4.json").as_posix() if partial else None)
+               for (pt, en, partial), (code, options, notes, output, _) in results), results
 
 
 def exit_case(source):
@@ -370,10 +382,7 @@ MANIFEST_CASES = {
             ('.split("|")', '.split(",")'),
             ('encoding="utf-8-sig"', 'encoding="cp1252"'),
             ('encoding="utf-8-sig"', 'encoding="cp1252" if variable == "NOTAS_EN" else "utf-8-sig"'),
-            ("        if lines:\n", '        if lines and os.environ.get("NOTAS_EN"):\n'),
-            ("        if lines:\n", "        if not lines:\n            return []\n        if True:\n"),
-            ("*notes_options(notes_folder)]", '*(notes_options(notes_folder) if not any(OUTPUT.glob("*-parcial.exe")) '
-                                              'else [])]')]),
+]),
     "NOTAS and NOTAS_EN absent, empty or blank give publica.py no notes": (no_notes_case, [
         ('(os.environ.get(variable) or "")', "os.environ[variable]")]),
     "no --parcial or --parcial-info without the partial setup, even with a PARCIAL-<version>.json": (no_partial_case, [
@@ -382,13 +391,20 @@ MANIFEST_CASES = {
         ("if partial.exists():", 'if partial.exists() or not (OUTPUT / f"PARCIAL-{version}.json").exists():')]),
     "--parcial and --parcial-info with the partial setup": (partial_case, [
         ("if partial.exists():", "if not partial.exists():"),
-        ("if partial.exists():", "if partial.exists() and not notes_options(notes_folder):"),
-        ("if partial.exists():", 'if partial.exists() and (not os.environ.get("NOTAS_EN") or os.environ.get("NOTAS")):'),
         ('f"Ritmelli-{version}-parcial.exe"', 'f"Ritmelli-{version}-partial.exe"'),
         ('f"PARCIAL-{version}.json"', 'f"PARCIAL.json"'),
         ('f"PARCIAL-{version}.json"', '"PARCIAL-0.3.4.json"'),
         ('f"Ritmelli-{version}-parcial.exe"', 'f"ritmelli-{version}-parcial.exe"'),
         ('arguments += ["--parcial"', 'arguments = ["--parcial"')]),
+    "every combination of NOTAS, NOTAS_EN and the partial setup gives each its own options": (combinations_case, [
+        ("        if lines:\n", '        if lines and os.environ.get("NOTAS_EN"):\n'),
+        ("        if lines:\n", "        if not lines:\n            return []\n        if True:\n"),
+        ("        if lines:\n",
+         '        if lines and (variable == "NOTAS_EN" or not any(OUTPUT.glob("*-parcial.exe"))):\n'),
+        ("*notes_options(notes_folder)]", '*(notes_options(notes_folder) if not any(OUTPUT.glob("*-parcial.exe")) '
+                                          'else [])]'),
+        ("if partial.exists():", "if partial.exists() and not notes_options(notes_folder):"),
+        ("if partial.exists():", 'if partial.exists() and (not os.environ.get("NOTAS_EN") or os.environ.get("NOTAS")):')]),
     "a publica.py failure fails the step with its exit code": (exit_case, [
         ("sys.exit(result.returncode)", "sys.exit(0)")]),
 }
