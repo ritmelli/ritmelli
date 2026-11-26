@@ -343,9 +343,10 @@ def main():
                                        f'Test-Path "{other}/'.replace("/", "\\")))))
     with tempfile.TemporaryDirectory() as temp:
         script = Path(temp, BUILD_MANIFEST.name)
-        source = BUILD_MANIFEST.read_text(encoding="utf-8")
-        script.write_text(source + f"\nOUTPUT = Path({other!r})\n", encoding="utf-8")
-        check(contract_problems(moved, script) == [],
+        source, count = re.subn(r"(?m)^OUTPUT = [^\r\n]+", f"OUTPUT = Path({other!r})",
+                                BUILD_MANIFEST.read_text(encoding="utf-8"))
+        script.write_text(source, encoding="utf-8")
+        check(count == 1 and contract_problems(moved, script) == [],
               "the folder build_manifest.py writes to and the Ritmelli artifact path moved together keep the contract")
         check([p for p in contract_problems(doc, script) if "not the folder build_manifest.py writes" in p] != [],
               "the check catches the folder build_manifest.py writes to changed alone")
