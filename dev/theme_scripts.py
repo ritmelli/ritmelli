@@ -238,7 +238,8 @@ async def checks(tab):
 
 def inline_scripts(raiz):
     found, _ = missing_script.page_files(raiz, missing_script.THEME)
-    files = {text: name for kind, name, text in found or [] if kind in ("script", "module")}
+    files = {text + (missing_script.theme_page.source_url(name) if kind == "module" else ""): name
+             for kind, name, text in found or [] if kind in ("script", "module")}
     theme = raiz / "themes" / "ritmelli"
     for name in INLINE_MARK.findall((theme / "index.html").read_text(encoding="utf-8")):
         files["\n" + (theme / name).read_text(encoding="utf-8")] = name

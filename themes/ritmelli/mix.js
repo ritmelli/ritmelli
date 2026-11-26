@@ -3,7 +3,7 @@
    de metal escovado com os parafusos, os tres VUs (a janela ambar, o arco, os numeros e a agulha do medidor da
    pagina), os volumes em pe com as marcas e o pino creme, as chaves do set, o crossfader e a placa da transicao
    automatica. Os elementos de verdade seguem ali, transparentes: o clique, o estado e o lugar vem deles. */
-import { glyphs, cor, O, O2, SOMBRA, SOMBRA_F, TINTA, CREME_L, F57, ACENTO, pincel, px, recorte, solto, caixa, sombraCaixa, stamp } from "pixel.js";
+import { glyphs, ruido, fontesProntas, cor, O, O2, SOMBRA, SOMBRA_F, TINTA, CREME_L, F57, ACENTO, pincel, px, recorte, solto, caixa, sombraCaixa, stamp } from "pixel.js";
 (() => {
   const { gl, larg, texto } = glyphs();
   const AMBAR = [cor(255, 214, 110), cor(252, 186, 72), cor(224, 148, 46)];   // (r06) a canaleta do crossfader no ambar dos volumes (a de baixo lia marrom)
@@ -49,7 +49,6 @@ import { glyphs, cor, O, O2, SOMBRA, SOMBRA_F, TINTA, CREME_L, F57, ACENTO, pinc
   const iconeM = (P, nome, cx, cy, c) => stamp(P, ICM[nome], cx, cy, c);
 
   const MET = { a: cor(207, 203, 195), b: cor(211, 207, 199), c: cor(215, 211, 203), luz2: cor(224, 221, 214), luz: cor(246, 244, 239), somb: cor(160, 154, 146), somb2: cor(186, 181, 172), sulco: cor(110, 104, 96) };
-  const hsM = (a, b, c = 0) => { const h = Math.sin(a * 12.9898 + b * 78.233 + c * 37.719) * 43758.5453; return h - Math.floor(h); };
   const VUC = { face: cor(252, 186, 72), faceS: cor(224, 148, 46), tinta: cor(36, 22, 14), zona: cor(222, 44, 28), banda: cor(60, 32, 20),
                 bandaL: cor(124, 82, 56), bandaS: cor(38, 18, 10), nome: cor(246, 230, 200), nomeOff: cor(242, 115, 94), escala: cor(60, 32, 20), agulha: cor(26, 11, 4), faceL: cor(255, 200, 98), faceE: cor(232, 168, 60), faceB: cor(255, 212, 124), arco: cor(110, 62, 28), zonaE: cor(176, 28, 18), zonaB: cor(150, 22, 14) };
   const TINTA_M = cor(52, 40, 34), CINZA_M = cor(78, 68, 60);
@@ -485,7 +484,7 @@ import { glyphs, cor, O, O2, SOMBRA, SOMBRA_F, TINTA, CREME_L, F57, ACENTO, pinc
         else if (y === 2 || x === 2) c = MET.luz2;
         else if (calmo(x, y)) c = MET.b;
         else {
-          const sec = y > ySplit ? 7 : 0, L = 4 + Math.floor(hsM(x, 5 + sec) * 11), sg = Math.floor((y + hsM(x, 1 + sec) * 30) / L), h = hsM(x, sg, 2 + sec);
+          const sec = y > ySplit ? 7 : 0, L = 4 + Math.floor(ruido(x, 5 + sec) * 11), sg = Math.floor((y + ruido(x, 1 + sec) * 30) / L), h = ruido(x, sg, 2 + sec);
           c = h < .2 ? (x % 2 ? MET.a : MET.c) : MET.b;
         }
         px(P, x, y, c);
@@ -607,21 +606,21 @@ import { glyphs, cor, O, O2, SOMBRA, SOMBRA_F, TINTA, CREME_L, F57, ACENTO, pinc
         c = d === E - 2 ? (fundo ? MAD.faceS : MAD.rebaixo) : (fundo ? MAD.faceS : MAD.face);
         // os veios escuros: so na faixa do rebaixo, de 3 a 8 celulas, um a cada 15 a 30 (o comeco de cada um sorteado)
         const lado = (ao ? 1 : 2) + (fundo ? 2 : 0), comp = ao ? W : H;
-        let ini = L + 2 + Math.floor(hsM(lado, 0, 31) * 8), achou = false;
+        let ini = L + 2 + Math.floor(ruido(lado, 0, 31) * 8), achou = false;
         for (let n = 1; ini < comp - L - 2 && !achou; n++) {
-          const len = 3 + Math.floor(hsM(lado, n, 32) * 6);
+          const len = 3 + Math.floor(ruido(lado, n, 32) * 6);
           if (d === E - 2 && al >= ini && al < Math.min(ini + len, comp - L - 2)) achou = true;
-          ini += len + 15 + Math.floor(hsM(lado, n, 33) * 16);
+          ini += len + 15 + Math.floor(ruido(lado, n, 33) * 16);
         }
         if (achou) c = fundo ? cor(100, 46, 24) : cor(82, 36, 18);
       }
       else {
         c = fundo ? MAD.faceS : MAD.face;
         // os veios: tracos de 1 de 4 a 8 ao longo da travessa, um a cada 13, em tracos alternados
-        const seg = Math.floor((al + d * 11) / 23), pos = (al + d * 11 + Math.floor(hsM(d, Math.floor((al + d * 11) / 23), 7) * 9)) % 23,
-              len = 3 + Math.floor(hsM(d, seg, 6) * 4);
+        const seg = Math.floor((al + d * 11) / 23), pos = (al + d * 11 + Math.floor(ruido(d, Math.floor((al + d * 11) / 23), 7) * 9)) % 23,
+              len = 3 + Math.floor(ruido(d, seg, 6) * 4);
         const comp = ao ? W : H;
-        if (d === 2 && al > L + 1 && al < comp - L - 2 && hsM(d, seg, ao ? 3 : 4) < .45 && pos >= 3 && pos < 3 + len) c = fundo ? MAD.veioS : cor(166, 86, 46);
+        if (d === 2 && al > L + 1 && al < comp - L - 2 && ruido(d, seg, ao ? 3 : 4) < .45 && pos >= 3 && pos < 3 + len) c = fundo ? MAD.veioS : cor(166, 86, 46);
       }
       px(P, x, y, c);
     }
@@ -1191,9 +1190,9 @@ import { glyphs, cor, O, O2, SOMBRA, SOMBRA_F, TINTA, CREME_L, F57, ACENTO, pinc
           [[2, 9, H - 9], [3, 16, H - 16, true], [W - 3, 12, H - 12, true], [B[2] + 1, B[1] + 4, B[3] - 4, true]]);
     const okP = new Set([MT.face, MT.escuro, MT.friso, MT.veio, MT.veioP]);
     for (const [x, sem] of [[Pn[0] + 1, 41], [Pn[2] - 2, 43]]) {
-      let y = Pn[1] + 3 + Math.floor(hsM(sem, 0, 81) * 6), n = 0;
+      let y = Pn[1] + 3 + Math.floor(ruido(sem, 0, 81) * 6), n = 0;
       while (y < Pn[3] - 3) {
-        const len = 3 + Math.floor(hsM(sem, n, 82) * 3), tr = [];
+        const len = 3 + Math.floor(ruido(sem, n, 82) * 3), tr = [];
         for (let u = 0; u < len && y + u < Pn[3] - 3; u++) {
           const yy = y + u;
           let ok = P.u[yy * P.W + x] === MT.face;
@@ -1201,7 +1200,7 @@ import { glyphs, cor, O, O2, SOMBRA, SOMBRA_F, TINTA, CREME_L, F57, ACENTO, pinc
           if (ok) tr.push(yy);
         }
         tr.forEach(yy => px(P, x, yy, MT.veio));
-        y += len + 2 + Math.floor(hsM(sem, n, 83) * 4); n++;
+        y += len + 2 + Math.floor(ruido(sem, n, 83) * 4); n++;
       }
     }
     // as cantoneiras passam 2 celulas para fora do gabinete: o canvas ganha a margem MG em volta
@@ -1252,7 +1251,7 @@ import { glyphs, cor, O, O2, SOMBRA, SOMBRA_F, TINTA, CREME_L, F57, ACENTO, pinc
       else if (d === 1 || s === 4) c = cimaEsq ? GAV.luz : GAV.esc;
       else if (d === 2 || s === 5) c = cimaEsq ? GAV.esc2 : GAV.luz2;
       else {
-        const hh = hsM(x, y, 61), m = hsM(x >> 3, y >> 3, 17) + .5 * hsM(x >> 2, (y + 1) >> 2, 29);
+        const hh = ruido(x, y, 61), m = ruido(x >> 3, y >> 3, 17) + .5 * ruido(x >> 2, (y + 1) >> 2, 29);
         c = hh < .06 ? GAV.tE : hh > .96 ? GAV.tL : m > 1.05 ? GAV.t2 : m < .4 ? GAV.t3 : GAV.t;
       }
       px(P, x0 + x, y0 + y, c);
@@ -1287,14 +1286,14 @@ import { glyphs, cor, O, O2, SOMBRA, SOMBRA_F, TINTA, CREME_L, F57, ACENTO, pinc
     requestAnimationFrame(quadroMx);
   }
   // (#119) o canvas devolvido em branco (repintarCanvas): as chaves do mixer (o chaveE pinta tambem os rotulos e a
-  // placa), do monitor e dos Sons rapidos (e a dos nomes deles) zeradas, o proximo quadro pinta os tres de novo. As
+  // placa), do monitor e dos Sons rapidos zeradas, o proximo quadro pinta os tres de novo. As
   // maletas dos pedais (desenhaGav) guardam a chave no _geo do canvas, que o repintarCanvas zera
   document.addEventListener('repinta-canvas', () => {
     if (mx) mx.chaveE = '';
     if (tvp) tvp.chave = '';
     if (pd) pd.chave = '';
   });
-  Promise.all([document.fonts.load('300px "Jersey 10"'), document.fonts.load('300px "VT323"'), document.fonts.load('700 12px "Archivo"')]).then(() => { fontesMx = true; });
+  Promise.all([fontesProntas, document.fonts.load('700 12px "Archivo"')]).then(() => { fontesMx = true; });
   const ligaMx = () => requestAnimationFrame(quadroMx);
   document.addEventListener('DOMContentLoaded', ligaMx);
 })();

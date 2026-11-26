@@ -38,10 +38,13 @@ folha, sem outros atributos. O servidor (o `build` do `theme_page.py`, que o `se
 servidor nenhum script nem nenhuma folha: não existe página com um arquivo faltando. Um módulo entra por
 `<script type="module" src="nome.js"></script>`, com o nome em minúsculas, algarismos, `-` e `/`. A montagem põe, no
 lugar da primeira tag de módulo, um `<script type="importmap">` com cada módulo da página num endereço `data:` (o texto
-do arquivo em percent-encoding), e troca cada tag de módulo por um `<script type="module">import "nome.js";</script>`.
+do arquivo em percent-encoding, com uma linha `//# sourceURL=nome.js` no fim, para o erro de um módulo apontar o
+arquivo e a linha, e não o endereço inteiro), e troca cada tag de módulo por um
+`<script type="module">import "nome.js";</script>`, o primeiro logo depois do mapa.
 Um módulo importa o outro pelo nome (`import { glyphs } from "pixel.js";`), que o mapa resolve dentro da própria
 página. A gramática lê o mapa e as linhas de import só na página montada (o `strict(html, built=True)`), e só se o mapa
-for, byte a byte, o que a montagem escreveria com os mesmos módulos. A montagem lê o modelo inteiro por
+for, byte a byte, o que a montagem escreveria com os mesmos módulos, sem retorno de carro (a montagem lê cada fim de
+linha como `\n`). A montagem lê o modelo inteiro por
 uma gramática estrita, que só aceita texto sem `<`, a tag de abertura com atributos `nome="valor"` (ou com aspas
 simples, ou sem aspas, sem retorno de carro nem NUL no valor) separados por espaço ASCII, a tag de fim `</nome>`, o
 comentário `<!-- texto sem -- -->` e o `<!doctype html>`; o texto do `<script>`, do `<style>`, do `<title>` e do
@@ -99,15 +102,24 @@ sem tela, com os scripts bloqueados pelo cabeçalho `Content-Security-Policy: sc
 como com o JavaScript ligado, e o `<noscript>` como texto), o tema, a galeria e cada caso que a montagem aceita, e
 reprova quando os `<script>`, `<style>` e `<link>` do DOM, com o `src`, o `href`, o `rel` e o `type`, não são, na mesma
 ordem, os que a montagem leu: uma forma que a gramática aceita e o navegador lê de outro jeito vira falha de teste.
-Ele abre também uma página montada com dois módulos, um importando o outro, com os scripts da página e os `data:`
-liberados, e reprova se eles não rodam ou se o Chrome pede ao servidor qualquer coisa além da página. O
+Ele abre também uma página montada com módulos, um importando o outro, dois que só diferem por um espaço no fim e um
+que lê a própria pilha, com os scripts da página e os `data:` liberados, e reprova se eles não rodam todos, se a pilha
+não traz o nome do arquivo ou se o Chrome pede ao servidor qualquer coisa além da página. O
 `dev/missing_script.py`, que o `--tela` também roda, lê a página e a galeria como o servidor as manda, nas duas línguas,
 de um `--mock` como o PC e de outro como o celular, pela mesma gramática da montagem (o `strict` do `theme_page.py`), e
 reprova com um `<script src>` ou um `<link rel="stylesheet">` nelas ou com um pedido de script ou de folha que o Chrome
-faça ao servidor. O `dev/test_theme_modules.py` lê o tema pela árvore de sintaxe: cada import e reexportação de um
-módulo nomeia um módulo da página, nenhum arquivo usa `import()`, cada nome importado é usado e não é declarado de
-novo, cada export é importado por outro arquivo do tema, e nenhuma sequência de 8 linhas não triviais aparece em dois
-`.js` do tema. O `dev/garden.py` conta as linhas de CSS e
+faça ao servidor. O `dev/test_theme_modules.py` lê o tema pela árvore de sintaxe:
+- cada import e reexportação de um módulo nomeia um módulo da página e um nome que ele exporta (o `export *` conta);
+- cada nome importado é usado e não é declarado de novo;
+- cada export é importado por outro arquivo do tema;
+- um módulo que exporta função não exporta um dado que ele não usa e que um arquivo só importa (o dado fica nesse
+  arquivo);
+- nenhum script, clássico ou módulo, usa `import()`, e nenhum clássico lê um nome que só um módulo declara;
+- nenhum arquivo escreve de novo uma função que um módulo exporta, e só o `pixel.js` carrega as fontes do motor (o
+  `fontesProntas`);
+- nenhuma sequência de 8 linhas não triviais aparece em dois `.js` do tema.
+
+O `dev/garden.py` conta as linhas de CSS e
 JS escritas no próprio `index.html` e guarda o teto delas (o `theme_inline_lines` do `dev/garden.json`), que é 0: código
 novo do tema vai num arquivo da pasta, e a contagem vai para o resumo do PR.
 
@@ -137,9 +149,10 @@ servidor); o `connection.js` (a conexão e o aviso de fora do ar); o `pairing.js
 `welcome.js` (as boas-vindas); o `ui-events.js` (o ponto que chama os binders das partes, e os ouvintes da página
 toda, como o teclado e o voltar); o `desk-buttons.js` (os botões da mesa de DJ); o `start.js` (a partida: monta a
 página e, no `DOMContentLoaded`, carrega e conecta). Depois vêm os desenhos de pixel da mesa, que são módulos: o
-`letters.js` (as letras das placas e dos pedais), o `pixel.js` (o motor de pixel: as cores, o pincel, as caixas, os
-discos, as esferas, os ícones e as letras 5x7 e de bitmap, que o `glyphs()` monta com um cache por quem chama, com os
-glifos próprios dele), o `prateleira.js` (o título e a contagem da plaqueta da prateleira), o `maleta-tit.js` (o título
+`letters.js` (as letras das placas, dos pedais e da plaquinha do toca-discos), o `pixel.js` (o motor de pixel: as
+cores comuns, o ruído, o pincel, as caixas, os discos, as esferas, o carimbo de um desenho, a espera das fontes e as
+letras 5x7 e de bitmap, que o `glyphs()` monta com um cache por quem chama, com os glifos próprios dele), o
+`prateleira.js` (o título e a contagem da plaqueta da prateleira), o `maleta-tit.js` (o título
 da placa da maleta), o `mesa-topo.js` (a plaqueta e as teclas do topo em largura par), o `deck.js` (os toca-discos, que
 exporta a letra deles, o `deckGlyphs`), o `maleta-vazia.js` (o aviso de vazio do A seguir, na letra do `deck.js`), o
 `mix.js` (o mixer) e o `pedal.js` (os pedais). O `deck.js`, o `mix.js` e o `prateleira.js` começam no

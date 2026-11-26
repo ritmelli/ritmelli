@@ -1184,16 +1184,21 @@ def a_built_page_reads_only_its_own_modules(folder):
     (folder / "spaced.js").write_text("x; ", encoding="utf-8")
     spaced = theme_page.inline_files('<head>\n<script type="module" src="spaced.js"></script>\n', folder)
     spaced_read, spaced_error = theme_page.strict(spaced, True)
-    confere('%0Ax;%20"' in spaced and not spaced_error and spaced_read.texts == [("module", "\nx; ")],
-            f"a space at the end of a module goes in its address as %20, which no URL parser drops "
-            f"({spaced_error or spaced_read.texts})")
+    named = 'x; %0A//%23 sourceURL=spaced.js%0A"'
+    confere(named in spaced and not spaced_error and spaced_read.texts == [("module", "\nx; ")],
+            f"a module's address ends in the sourceURL line the build adds, which names its file, so no URL parser "
+            f"drops a space at the end of its text ({spaced_error or spaced_read.texts})")
     imports, first = built.index('{"imports"'), '<script type="module">import "first.js";</script>'
     second = '<script type="module">import "second.js";</script>'
 
     def mapped(modules):
         return f'<script type="importmap">{theme_page.import_map(modules)}</script>{first}{second * (len(modules) > 1)}'
     altered = {
-        "a space at the end of a module's address": spaced.replace('%0Ax;%20"', '%0Ax; "', 1),
+        "a module without the sourceURL line the build adds": spaced.replace(named, 'x; "', 1),
+        "a carriage return, which the build reads as a line break": mapped({"first.js": "\nconst first = 1;\r\n"}),
+        "a classic script between the map and the first import": built.replace(
+            f"</script>{first}", f"</script><script>go();</script>{first}", 1),
+        "a line break between the map and the first import": built.replace(f"</script>{first}", f"</script>\n{first}", 1),
         "two modules at one address": mapped({"first.js": "\nconst first = 1;\n", "second.js": "\nconst first = 1;\n"}),
         "a module without the line break the build puts first": mapped({"first.js": "const first = 1;\n"}),
         "a module that starts with #!": mapped({"first.js": "\n#!x\n"}),

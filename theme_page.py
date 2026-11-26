@@ -83,24 +83,28 @@ def place(html, i):
 
 
 def module_url(text):
-    quoted = urllib.parse.quote(text, safe=URL_KEPT)
-    kept = quoted.rstrip(" ")
-    return MODULE_SOURCE + kept + "%20" * (len(quoted) - len(kept))
+    return MODULE_SOURCE + urllib.parse.quote(text, safe=URL_KEPT)
+
+
+def source_url(name):
+    return f"\n//# sourceURL={name}\n"
 
 
 def import_map(modules):
-    return json.dumps({"imports": {name: module_url(text) for name, text in modules.items()}}, separators=(",", ":"))
+    return json.dumps({"imports": {name: module_url(text + source_url(name)) for name, text in modules.items()}},
+                      separators=(",", ":"))
 
 
 def read_import_map(body):
     with contextlib.suppress(ValueError, TypeError, AttributeError, KeyError):
         imports = json.loads(body)["imports"]
-        modules = {name: urllib.parse.unquote(url.removeprefix(MODULE_SOURCE), errors="strict")
+        decoded = {name: urllib.parse.unquote(url.removeprefix(MODULE_SOURCE), errors="strict")
                    for name, url in imports.items()
                    if re.fullmatch(MODULE_NAME, name) and url.startswith(MODULE_SOURCE)}
+        modules = {name: text.removesuffix(source_url(name)) for name, text in decoded.items()}
         texts = list(modules.values())
         if (modules and len(modules) == len(imports) and len(set(texts)) == len(texts)
-                and all(text.startswith("\n") and not text.startswith("\n#!") for text in texts)
+                and all(text.startswith("\n") and not text.startswith("\n#!") and "\r" not in text for text in texts)
                 and import_map(modules) == body):
             return modules
     return None
@@ -109,7 +113,7 @@ def read_import_map(body):
 class Template:
     def __init__(self, html, built=False):
         self.html, self.found, self.elements, self.texts, self.svg, self.select = html, [], [], [], False, False
-        self.marks, self.built, self.modules, self.unimported, self.map_at = set(), built, None, [], 0
+        self.marks, self.built, self.modules, self.unimported, self.map_at, self.map_end = set(), built, None, [], 0, 0
         i = 0
         while i < len(html):
             i = self.token(i)
@@ -185,7 +189,7 @@ class Template:
             self.refuse(i, f"the <{tag}> holds {holds}does not end in </{tag}>, which the browser can read differently")
         inside = text.group(0)[:-len(tag) - 3]
         if script_type in BUILT_SCRIPTS:
-            self.built_script(i, script_type, inside)
+            self.built_script(i, script_type, inside, text.end())
             self.record(tag, attrs)
             return text.end()
         if tag == "style" and (problem := sheet_problem(inside, False)):
@@ -195,15 +199,16 @@ class Template:
             self.texts.append((tag, inside))
         return text.end()
 
-    def built_script(self, i, kind, inside):
+    def built_script(self, i, kind, inside, end):
         if kind == "importmap":
             if self.modules is not None or (modules := read_import_map(inside)) is None:
                 self.refuse(i, "the import map is not the one the build writes: one map, before the modules, with each "
                                "module of the page as a data: address")
-            self.modules, self.unimported, self.map_at = modules, list(modules), i
-        elif not (m := MODULE_IMPORT.fullmatch(inside)) or not self.unimported or m.group(1) != self.unimported[0]:
+            self.modules, self.unimported, self.map_at, self.map_end = modules, list(modules), i, end
+        elif (not (m := MODULE_IMPORT.fullmatch(inside)) or not self.unimported or m.group(1) != self.unimported[0]
+              or len(self.unimported) == len(self.modules) and i != self.map_end):
             self.refuse(i, f"the module script {inside[:60]!r} is not the import of the next module of the page's "
-                           f"import map, in the order the build writes")
+                           f"import map, in the order the build writes, the first one right after the map")
         else:
             self.texts.append(("module", self.modules[self.unimported.pop(0)]))
 

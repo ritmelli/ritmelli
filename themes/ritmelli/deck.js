@@ -7,7 +7,21 @@
    textos numa fonte de bitmap (a Jersey 10 e a VT323 lidas na grade delas). Os elementos de verdade seguem ali,
    transparentes por cima: o clique, o estado, os textos e o lugar de cada coisa vem deles (o giro do prato e o angulo
    do braco tambem, do CSS de sempre). Cada deck vai para x e y pares. */
-import { glyphs, cor, O, O2, SOMBRA, SOMBRA_F, M, CH, TINTA, CREME, CREME_L, CREME_S, pincel, px, ret, recorte, solto, caixa, sombraCaixa, disco, esfera3, RITMELLI, MIUDA, lg, mapa, icone } from "pixel.js";
+import { glyphs, ruido, cor, O, O2, SOMBRA, SOMBRA_F, TINTA, CREME_L, fontesProntas, pincel, px, ret, recorte, solto, caixa, sombraCaixa, disco, esfera3, lg, mapa, stamp } from "pixel.js";
+import { RITMELLI, MIUDA } from "letters.js";
+const M = { M0: cor(248, 190, 140), P1: cor(234, 146, 92), P2: cor(206, 116, 68), P3: cor(184, 94, 52), WF: cor(166, 82, 44),
+            P35: cor(150, 70, 38), W6: cor(142, 67, 35), W5: cor(134, 64, 33), P4: cor(120, 52, 26) };
+const CH = { veio: cor(223, 216, 201), base: cor(227, 220, 205), risca: cor(220, 213, 197), risca2: cor(231, 225, 212), luz: cor(244, 239, 228), sombra: cor(196, 187, 170) };
+const CREME = cor(239, 230, 213), CREME_S = cor(206, 192, 168);
+const ICONE = {
+  ant: ["##.....#", "##....##", "##...###", "##..####", "##.#####", "##.#####", "##..####", "##...###", "##....##", "##.....#"],
+  prox: ["#.....##", "##....##", "###...##", "####..##", "#####.##", "#####.##", "####..##", "###...##", "##....##", "#.....##"],
+  tocar: ["#..........", "###........", "####.......", "######.....", "#######....", "#########..", "##########.", "###########",
+          "##########.", "#########..", "#######....", "######.....", "####.......", "###........", "#.........."],
+  pausar: ["###...###", "###...###", "###...###", "###...###", "###...###", "###...###", "###...###", "###...###", "###...###",
+           "###...###", "###...###", "###...###", "###...###"],
+};
+const icone = (P, nome, cx, cy, c, k = 1) => stamp(P, ICONE[nome], cx, cy, c, k);
 const { gl, larg, texto } = glyphs({ ",": ["..", "..", "..", "..", "..", "..", ".#", ".#", "#."], "⋯": [".....", ".....", ".....", ".....", "#.#.#", ".....", "....."] });
 let fontesOk = false;
 export const deckGlyphs = { gl, larg, ready: () => fontesOk };
@@ -91,7 +105,6 @@ export const deckGlyphs = { gl, larg, ready: () => fontesOk };
     const E = 9, CF = 4, chx0 = E, chy0 = E, chx1 = W - E, chy1 = H - E;
     const naChapa = (x, y) => x >= chx0 && x < chx1 && y >= chy0 && y < chy1 &&
       Math.min(x - chx0, chx1 - 1 - x) + Math.min(y - chy0, chy1 - 1 - y) >= 3;
-    const hs = (a, b, c = 0) => { const h = Math.sin(a * 12.9898 + b * 78.233 + c * 37.719) * 43758.5453; return h - Math.floor(h); };
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       const ex = Math.min(x, W - 1 - x), ey = Math.min(y, H - 1 - y);
       if (ex + ey < CF) continue;
@@ -106,8 +119,8 @@ export const deckGlyphs = { gl, larg, ready: () => fontesOk };
       else if (x === W - 2 || y === H - 2) c = M.P4;
       else {
         const ao = ey < ex, al = ao ? x : y, tr = ao ? ey : ex;           // ao longo do lado e a distancia da borda
-        const seg = Math.floor((al + hs(tr, ao ? 1 : 2) * 9) / (4 + Math.floor(hs(tr, 7) * 5)));
-        const v = hs(tr, seg, ao ? 3 : 4);
+        const seg = Math.floor((al + ruido(tr, ao ? 1 : 2) * 9) / (4 + Math.floor(ruido(tr, 7) * 5)));
+        const v = ruido(tr, seg, ao ? 3 : 4);
         c = v < .2 ? M.P35 : v < .3 ? M.P3 : v < .36 ? M.W6 : M.WF;
         const fundo = ao ? y > H / 2 : x > W / 2;
         if (fundo) { if (tr === 2 || tr === 3) c = v < .3 ? M.P35 : M.P4; else if (tr >= E - 3) c = v < .3 ? M.P3 : M.WF; }
@@ -769,7 +782,7 @@ export const deckGlyphs = { gl, larg, ready: () => fontesOk };
   document.addEventListener('repinta-canvas', () => {
     for (const d of decks.values()) { d.chaveE = ''; d.labChave = ''; }
   });
-  Promise.all([document.fonts.load('300px "Jersey 10"'), document.fonts.load('300px "VT323"')]).then(() => { fontesOk = true; document.dispatchEvent(new Event('px-letra')); });
+  fontesProntas.then(() => { fontesOk = true; document.dispatchEvent(new Event('px-letra')); });
   const liga = () => requestAnimationFrame(quadro);
   document.addEventListener('DOMContentLoaded', liga);
 })();
