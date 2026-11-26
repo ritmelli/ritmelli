@@ -16,6 +16,7 @@ Shady): o teto de cada amostra e o maior entre 0 dBFS e ela mesma sem o ganho.
 """
 import re
 import subprocess
+import threading
 
 import numpy as np
 from numpy.lib.stride_tricks import sliding_window_view
@@ -91,20 +92,53 @@ def ganho_db(lufs):
     return float(min(TETO, ALVO - lufs))
 
 
+class _Measurements:
+    def __init__(self):
+        self.lock, self.running, self.stopped = threading.Lock(), set(), False
+
+
+_MEASUREMENTS = _Measurements()
+
+
 def mede_arquivo(path, ffmpeg="ffmpeg", criacao=0, startupinfo=None, limite_s=600):
     """O LUFS integrado do arquivo inteiro, decodificado como o motor decodifica (estereo, 48 kHz), pelo ebur128 do
-    ffmpeg; None se o ffmpeg nao leu ou o arquivo e so silencio."""
+    ffmpeg; None se o ffmpeg nao leu, o arquivo e so silencio ou o stop_measurements ja veio."""
+    m = _MEASUREMENTS
+    with m.lock:
+        if m.stopped:
+            return None
+        try:
+            p = subprocess.Popen([ffmpeg, "-nostdin", "-nostats", "-hide_banner", "-i", str(path), "-vn", "-ac", "2",
+                                  "-ar", str(SR), "-af", "ebur128=framelog=quiet", "-f", "null", "-"],
+                                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True,
+                                 encoding="utf-8", errors="replace", creationflags=criacao, startupinfo=startupinfo)
+        except OSError:
+            return None
+        m.running.add(p)
     try:
-        r = subprocess.run([ffmpeg, "-nostats", "-hide_banner", "-i", str(path), "-vn", "-ac", "2", "-ar", str(SR),
-                            "-af", "ebur128=framelog=quiet", "-f", "null", "-"],
-                           capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=limite_s,
-                           creationflags=criacao, startupinfo=startupinfo)
-    except (OSError, subprocess.TimeoutExpired):
+        _, err = p.communicate(timeout=limite_s)
+    except subprocess.TimeoutExpired:
+        p.kill()
+        p.communicate()
         return None
-    m = re.findall(r"^\s*I:\s+(-?[\d.]+|-inf) LUFS", r.stderr, re.M)
-    if r.returncode != 0 or not m or m[-1] == "-inf" or float(m[-1]) <= -70:
+    finally:
+        with m.lock:
+            m.running.discard(p)
+    found = re.findall(r"^\s*I:\s+(-?[\d.]+|-inf) LUFS", err, re.M)
+    if p.returncode != 0 or not found or found[-1] == "-inf" or float(found[-1]) <= -70:
         return None
-    return float(m[-1])
+    return float(found[-1])
+
+
+def stop_measurements():
+    m = _MEASUREMENTS
+    with m.lock:
+        m.stopped = True
+        running = list(m.running)
+    for p in running:
+        p.kill()
+    for p in running:
+        p.wait()
 
 
 class Limitador:

@@ -10,55 +10,84 @@ env:
   PYTHONUTF8: '1'
 
 jobs:
-  ganho-spread:
-    name: testa_ganho spread
+  ganho-in-situ:
+    name: testa_ganho inside the Testes run
     runs-on: windows-2025
-    timeout-minutes: 90
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v7
         with:
+          fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/python
         with:
           requirements: requirements-dev.txt
       - name: ffmpeg on the PATH
-        run: Add-Content -Path $env:GITHUB_PATH -Value "$env:GITHUB_WORKSPACE\instalador\ffmpeg\bin" -Encoding utf8
-      - name: 50 runs of the mixer cost test
+        run: Add-Content -Path $env:GITHUB_PATH -Value "$env:GITHUB_WORKSPACE\instaladorfmpegin" -Encoding utf8
+      - name: 4 runs of the Testes suite
         run: |
           New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\ganho" | Out-Null
-          $fails = 0
-          for ($i = 1; $i -le 50; $i++) {
-            $env:GANHO_DUMP = "$env:RUNNER_TEMP\ganho\run-$i.json"
-            python dev/testa_ganho.py TestaMotor.test_custo_do_misturador 2>&1 | Select-String -Pattern 'media|FAIL|OK|Error' | ForEach-Object { "run $i : $_" }
-            if ($LASTEXITCODE -ne 0) { $fails++ }
+          for ($i = 1; $i -le 4; $i++) {
+            $env:GANHO_DUMP = "$env:RUNNER_TEMP\ganhoun-$i.json"
+            $t0 = Get-Date
+            python dev/testa_tudo.py --without-long > "$env:RUNNER_TEMP\ganhoun-$i.log" 2>&1
+            "suite $i : exit $LASTEXITCODE in $([int]((Get-Date) - $t0).TotalSeconds) s"
+            Select-String -Path "$env:RUNNER_TEMP\ganhoun-$i.log" -Pattern 'FALHOU|FAIL|falhou' | Select-Object -First 8
           }
-          "failed runs: $fails of 50"
       - name: Spread
         if: always()
         shell: python
         run: |
           import glob, json, os, statistics as st
-          rows = []
-          for f in sorted(glob.glob(os.path.join(os.environ["RUNNER_TEMP"], "ganho", "run-*.json")), key=lambda p: int(p.rsplit("-", 1)[1][:-5])):
+          for f in sorted(glob.glob(os.path.join(os.environ["RUNNER_TEMP"], "ganho", "run-*.json"))):
               d = json.load(open(f))
               ms = sorted(t * 1000 for t in d["wall"])
               n = len(ms)
-              q = lambda p: ms[min(n - 1, int(p * n))]
-              rows.append(dict(run=f.rsplit("-", 1)[1][:-5], mean=st.mean(ms), median=st.median(ms), p90=q(.9), p99=q(.99),
-                               max=ms[-1], over1=sum(t > 1 for t in ms), cpu=d["cpu"] * 1000 / n, trim=st.mean(ms[: int(n * .9)])))
-          print("run   mean  median   p90   p99    max  >1ms  cpu/call  mean90")
-          for r in rows:
-              print(f"{r['run']:>3} {r['mean']:6.3f} {r['median']:6.3f} {r['p90']:6.3f} {r['p99']:6.3f} {r['max']:6.2f} {r['over1']:5d} {r['cpu']:8.3f} {r['trim']:7.3f}")
-          for k in ("mean", "median", "p90", "trim", "cpu"):
-              v = [r[k] for r in rows]
-              print(f"{k}: min {min(v):.3f} median {st.median(v):.3f} max {max(v):.3f} stdev {st.pstdev(v):.3f} over 0.3: {sum(x >= 0.3 for x in v)}")
-          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as s:
-              s.write("```\n" + "\n".join(f"{k}: " + ", ".join(f"{r[k]:.3f}" for r in rows) for k in ("mean", "median", "trim", "cpu")) + "\n```\n")
+              print(f"{os.path.basename(f)}: mean {st.mean(ms):.3f} median {st.median(ms):.3f} p99 {ms[int(.99 * n)]:.3f} max {ms[-1]:.2f} cpu/call {d['cpu'] * 1000 / n:.3f}")
+              print(d.get("busy", ""))
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: ganho
+          name: ganho-in-situ
           path: ${{ runner.temp }}/ganho/
+
+  mock-stop:
+    name: mock stop, fix and base
+    runs-on: windows-2025
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/python
+        with:
+          requirements: requirements-dev.txt
+      - name: ffmpeg on the PATH
+        run: Add-Content -Path $env:GITHUB_PATH -Value "$env:GITHUB_WORKSPACE\instaladorfmpegin" -Encoding utf8
+      - name: 5 runs on this code
+        run: |
+          $fails = 0
+          for ($i = 1; $i -le 5; $i++) { python dev/test_mock_stop.py; if ($LASTEXITCODE -ne 0) { $fails++ } }
+          "fix: failed runs $fails of 5"
+      - name: 10 runs of missing_script on this code
+        run: |
+          $fails = 0
+          for ($i = 1; $i -le 10; $i++) {
+            $out = python dev/missing_script.py 2>&1
+            $held = ($out | Select-String -Pattern 'WinError 32').Count
+            "missing_script $i : exit $LASTEXITCODE, WinError 32 lines $held"
+            if ($LASTEXITCODE -ne 0) { $fails++; $out | Select-String -Pattern '^FAIL|Error' | Select-Object -First 5 }
+          }
+          "missing_script: failed runs $fails of 10"
+      - name: 3 runs on the base server, sonoridade and so_mock
+        run: |
+          git show origin/main:server.py > server.py
+          git show origin/main:sonoridade.py > sonoridade.py
+          git show origin/main:dev/so_mock.py > dev/so_mock.py
+          $fails = 0
+          for ($i = 1; $i -le 3; $i++) { python dev/test_mock_stop.py; if ($LASTEXITCODE -ne 0) { $fails++ } }
+          "base: failed runs $fails of 3"
 
   compara-loop:
     name: compara capture loop ${{ matrix.shard }}
@@ -77,10 +106,11 @@ jobs:
           requirements: requirements-dev.txt
       - name: ffmpeg on the PATH
         run: Add-Content -Path $env:GITHUB_PATH -Value "$env:GITHUB_WORKSPACE\instalador\ffmpeg\bin" -Encoding utf8
-      - name: 12 captures
+      - name: 10 captures
         run: |
+          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\compara" | Out-Null
           $fails = 0
-          for ($i = 1; $i -le 12; $i++) {
+          for ($i = 1; $i -le 10; $i++) {
             $dir = "$env:RUNNER_TEMP\compara\run-$i"
             $t0 = Get-Date
             python dev/compara.py --ref --pasta $dir > "$dir.log" 2>&1
@@ -89,7 +119,7 @@ jobs:
             "capture $i : exit $code in $s s"
             if ($code -ne 0) { $fails++; Get-Content "$dir.log" | Select-Object -Last 40 } else { Remove-Item -Recurse -Force $dir }
           }
-          "failed captures: $fails of 12"
+          "failed captures: $fails of 10"
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -114,10 +144,10 @@ jobs:
           requirements: requirements-dev.txt
       - name: ffmpeg on the PATH
         run: Add-Content -Path $env:GITHUB_PATH -Value "$env:GITHUB_WORKSPACE\instalador\ffmpeg\bin" -Encoding utf8
-      - name: 8 runs of the fitcheck --metricas
+      - name: 6 runs of the fitcheck --metricas
         run: |
           $fails = 0
-          for ($i = 1; $i -le 8; $i++) {
+          for ($i = 1; $i -le 6; $i++) {
             $t0 = Get-Date
             $out = python dev/fitcheck.py --metricas 2>&1
             $code = $LASTEXITCODE
@@ -125,4 +155,4 @@ jobs:
             "run $i : exit $code in $s s"
             if ($code -ne 0) { $fails++; $out | Select-String -Pattern '^(FALHA|  )' }
           }
-          "failed runs: $fails of 8"
+          "failed runs: $fails of 6"

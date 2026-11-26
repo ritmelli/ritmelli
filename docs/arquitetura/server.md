@@ -11,6 +11,9 @@ O `--mock` sobe só no `127.0.0.1`, sem a porta da rede de casa. Para o tema ver
 aparelho, o `--papel-local celular` (só junto do `--mock`) faz o `do_pc` do `build` tirar o papel do PC de quem pede
 pelo Host `127.0.0.1:<porta>`: ele passa pelo cookie do pareamento como o celular da rede de casa, e o
 `localhost:<porta>` segue o PC. Nesse modo, o `GET /api/pareamento` gera o código com o endereço do `127.0.0.1`.
+O `--stop-on-stdin-eof` (também só com o `--mock`) desliga o servidor como o Desligar quando a entrada padrão dele fecha.
+O `dev/so_mock.py` sobe todo servidor de teste com ele e segura a outra ponta: só o processo do teste
+desliga, e o papel do celular, que o `POST /api/shutdown` recusa, desliga do mesmo jeito.
 
 A regra dos comandos de música (tocar, enfileirar, pular, pausar, parar, a fila e o volume) mora no
 [`comandos.py`](comandos.md), e o avanço da fila é uma operação só, dele: a rota do comando lê o corpo, chama o

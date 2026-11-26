@@ -300,7 +300,9 @@ class TestaMotor(unittest.TestCase):
             cpu += time.thread_time() - c0
         import json, os
         if os.environ.get("GANHO_DUMP"):
-            Path(os.environ["GANHO_DUMP"]).write_text(json.dumps({"wall": ts, "cpu": cpu}))
+            import subprocess
+            busy = subprocess.run(["powershell", "-NoProfile", "-Command", "(Get-Counter '\Process(*)\% Processor Time' -MaxSamples 1).CounterSamples | Sort-Object CookedValue -Descending | Select-Object -First 12 InstanceName, CookedValue | Format-Table | Out-String"], capture_output=True, text=True).stdout
+            Path(os.environ["GANHO_DUMP"]).write_text(json.dumps({"wall": ts, "cpu": cpu, "busy": busy}))
         ms = np.array(ts) * 1000
         print(f"\n  _mixa com ganho e limitador: {ms.mean():.3f} ms em media, {np.percentile(ms, 99):.3f} no p99",
               file=sys.stderr)

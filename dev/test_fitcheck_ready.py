@@ -11,9 +11,9 @@ from aiohttp import ClientSession, web
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "dev"))
-import compara  # noqa: E402
-import fitcheck  # noqa: E402
-import so_mock  # noqa: E402
+import compara
+import fitcheck
+import so_mock
 
 CONSOLE_MARK = "ritmelli-test-console-error"
 SCRIPT_MARK = "ritmelli-test-missing.js"
