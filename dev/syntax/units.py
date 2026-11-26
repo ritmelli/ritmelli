@@ -19,7 +19,6 @@ LITERAL_START = re.compile(r"([A-Za-z]*)('''|\"\"\"|'|\")")
 ESCAPE_START = "\n\\'\"abfnrtv01234567xuUN"
 HEX_DIGITS = {"x": 2, "u": 4, "U": 8}
 SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)
-EXPRESSION = re.compile(r"\$\{\{.*?\}\}", re.S)
 
 
 @dataclass(eq=False)
@@ -163,6 +162,9 @@ def field_end(raw, i):
                 i += 2 if raw[i] == "\\" else 1
             i += len(quote)
             continue
+        if c == "#" and not spec:
+            i = raw.index("\n", i)
+            continue
         if c in "([{":
             depth += 1
         elif c in ")]}":
@@ -256,39 +258,63 @@ def end_position(node):
 
 class Assignments:
     def __init__(self, tree):
-        self.scope_of, self.bindings = {}, {}
-        self.visit(tree, tree)
+        self.scope_of, self.blocks_of, self.bindings = {}, {}, {}
+        self.visit(tree, tree, ())
 
-    def bind(self, scope, name, at, value):
-        self.bindings.setdefault((id(scope), name), []).append((at, value))
+    def bind(self, scope, name, at, value, block):
+        self.bindings.setdefault((id(scope), name), []).append((at, value, block))
 
-    def visit(self, node, scope):
-        for child in ast.iter_child_nodes(node):
-            self.scope_of[id(child)] = scope
-            if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Store):
-                targets = node.targets if isinstance(node, ast.Assign) else [getattr(node, "target", None)]
-                plain = isinstance(node, (ast.Assign, ast.AnnAssign, ast.NamedExpr)) and targets == [child]
-                at = end_position(node) if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)) else \
-                    position(child)
-                self.bind(scope, child.id, at, node.value if plain else None)
-            elif isinstance(child, ast.arg):
-                self.bind(scope, child.arg, (0, 0), None)
-            self.visit(child, child if isinstance(child, SCOPES) else scope)
+    def visit(self, node, scope, blocks):
+        for field_name, value in ast.iter_fields(node):
+            for child in value if isinstance(value, list) else [value]:
+                if not isinstance(child, ast.AST):
+                    continue
+                inner = (*blocks, (id(node), field_name)) if isinstance(child, ast.stmt) else blocks
+                self.scope_of[id(child)], self.blocks_of[id(child)] = scope, inner
+                if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Store):
+                    targets = node.targets if isinstance(node, ast.Assign) else [getattr(node, "target", None)]
+                    plain = isinstance(node, (ast.Assign, ast.AnnAssign, ast.NamedExpr)) and targets == [child]
+                    at = end_position(node) if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)) else \
+                        position(child)
+                    self.bind(scope, child.id, at, node.value if plain else None, inner[-1] if inner else None)
+                elif isinstance(child, ast.arg):
+                    self.bind(scope, child.arg, (0, 0), None, None)
+                self.visit(child, child if isinstance(child, SCOPES) else scope, inner)
 
-    def value(self, expression, depth=0):
-        if isinstance(expression, (ast.Constant, ast.JoinedStr)) or joined(expression):
-            return expression
-        if not isinstance(expression, ast.Name) or depth >= 5:
-            return None
-        scope, outer = self.scope_of.get(id(expression)), False
+    def reaching(self, name):
+        scope, outer = self.scope_of.get(id(name)), False
+        chain = self.blocks_of.get(id(name), ())
         while scope is not None:
-            bound = None if outer and isinstance(scope, ast.ClassDef) else self.bindings.get((id(scope), expression.id))
+            bound = None if outer and isinstance(scope, ast.ClassDef) else self.bindings.get((id(scope), name.id))
             if bound:
-                earlier = [b for b in bound if b[0] <= position(expression)]
-                chosen = max(earlier, key=lambda b: b[0]) if earlier else bound[0] if outer and len(bound) == 1 else None
-                return self.value(chosen[1], depth + 1) if chosen and chosen[1] is not None else None
+                earlier = sorted((b for b in bound if b[0] <= position(name)), key=lambda b: b[0], reverse=True)
+                if outer:
+                    earlier = earlier[:1] or (bound if len(bound) == 1 else [])
+                found = []
+                for _, value, block in earlier:
+                    found.append(value)
+                    if outer or block is None or block in chain:
+                        break
+                return found
             scope, outer = self.scope_of.get(id(scope)), True
-        return None
+        return []
+
+    def values(self, expression, depth=0):
+        if isinstance(expression, (ast.Constant, ast.JoinedStr)) or joined(expression):
+            return [expression]
+        if not isinstance(expression, ast.Name) or depth >= 5:
+            return []
+        out = []
+        for value in self.reaching(expression):
+            found = self.values(value, depth + 1) if value is not None else []
+            if not found:
+                return []
+            out += found
+        return out
+
+    def value(self, expression):
+        found = self.values(expression)
+        return found[0] if len(found) == 1 else None
 
 
 def joined(expression):
@@ -336,26 +362,19 @@ def embedded_powershell(path, tree, text, file_line=None):
     names = Assignments(tree)
     pieces, seen = [], set()
     for _, script_node in found:
-        target = names.value(script_node)
-        if target is not None and id(target) in seen:
-            continue
-        if target is None:
-            built = None
-        elif joined(target):
-            built = joined_script(tokens, text, target, names)
-        else:
-            built = powershell_script(tokens, text, target)
-        if built is None:
+        targets = names.values(script_node)
+        built = [joined_script(tokens, text, t, names) if joined(t) else powershell_script(tokens, text, t)
+                 for t in targets if id(t) not in seen]
+        if not targets or None in built:
             line = file_line(script_node.lineno)
             pieces.append(Piece(path, "powershell", "", lambda _, line=line: line, problem=f"{path}:{line}: the "
                                 f"PowerShell reader can't follow the script that Python passes after -Command"))
             continue
-        seen.add(id(target))
-        script, lines = built
-
-        def line_of(offset, lines=lines):
-            return file_line(lines[min(max(offset, 0), len(lines) - 1)])
-        pieces.append(powershell_piece(path, script, line_of, shell="powershell"))
+        seen |= {id(t) for t in targets}
+        for script, lines in built:
+            def line_of(offset, lines=lines):
+                return file_line(lines[min(max(offset, 0), len(lines) - 1)])
+            pieces.append(powershell_piece(path, script, line_of, shell="powershell"))
     return pieces
 
 
@@ -378,14 +397,13 @@ def language_of(shell):
 
 
 def job_default_shell(job, workflow_default):
+    job = yaml.resolved(job)
     if not isinstance(job, yaml.Mapping):
         return workflow_default
-    defaults = job.node("defaults")
-    run = defaults.node("run") if isinstance(defaults, yaml.Mapping) else None
-    shell = yaml.scalar_text(run.node("shell")) if isinstance(run, yaml.Mapping) else None
+    shell = yaml.scalar_text(mapping_value(mapping_value(mapping_value(job, "defaults"), "run"), "shell"))
     if shell:
         return shell
-    runs_on = job.node("runs-on")
+    runs_on = yaml.resolved(job.node("runs-on"))
     texts = [yaml.scalar_text(x) for x in (runs_on.items if isinstance(runs_on, yaml.Sequence) else [runs_on])]
     if any(t and "windows" in t for t in texts):
         return workflow_default or "pwsh"
@@ -406,27 +424,43 @@ def steps_with_shells(root):
     run = mapping_value(mapping_value(root, "defaults"), "run")
     workflow_default = yaml.scalar_text(mapping_value(run, "shell"))
     jobs = yaml.resolved(mapping_value(root, "jobs"))
-    groups = [(job, job_default_shell(yaml.resolved(job), workflow_default))
+    groups = [(job, job_default_shell(job, workflow_default))
               for _, job in (jobs.pairs if isinstance(jobs, yaml.Mapping) else [])]
     groups.append((mapping_value(root, "runs"), workflow_default))
     found = []
     for owner, default in groups:
-        for item in sequence_items(mapping_value(owner, "steps")):
+        steps = mapping_value(owner, "steps")
+        for item in sequence_items(steps):
             step = yaml.resolved(item)
             if isinstance(yaml.resolved(mapping_value(step, "run")), yaml.Scalar):
-                found.append((item, step, default))
+                found.append((steps if isinstance(steps, yaml.Alias) else item, step, default))
     return found
+
+
+def expression_end(value, i):
+    j = i + 3
+    while j < len(value):
+        if value[j] == "'":
+            j += 1
+            while j < len(value) and not (value[j] == "'" and value[j + 1:j + 2] != "'"):
+                j += 2 if value[j] == "'" else 1
+        elif value.startswith("}}", j):
+            return j + 2
+        j += 1
+    return None
 
 
 def without_expressions(value, offsets):
     text, kept, at = [], [], 0
-    for m in EXPRESSION.finditer(value):
-        text.append(value[at:m.start()])
-        kept += offsets[at:m.start()]
+    start = value.find("${{")
+    while start >= 0 and (end := expression_end(value, start)) is not None:
+        text.append(value[at:start])
+        kept += offsets[at:start]
         chunk = placeholder("".join(text), False)
         text.append(chunk)
-        kept += [offsets[m.start()]] * len(chunk)
-        at = m.end()
+        kept += [offsets[start]] * len(chunk)
+        at = end
+        start = value.find("${{", at)
     text.append(value[at:])
     kept += offsets[at:]
     return "".join(text), kept

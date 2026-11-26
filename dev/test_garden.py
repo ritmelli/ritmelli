@@ -150,6 +150,20 @@ CASES = {
         ("Start-Sleep in a Python string that is no PowerShell", {"a.py": "x = 'Start-Sleep 1'\n"},
          {"a.py": 'import subprocess\nsubprocess.run(["powershell", "-Command", "Start-Sleep 1"])\n'}),
         ("the sleep alias", {"a.ps1": "Write-Output sleep\n"}, {"a.ps1": "sleep 1\n"}),
+        ("the module name of Start-Sleep", {"a.ps1": "Microsoft.PowerShell.Utility\\Write-Output 1\n"},
+         {"a.ps1": "Microsoft.PowerShell.Utility\\Start-Sleep 1\n"}),
+        ("Start-Sleep by its quoted name", {"a.ps1": "& \"Write-Output\" 1\n"}, {"a.ps1": "& \"Start-Sleep\" 1\n"}),
+        ("Start-Sleep in a switch predicate", {"a.ps1": "switch ($x) { { $true } { 'y' } }\n"},
+         {"a.ps1": "switch ($x) { { Start-Sleep 1; $true } { 'y' } }\n"}),
+        ("a sleep in the iterable of a for", {"a.py": "import time\nfor item in items:\n    pass\n"},
+         {"a.py": "import time\nfor item in time.sleep(1):\n    pass\n"}),
+        ("a sleep in the subject of a match", {"a.py": "import time\nmatch x:\n    case _:\n        pass\n"},
+         {"a.py": "import time\nmatch time.sleep(1):\n    case _:\n        pass\n"}),
+        ("a sleep in the guard of a case", {"a.py": "import time\nmatch x:\n    case 1 if ready():\n        pass\n"},
+         {"a.py": "import time\nmatch x:\n    case 1 if time.sleep(1):\n        pass\n"}),
+        ("a script set in either branch",
+         {"a.py": "import subprocess\nif flag:\n    ps = 'Get-Date'\nelse:\n    ps = 'Get-Item x'\n" + RUN_PS},
+         {"a.py": "import subprocess\nif flag:\n    ps = 'Start-Sleep 1'\nelse:\n    ps = 'Get-Item x'\n" + RUN_PS}),
         ("the Thread.Sleep of PowerShell", {"a.ps1": "[System.Threading.Thread]::CurrentThread\n"},
          {"a.ps1": "[System.Threading.Thread]::Sleep(10)\n"}),
         ("time.sleep", {"a.py": "import time\ntime.perf_counter()\n"}, {"a.py": "import time\ntime.sleep(1)\n"}),
@@ -210,6 +224,15 @@ CASES = {
                                      "    steps:\n      - run: Get-Date\n"},
          {".github/workflows/w.yml": "jobs:\n  j:\n    runs-on: windows-2025\n    env:\n      D: &d Start-Sleep 1\n"
                                      "    steps:\n      - run: *d\n"}),
+        ("steps shared with a test job by an alias",
+         {".github/workflows/w.yml": "jobs:\n  test:\n    runs-on: windows-2025\n    steps: &s\n      - run: Start-Sleep 1\n"},
+         {".github/workflows/w.yml": "jobs:\n  test:\n    runs-on: windows-2025\n    steps: &s\n      - run: Start-Sleep 1\n"
+                                     "  build:\n    runs-on: windows-2025\n    steps: *s\n"}),
+        ("a GitHub expression with a quoted }}",
+         {".github/workflows/w.yml": "jobs:\n  j:\n    runs-on: windows-2025\n    steps:\n"
+                                     "      - run: Write-Output ${{ '}}' }}\n"},
+         {".github/workflows/w.yml": "jobs:\n  j:\n    runs-on: windows-2025\n    steps:\n"
+                                     "      - run: Start-Sleep ${{ '}}' }}\n"}),
         ("a GitHub expression in a PowerShell step",
          {".github/workflows/w.yml": "jobs:\n  j:\n    runs-on: windows-2025\n    steps:\n"
                                      "      - run: Write-Output ${{ inputs.seconds }}\n"},
@@ -258,6 +281,21 @@ CASES = {
                   "while True:\n    if not attempt() and enabled:\n        break\n    time.sleep(1)\n"},
          {"a.py": "import time\ndef attempt():\n    try:\n        return f()\n    except OSError:\n        return None\n"
                   "while True:\n    if attempt() and enabled:\n        break\n    time.sleep(1)\n"}),
+        ("a comparison of the helper's result is no test of its success",
+         {"a.py": "import time\ndef attempt():\n    try:\n        return f()\n    except OSError:\n        return None\n"
+                  "while not (attempt() is False):\n    time.sleep(1)\n"},
+         {"a.py": "import time\ndef attempt():\n    try:\n        return f()\n    except OSError:\n        return None\n"
+                  "while not attempt():\n    time.sleep(1)\n"}),
+        ("a PowerShell comparison of the helper's result",
+         {"a.ps1": "function attempt { try { f } catch { $null } }\n"
+                   "while ($true) { if ((attempt) -eq $null) { break }; Start-Sleep 1 }\n"},
+         {"a.ps1": "function attempt { try { f } catch { $null } }\n"
+                   "while ($true) { if (attempt) { break }; Start-Sleep 1 }\n"}),
+        ("the helper's result passed to another call",
+         {"a.py": "import time\ndef attempt():\n    try:\n        return f()\n    except OSError:\n        return None\n"
+                  "while True:\n    if check(attempt()):\n        break\n    time.sleep(1)\n"},
+         {"a.py": "import time\ndef attempt():\n    try:\n        return f()\n    except OSError:\n        return None\n"
+                  "while True:\n    if attempt():\n        break\n    time.sleep(1)\n"}),
         ("a do-until on the result of its helper",
          {"a.ps1": "function Get-S { try { f } catch { $null } }\ndo { Start-Sleep 1; $s = Get-S } until (-not $s)\n"},
          {"a.ps1": "function Get-S { try { f } catch { $null } }\ndo { Start-Sleep 1; $s = Get-S } until ($s)\n"}),
@@ -472,6 +510,11 @@ CASES = {
                   "subprocess.run(['powershell', '-Command', code])\n"},
          {"a.py": "import subprocess\ncode = '\\n'.join(['try { f } catch { }', *extra])\n"
                   "subprocess.run(['powershell', '-Command', code])\n"}),
+        ("a windows runner named by an alias",
+         {".github/workflows/w.yml": "x: &w [ubuntu-24.04]\njobs:\n  j:\n    runs-on: *w\n    steps:\n"
+                                     "      - run: try { f } catch { }\n"},
+         {".github/workflows/w.yml": "x: &w [windows-2025]\njobs:\n  j:\n    runs-on: *w\n    steps:\n"
+                                     "      - run: try { f } catch { }\n"}),
         ("a PowerShell catch in an if condition counts once",
          {"a.ps1": "if (& { try { f } catch [IO.IOException] { } }) { }\n"},
          {"a.ps1": "if (& { try { f } catch { } }) { }\n"}),

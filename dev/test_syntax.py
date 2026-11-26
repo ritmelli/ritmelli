@@ -179,7 +179,7 @@ def powershell_texts():
 
 LITERAL_CASES = ["'a\\nb'", "'\\x41\\101\\N{BULLET}\\q'", "'\\u00e9\\U0001F600'", "'a\\\nb'", "r'a\\nb'", "'''a\nb'''",
                  "f'{{x}} {y!r:>{w}} {z}'", "rf'\\d{x}'", "f'{d[\"k\"]}'", "f\"{d['k']}\"", "f'{x:%H:%M}'",
-                 "f'{(lambda: 1)()}'", "f'''{\nx}'''"]
+                 "f'{(lambda: 1)()}'", "f'''{\nx}'''", "f'''a {1 # } b\n} c'''"]
 
 
 def literal_view(raw):
@@ -205,7 +205,11 @@ def python_literals():
 def test_python_literals():
     count, wrong = 0, []
     for name, raw in python_literals():
-        chars = units.literal_chars(raw, 1)
+        try:
+            chars = units.literal_chars(raw, 1)
+        except (IndexError, ValueError) as ex:
+            wrong.append(f"{name} ({type(ex).__name__})")
+            continue
         if chars is None:
             continue
         count += 1
