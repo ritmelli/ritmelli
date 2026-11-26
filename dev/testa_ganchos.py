@@ -577,13 +577,13 @@ def instance_state(tree, classes):
 
 
 def held_attribute(node, bindings, scope):
-    if isinstance(node, ast.Call) and node.args and attrgetter_names(node.func, bindings, scope):
-        return [(node.args[0], n) for n in attrgetter_names(node.func, bindings, scope)]
     while isinstance(node, ast.Subscript):
         holder = instance_dict(node.value, bindings, scope)
         if holder is not None:
             return [(holder, n) for n in string_literals(node.slice)]
         node = node.value
+    if isinstance(node, ast.Call) and node.args and attrgetter_names(node.func, bindings, scope):
+        return [(node.args[0], n) for n in attrgetter_names(node.func, bindings, scope)]
     return [(node.value, node.attr)] if isinstance(node, ast.Attribute) else []
 
 
@@ -872,6 +872,7 @@ WRITES_CAUGHT = [
     ("setattr", APP_NAMES, "def f(A):\n    setattr(A, 'x', 1)\n"),
     ("a read-only property", APP_NAMES, "def f(A):\n    A.p = 1\n"),
     ("an item of vars()", APP_NAMES, "def f(A):\n    vars(A)['x'] = 1\n"),
+    ("an item through attrgetter", APP_NAMES, "import operator\n\n\ndef f(A, v):\n    operator.attrgetter('x')(A)[0] = v\n"),
     ("a container method through attrgetter", APP_NAMES,
      "import operator\n\n\ndef f(A):\n    operator.attrgetter('x')(A).append(0)\n"),
     ("a container method through __dict__", APP_NAMES, "def f(A, v):\n    A.__dict__['x'].append(v)\n"),
