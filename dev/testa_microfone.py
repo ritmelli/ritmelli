@@ -24,7 +24,6 @@ Sai 1 se algo falhar.
 """
 import contextlib
 import ctypes
-import itertools
 import os
 import sys
 import threading
@@ -164,13 +163,14 @@ ALVOS = {"Mic": ALVO, "Mic2": OUTRO}  # o Mic e o que o AnelFalso le; o Mic2, ni
 
 
 class VigiaNoAnel:
-    """O Engine de verdade com o vigia rodando, a lista de aparelhos parada (LISTA) e a partida (start) trocada por uma
-    que so sobe o Injetor no anel falso, com o alvo do microfone escolhido (ALVOS). Guarda cada abertura (microfone,
-    monotonic)."""
+    """The real Engine with its watcher running, the device list frozen (LISTA) and start replaced by one that only
+    brings the Injetor up on the fake ring, aimed at the chosen microphone (ALVOS). It records the microphone of each
+    opening, and wait_for_reopenings waits for the openings themselves instead of a fixed time."""
 
     def __init__(self):
         self.e = e = eng.Engine(mic="Mic", monitor="")
         self.aberturas = []
+        self._opened = threading.Condition()
         e.start = self._start
         self._patches = contextlib.ExitStack()
         self._patches.enter_context(mock.patch.multiple(eng, create=True, **VIGIA_RAPIDO))
@@ -192,10 +192,16 @@ class VigiaNoAnel:
         inj = eng.Injetor(e, segue[1] if segue and segue[0] == mic else None)
         st.callback(inj.para)
         e._stack, e._injetor = st, inj
-        self.aberturas.append((mic, time.monotonic()))
+        with self._opened:
+            self.aberturas.append(mic)
+            self._opened.notify_all()
 
     def reaberturas(self):
         return len(self.aberturas) - 1
+
+    def wait_for_reopenings(self, count, timeout_s=10.0):
+        with self._opened:
+            return self._opened.wait_for(lambda: self.reaberturas() >= count, timeout_s)
 
     def fecha(self):
         self.e.close()  # o vigia segue vivo, mas parado: o motor esta fechado
@@ -210,9 +216,9 @@ class TestaMicrofone(unittest.TestCase):
         self.assertTrue(v.e._injetor.leitores, "o Injetor nao viu o leitor do anel")
 
     def test_vigia_reabre_o_leitor_perdido(self):
-        """O filtro do microfone em uso para de ler e nao volta, com o motor ainda capturando o mesmo microfone e a
-        lista de aparelhos parada: o vigia reabre o audio depois de LEITOR_PERDIDO_S, a cada LEITOR_INTERVALO_S, no
-        maximo LEITOR_TENTATIVAS vezes; o leitor que volta zera a conta, e a perda seguinte reabre de novo."""
+        """The filter of the microphone in use stops reading and doesn't come back: the watcher reopens the audio on the
+        same microphone, at most LEITOR_TENTATIVAS times, keeping the audio event window; a reader that comes back
+        resets the count. The delay and the interval are proven in test_recupera_leitor_conta."""
         anel = AnelFalso()
         anel.liga()
         v = VigiaNoAnel()
@@ -222,22 +228,18 @@ class TestaMicrofone(unittest.TestCase):
             time.sleep(0.3)
             self.assertEqual(v.reaberturas(), 0, "com o leitor vivo o vigia nao reabre")
             anel.desliga()  # o filtro parou de ler; o motor segue capturando o mesmo microfone
-            time.sleep(0.3 + 3 * 0.3 + 0.5)
-            self.assertEqual(v.reaberturas(), 3, "o leitor perdido tem que reabrir ate o limite de tentativas")
+            self.assertTrue(v.wait_for_reopenings(3), "o leitor perdido tem que reabrir ate o limite de tentativas")
             # a janela do evento "audio" segue nas reaberturas, com a perda que as pediu
             self.assertIs(v.e._injetor.saude, janela, "a reabertura do leitor perdido trocou a janela do audio")
             self.assertEqual(janela.leitor_perdido, 1, "a perda que pediu a reabertura sumiu da janela do audio")
-            self.assertTrue(all(m == "Mic" for m, _ in v.aberturas), "a reabertura trocou de microfone")
-            em = [t for _, t in v.aberturas[1:]]
-            self.assertTrue(all(b - a >= 0.3 - 0.02 for a, b in itertools.pairwise(em)), "reabriu sem o intervalo")
+            self.assertTrue(all(m == "Mic" for m in v.aberturas), "a reabertura trocou de microfone")
             time.sleep(0.6)
             self.assertEqual(v.reaberturas(), 3, "passou do limite de tentativas")
             anel.liga()  # o filtro voltou a ler: a conta zera
             self._espera_leitor(v)
             time.sleep(0.2)
             anel.desliga()
-            time.sleep(0.3 + 0.4)
-            self.assertGreaterEqual(v.reaberturas(), 4, "depois de o leitor voltar, a perda nova nao reabriu")
+            self.assertTrue(v.wait_for_reopenings(4), "depois de o leitor voltar, a perda nova nao reabriu")
         finally:
             v.fecha()
             if anel._vai:
@@ -291,7 +293,14 @@ class TestaMicrofone(unittest.TestCase):
             self.assertEqual(e._recupera[1], 1, "a perda nova nao comecou a conta do zero")
             # as duas proximas falham (sem stream nenhum): seguem no intervalo, ate o limite
             e._reabre.side_effect = lambda: reabre(falha=True)
-            for _ in range(5):
+            volta(29.0)
+            self.assertEqual(reaberturas, [110.0, 123.0], "reopened before the interval")
+            volta(1.0)
+            self.assertEqual(reaberturas, [110.0, 123.0, 153.0])
+            volta(29.0)
+            self.assertEqual(reaberturas, [110.0, 123.0, 153.0], "reopened before the interval after a failed reopen")
+            volta(1.0)
+            for _ in range(3):
                 volta(30.0)
             self.assertEqual(reaberturas, [110.0, 123.0, 153.0, 183.0], "a reabertura que falhou parou a conta")
             self.assertIsNone(e._stack)
@@ -345,10 +354,32 @@ class TestaMicrofone(unittest.TestCase):
             v.e.set_devices(mic="Mic2")
             anel.desliga()
             time.sleep(1.0)
-            self.assertEqual([m for m, _ in v.aberturas], ["Mic", "Mic2"], "o vigia mexeu na troca manual")
+            self.assertEqual(v.aberturas, ["Mic", "Mic2"], "o vigia mexeu na troca manual")
             self.assertEqual(v.e.active["mic"], "Mic2")
         finally:
             v.fecha()
+
+    def test_reopens_after_the_mic_task_when_the_mic_changed_meanwhile(self):
+        for result in ({"ok": True}, {"ok": False, "motivo": "nao_pronto", "reopen": True}):
+            v = VigiaNoAnel()
+            try:
+                other_error = {"key": "server.test.otherError"}
+
+                def task(mic, result=result, v=v):
+                    v.e.set_devices(mic="Mic2")
+                    v.e.set_error(other_error)
+                    return result
+                without_filter = {"filtro": False, "melhorias": True, "guid": "{a}"}
+                with mock.patch.object(eng, "_do_microfone", lambda mic: without_filter), \
+                        mock.patch("microfone.microfone.pede_tarefa", task), \
+                        mock.patch.object(v.e, "_confere_mudos") as check_silent:
+                    v.e._confere_filtro("Mic")
+                self.assertEqual(v.aberturas, ["Mic", "Mic2", "Mic2"],
+                                 f"the task restarted the Windows audio, so the streams of Mic2 died too ({result})")
+                self.assertIs(v.e.error, other_error, f"the old microphone's task keeps another error ({result})")
+                check_silent.assert_called_once_with()
+            finally:
+                v.fecha()
 
     def test_injetor_no_ritmo_do_leitor(self):
         anel = AnelFalso()
