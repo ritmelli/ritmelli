@@ -35,6 +35,7 @@ sys.argv = ["server.py", "--no-browser", "--port", sys.argv[2], *sys.argv[3:]]
 server.main()
 """
 HOLDER_WAIT_S = 30.0
+PROCESS_SUSPEND_RESUME = 0x0800
 CHILD_HOLDS_THE_TRACK = '''
 import subprocess
 import sys
@@ -66,7 +67,7 @@ class RmProcessInfo(ctypes.Structure):
                 ("AppStatus", wintypes.ULONG), ("TSSessionId", wintypes.DWORD), ("bRestartable", wintypes.BOOL)]
 
 
-def holders(path):
+def holder_processes(path):
     rm = ctypes.WinDLL("rstrtmgr")
     session, key = wintypes.DWORD(), ctypes.create_unicode_buffer(64)
     if rm.RmStartSession(ctypes.byref(session), 0, key):
@@ -79,9 +80,27 @@ def holders(path):
         infos = (RmProcessInfo * 16)()
         if rm.RmGetList(session, ctypes.byref(needed), ctypes.byref(count), infos, ctypes.byref(reasons)):
             raise OSError("RmGetList failed")
-        return [infos[i].strAppName for i in range(count.value)]
+        return [(infos[i].strAppName, infos[i].Process.dwProcessId) for i in range(count.value)]
     finally:
         rm.RmEndSession(session)
+
+
+def holders(path):
+    return [name for name, _ in holder_processes(path)]
+
+
+def suspend(pid):
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.OpenProcess.restype = wintypes.HANDLE
+    handle = kernel.OpenProcess(PROCESS_SUSPEND_RESUME, False, pid)
+    if not handle:
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        status = ctypes.WinDLL("ntdll").NtSuspendProcess(wintypes.HANDLE(handle))
+        if status:
+            raise OSError(f"NtSuspendProcess failed for {pid}: {status:#x}")
+    finally:
+        kernel.CloseHandle(wintypes.HANDLE(handle))
 
 
 def shelf_with_one_long_track(tmp):
@@ -103,8 +122,8 @@ def shelf_with_one_long_track(tmp):
 def wait_for_ffmpeg_on(path):
     deadline = time.monotonic() + HOLDER_WAIT_S
     while time.monotonic() < deadline:
-        found = holders(path)
-        if any(name.lower().startswith("ffmpeg") for name in found):
+        found = [(name, pid) for name, pid in holder_processes(path) if name.lower().startswith("ffmpeg")]
+        if found:
             return found
         time.sleep(0.05)
     return []
@@ -121,9 +140,12 @@ def stop_while_measuring(role, extras):
                                stderr=subprocess.STDOUT, env=dict(os.environ, LOCALAPPDATA=str(tmp / "local")))
             try:
                 measuring = wait_for_ffmpeg_on(wav)
+                for _, pid in measuring:
+                    suspend(pid)
             finally:
                 stop_error = stop(srv)
-        check(bool(measuring), f"{role}: the shelf loudness measurement opened the track with ffmpeg ({measuring})")
+        check(bool(measuring), f"{role}: the shelf loudness measurement opened the track with ffmpeg, held there "
+                               f"(suspended) until the stop ({measuring})")
         left = holders(wav)
         try:
             os.remove(wav)
@@ -201,14 +223,28 @@ def measurement_stopped_by_the_given_kill():
     name = rf"\\.\pipe\ritmelli-measure-stop-{os.getpid()}"
     pipe = _winapi.CreateNamedPipe(name, _winapi.PIPE_ACCESS_DUPLEX | _winapi.FILE_FLAG_OVERLAPPED, 0, 1, 65536, 65536,
                                    0, _winapi.NULL)
-    result, kills, connected, broken = [], [], False, False
-    measuring = threading.Thread(target=lambda: result.append(sonoridade.mede_arquivo(Path(name), engine.FFMPEG)))
+    result, kills, waited_by, connected, broken = [], [], [], False, False
+    measuring = threading.Thread(target=lambda: result.append(sonoridade.mede_arquivo(Path(name), engine.FFMPEG)),
+                                 daemon=True)
+    returned = threading.Event()
 
     def kill(p):
         kills.append(p)
+        wait = p.wait
+
+        def watched_wait(*args, **kwargs):
+            code = wait(*args, **kwargs)
+            waited_by.append(threading.current_thread())
+            return code
+
+        p.wait = watched_wait
         engine.mata(p)
 
-    stopping = threading.Thread(target=sonoridade.stop_measurements, args=(kill,))
+    def stop():
+        sonoridade.stop_measurements(kill)
+        returned.set()
+
+    stopping = threading.Thread(target=stop, daemon=True)
     try:
         measuring.start()
         connecting = _winapi.ConnectNamedPipe(pipe, overlapped=True)
@@ -217,7 +253,7 @@ def measurement_stopped_by_the_given_kill():
             writing, _ = _winapi.WriteFile(pipe, endless_wav_header(), overlapped=True)
             writing.GetOverlappedResult(True)
             stopping.start()
-            stopping.join(HOLDER_WAIT_S)
+            returned.wait(HOLDER_WAIT_S)
             measuring.join(HOLDER_WAIT_S)
             try:
                 writing, _ = _winapi.WriteFile(pipe, bytes(1024), overlapped=True)
@@ -226,13 +262,14 @@ def measurement_stopped_by_the_given_kill():
                 broken = True
     finally:
         _winapi.CloseHandle(pipe)
-        measuring.join()
+        measuring.join(HOLDER_WAIT_S)
         if connected:
-            stopping.join()
-    check(connected and len(kills) == 1 and result == [None] and broken,
+            stopping.join(HOLDER_WAIT_S)
+    stop_waited = stopping in waited_by
+    check(connected and len(kills) == 1 and stop_waited and returned.is_set() and result == [None] and broken,
           f"stop_measurements ends a measurement still reading its track through the kill it is given (the engine's "
           f"mata) and waits for it: the ffmpeg is gone when it returns (opened {connected}, {len(kills)} kill, "
-          f"{result}, gone {broken})")
+          f"waited by the stop {stop_waited}, returned {returned.is_set()}, {result}, gone {broken})")
 
 
 def stop(srv):

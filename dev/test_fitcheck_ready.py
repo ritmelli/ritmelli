@@ -219,6 +219,14 @@ def notice_on_slow_state():
           f"({r})")
 
 
+def notice_reopens_on_slow_state():
+    r, proxy = notice_through({"hold_state_s": LATE_S}, {"boas_vindas": True, "metricas": True}, "esc")
+    held = proxy.held.count("/api/state")
+    check(held >= 2 and r["abriu"] is True and r["fechou"] is True and r["reabriu"] is True and not r["not_ready"],
+          f"with every GET /api/state of the page held {LATE_S:.0f} s ({held} held), the notice closed by Esc is "
+          f"still seen opening again on the next load: that wait also starts at the state ({r})")
+
+
 def notice_late_after_state():
     r, proxy = notice_through({"late_notice": True}, {"boas_vindas": True})
     check(LATE_ASKED in proxy.held and r["abriu"] is False and not r["not_ready"],
@@ -465,6 +473,7 @@ def main():
     ready_answer_past_the_deadline()
     notice_on_slow_load()
     notice_on_slow_state()
+    notice_reopens_on_slow_state()
     notice_late_after_state()
     notice_page_not_ready()
     fitcheck_never_ready()
