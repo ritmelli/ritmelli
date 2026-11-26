@@ -483,14 +483,10 @@ def docstring_lines(t):
             for d in docstrings(tree):
                 lines |= set(range(d.lineno, d.end_lineno + 1))
             items += [(p, n) for n in sorted(lines)]
-    for p in workflow_paths(t):
+    for p in t.paths(".yml", ".yaml"):
         for line_for, tree, _ in workflow_python(t, p):
             items += [(p, line_for(n)) for d in docstrings(tree) for n in range(d.lineno, d.end_lineno + 1)]
     return items
-
-
-def workflow_paths(t):
-    return [p for p in t.paths(".yml", ".yaml") if not outside_workflows(p)]
 
 
 def python_strings(t, path):
@@ -597,22 +593,16 @@ def is_test(path):
     return testa_tudo().is_test(path)
 
 
-def unit_items(t, suffixes, rule, workflows_only=False):
+def unit_items(t, suffixes, rule):
     items = []
     for p in t.paths(*suffixes):
-        if workflows_only and outside_workflows(p):
-            continue
         for piece in t.units(p):
             items += [(p, n) for n in rule(piece.unit)]
     return items
 
 
-def outside_workflows(path):
-    return suffix(path) in (".yml", ".yaml") and not units.has_steps(path)
-
-
 def foreign_code(t, path):
-    if suffix(path) in PYTHON or outside_workflows(path):
+    if suffix(path) in PYTHON:
         return []
     if suffix(path) in STRUCTURED:
         return sorted(lexed_from_pieces([p for p in t.pieces(path) if p.language in SHELL_PIECES]).code.items())
@@ -620,7 +610,7 @@ def foreign_code(t, path):
 
 
 def sleeps(t):
-    items = unit_items(t, (*PYTHON, *STRUCTURED), ir.sleeps, workflows_only=True)
+    items = unit_items(t, (*PYTHON, *STRUCTURED), ir.sleeps)
     for p in t.paths(*COMMENT_EXTENSIONS):
         items += [(p, n) for n, code in foreign_code(t, p) for _ in START_SLEEP.findall(code)]
     return items
@@ -789,7 +779,7 @@ def joined_code(lexed):
 
 
 def retries(t):
-    items = unit_items(t, (*PYTHON, *STRUCTURED), ir.retries, workflows_only=True)
+    items = unit_items(t, (*PYTHON, *STRUCTURED), ir.retries)
     for p in t.paths(".js", ".html"):
         items += [(p, n) for n in js_retries(joined_code(t.lexed(p)))]
     return items
@@ -802,7 +792,7 @@ def workflow_python(t, path):
 
 
 def broad_excepts(t):
-    items = unit_items(t, (*PYTHON, *STRUCTURED), ir.broad_handlers, workflows_only=True)
+    items = unit_items(t, (*PYTHON, *STRUCTURED), ir.broad_handlers)
     for p in t.paths(".js", ".html"):
         items += [(p, n) for n in js_swallowed(joined_code(t.lexed(p)))]
     for p in t.paths(".iss"):
@@ -844,7 +834,7 @@ def skip_markers(tree, lines):
 
 def skipped_tests(t):
     items = []
-    for p in workflow_paths(t):
+    for p in t.paths(".yml", ".yaml"):
         raw = t.files[p].splitlines()
         items += [(p, line_for(n)) for line_for, tree, script in workflow_python(t, p)
                   for n in skip_markers(tree, script.splitlines()) if not cites_issue(raw[line_for(n) - 1])]
@@ -930,7 +920,7 @@ def non_ascii_identifiers(t):
         if tree is None:
             continue
         items += [(p, line) for line in non_ascii_names(t.files[p])]
-    for p in workflow_paths(t):
+    for p in t.paths(".yml", ".yaml"):
         for line_for, _, script in workflow_python(t, p):
             items += [(p, line_for(line)) for line in non_ascii_names(script)]
     return items

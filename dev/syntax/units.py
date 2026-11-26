@@ -494,10 +494,6 @@ def is_action(path):
     return path.rsplit("/", 1)[-1] in ("action.yml", "action.yaml")
 
 
-def has_steps(path):
-    return path.startswith(".github/workflows/") or is_action(path)
-
-
 def steps_with_shells(root, path):
     run = mapping_value(mapping_value(root, "defaults"), "run")
     workflow_default = yaml.scalar_text(mapping_value(run, "shell"))
