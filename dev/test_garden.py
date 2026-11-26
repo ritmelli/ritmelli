@@ -760,6 +760,7 @@ def test_description():
           "a prose phrase with its issue in bold on the next line of the paragraph passes")
     for label, line in [("a closing line", "Closes #280"), ("a closing list item", "- Fixes #12"),
                         ("closing lines joined", "Closes #1, fixes #2 and resolves o/r#3"),
+                        ("closing lines joined with a comma and an and", "Closes #1, fixes #2, and resolves #3"),
                         ("a closing line that goes on", "Closes #272: the per-file cases that failed now and then"),
                         ("a closing line with another issue after it", "Closes #196. #197, the pair, stays open."),
                         ("a reference with no closing word", "It leaves the cause of #276 open."),

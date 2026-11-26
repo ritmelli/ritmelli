@@ -34,7 +34,7 @@ SHORT_ISSUE = re.compile(r"(?<![^\s(\[{,;:])(?:[A-Za-z\d-]+/[\w.-]+)?#\d+\b")
 LINK_TARGET = re.compile(r"\]\([^)]*\)")
 CLOSING = re.compile(r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?):?\s+(?:(?:https?://)?(?:www\.)?github\.com/"
                      r"[\w.-]+/[\w.-]+/issues/\d+|(?:[A-Za-z\d-]+/[\w.-]+)?#\d+)\b", re.I)
-CLOSING_SEPARATOR = re.compile(r"\s*(?:,|;|\band\b)\s*", re.I)
+CLOSING_SEPARATOR = re.compile(r"\s*(?:,\s*and\b|,|;|\band\b)\s*", re.I)
 LIST_MARKER = re.compile(r"\s*(?:(?:[-*+]|\d+[.)])\s+)?")
 RESULT = re.compile(r"\b(?:pass(?:es|ed)?|fail(?:s|ed)?|successfully|\d+ of \d+|\d+/\d+)\b", re.I)
 OPEN_ITEM = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+\[ \]\s")
