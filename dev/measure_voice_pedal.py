@@ -1,6 +1,7 @@
 # manual: python dev/measure_voice_pedal.py "<microfone>" precisa de um microfone com o filtro, placa de video e os modelos das vozes (python dev/vozes.py baixa), com o Ritmelli desligado
 import argparse
 import json
+import math
 import os
 import re
 import subprocess
@@ -119,11 +120,12 @@ def interruption(states_seen, mic):
     return None
 
 
-def cycle_row(n, states_seen, mic, provider, server_lines, voice_lines, on_s=ON_S):
+def cycle_row(n, states_seen, mic, provider, server_lines, voice_lines, on_s=ON_S, base=None, cut=None):
     broke = interruption(states_seen, mic)
     if broke:
         return None, f"cycle {n}: {broke}"
-    if states_seen[-1]["microfone"]["folga_min_ms"] is None:
+    base, cut = base or states_seen[0], cut or states_seen[-1]
+    if cut["microfone"]["folga_min_ms"] is None:
         return None, f"cycle {n}: the ring never measured its headroom, so its dry-outs weren't counted"
     if not any(ln.startswith("pedal_voz: pronto") for ln in server_lines):
         return None, f"cycle {n}: the voice process never said it was ready within {on_s:.0f} s of the pedal (--on-s)"
@@ -138,7 +140,7 @@ def cycle_row(n, states_seen, mic, provider, server_lines, voice_lines, on_s=ON_
         return None, f"cycle {n}: the voice process converted no block (its log has no fim with blocks)"
     if provider == "dml" and ends[-1].get("providers") != ["DmlExecutionProvider"] * VOICE_SESSIONS:
         return None, f"cycle {n}: the voice sessions ran on {ends[-1].get('providers')}, not all on DirectML"
-    before, after = states_seen[0]["microfone"], states_seen[-1]["microfone"]
+    before, after = base["microfone"], cut["microfone"]
     rose = after["volta_max_ms"] > before["volta_max_ms"]
     return {"cycle": n, "dry_outs": after["secas"] - before["secas"],
             "dry_outs_while_starting": after["secas_pedal"] - before["secas_pedal"],
@@ -159,6 +161,8 @@ def main():
     ap.add_argument("--on-s", type=float, default=ON_S, help="how long the pedal stays on in each cycle")
     ap.add_argument("--out", type=Path, default=Path("voice_pedal.json"))
     a = ap.parse_args()
+    if a.cycles < 1 or not math.isfinite(a.on_s) or a.on_s <= 0:
+        sys.exit(f"--cycles must be 1 or more and --on-s a positive number of seconds (got {a.cycles} and {a.on_s})")
     sys.path.insert(0, str(ROOT))
     import onnxruntime
     import pistavoz
@@ -216,7 +220,7 @@ def main():
             print(f"microphone {last['active_devices']['mic']}, voice {voice}; before: {last['microfone']}",
                   flush=True)
             log = work / "local" / "Ritmelli" / "logs" / "pistavoz.log"
-            mic = last["active_devices"]["mic"]
+            mic, start = last["active_devices"]["mic"], last
             for n in range(1, a.cycles + 1):
                 seen = len(lines(work / "server.err"))
                 try:
@@ -224,12 +228,15 @@ def main():
                     during = list(read_states(events, a.on_s))
                     call("POST", "/api/settings", {"effect": "nenhum"})
                     during += list(read_states(events, OFF_S))
-                    during += catch_up(events, (during or [last])[-1], call("GET", "/api/state"), mic)
+                    cut = call("GET", "/api/state")
+                    during += catch_up(events, (during or [last])[-1], cut, mic)
                 except EOFError as ex:
                     sys.exit(f"cycle {n}: {ex} (see {server_err} and {log})")
                 states_seen = [last, *during]
                 last = states_seen[-1]
-                c, problem = cycle_row(n, states_seen, mic, a.provider, lines(server_err)[seen:], lines(log), a.on_s)
+                c, problem = cycle_row(n, states_seen, mic, a.provider, lines(server_err)[seen:], lines(log), a.on_s,
+                                       start, cut)
+                start = cut
                 if problem:
                     sys.exit(f"{problem} (see {work / 'server.err'} and {log})")
                 cycles.append(c)

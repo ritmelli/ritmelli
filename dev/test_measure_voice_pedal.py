@@ -1,4 +1,5 @@
 import io
+import itertools
 import json
 import sys
 import tempfile
@@ -48,6 +49,11 @@ class Refusal(unittest.TestCase):
         self.assertRegex(PINNED or "", r"^\d+\.\d+\.\d+$")
         self.assertIn(f"onnxruntime 1.24.3 here is not the {PINNED} the installer pins",
                       self.run_main(WITH_DML, version="1.24.3"))
+
+    def test_a_measurement_that_could_not_end_is_refused(self):
+        for args in (["--cycles", "0"], ["--on-s", "0"], ["--on-s", "-1"], ["--on-s", "nan"], ["--on-s", "inf"]):
+            with self.subTest(args=args):
+                self.assertIn("--cycles must be 1 or more and --on-s a positive number", self.run_main(WITH_DML, *args))
 
     def test_an_unknown_voice_is_refused(self):
         why = self.run_main(WITH_DML, "--voice", "nobody")
@@ -166,10 +172,13 @@ class Main(unittest.TestCase):
                 logs = work / "local" / "Ritmelli" / "logs"
                 logs.mkdir(parents=True, exist_ok=True)
                 (logs / "pistavoz.log").write_text("\n".join(FIM) + "\n", encoding="utf-8")
-            answers = {"/api/effects": [{"id": "pistavoz"}], "/api/state": got.pop(0) if len(got) > 1 else got[0]}
+            answers = {"/api/effects": [{"id": "pistavoz"}]}
+            if path == "/api/state":
+                answers[path] = got.pop(0) if len(got) > 1 else got[0]
             return io.BytesIO(json.dumps(answers.get(path, {})).encode())
 
         proc = mock.Mock(**{"poll.return_value": None})
+        read_states, ticks = measure.read_states, itertools.count(1000.0)
         with (mock.patch("onnxruntime.get_available_providers", return_value=WITH_DML),
               mock.patch("onnxruntime.__version__", PINNED),
               mock.patch.object(measure.so_mock, "sai_se_o_app_ligado"),
@@ -177,8 +186,10 @@ class Main(unittest.TestCase):
               mock.patch.object(measure.so_mock, "start_job", start_job),
               mock.patch.object(measure.tempfile, "mkdtemp", return_value=str(work)),
               mock.patch.object(measure.urllib.request, "urlopen", urlopen),
-              mock.patch.object(measure, "OFF_S", 0.0),
-              mock.patch.object(sys, "argv", ["measure_voice_pedal.py", asked, "--port", "8970", "--on-s", "0",
+              mock.patch.object(measure, "OFF_S", 0.5),
+              mock.patch.object(measure, "read_states",
+                                lambda r, seconds, clock=None: read_states(r, seconds, lambda: next(ticks))),
+              mock.patch.object(sys, "argv", ["measure_voice_pedal.py", asked, "--port", "8970", "--on-s", "0.5",
                                               "--out", str(work / "out.json"), *args])):
             try:
                 measure.main()
@@ -209,6 +220,21 @@ class Main(unittest.TestCase):
         self.assertEqual((len(result["cycles"]), result["dry_outs"], result["dry_outs_while_starting"],
                           result["onnxruntime"]), (1, 1, 1, PINNED),
                          "the dry-out still queued in the stream past the cycle's wait is that cycle's")
+
+    def test_each_cycle_ends_where_its_state_was_read(self):
+        why, _, result = self.run_main([state(), state(1, 1, 656.0, 10.0), state(2, 2, 656.0, 10.0)], "--cycles", "2",
+                                       events=[state(0, 0, 9.0, 10.0)] * 3 + [state(2, 2, 656.0, 10.0)] * 3)
+        self.assertIsNone(why)
+        self.assertEqual([(c["dry_outs"], c["dry_outs_while_starting"]) for c in result["cycles"]], [(1, 1), (1, 1)],
+                         "the dry-out the stream showed past the first cut is the second cycle's")
+        self.assertEqual((result["dry_outs"], result["dry_outs_while_starting"]), (2, 2))
+
+    def test_a_catch_up_on_the_headroom_alone_keeps_the_cut(self):
+        why, _, result = self.run_main([state(), state(0, 0, 9.0, 8.0)], "--cycles", "1",
+                                       events=[state(0, 0, 9.0, 10.0)] * 3 + [state(1, 1, 656.0, 0.0)])
+        self.assertIsNone(why)
+        self.assertEqual((result["dry_outs"], result["cycles"][0]["new_longest_return_ms"]), (0, None),
+                         "the dry-out the stream showed past the cut isn't this cycle's")
 
     def test_a_broken_ring_at_the_end_of_a_cycle_stops_the_measurement(self):
         healthy = [state(0, 0, 9.0, 10.0)] * 3
@@ -260,6 +286,12 @@ class CatchUp(unittest.TestCase):
         r = stream(state(folga=None), state(folga=12.0))
         got = measure.catch_up(r, state(folga=None), state(folga=12.0), MIC, clock=lambda: 100.0)
         self.assertEqual(got, [state(folga=None), state(folga=12.0)])
+
+    def test_a_drop_between_two_states_of_the_catch_up_stops_it(self):
+        r = stream(state(2, 0, 9.0, 10.0), state(1, 0, 9.0, 10.0))
+        with self.assertRaises(EOFError) as stop:
+            measure.catch_up(r, state(0, 0, 9.0, 10.0), state(3, 0, 9.0, 10.0), MIC, clock=lambda: 100.0)
+        self.assertIn("counters started over", str(stop.exception))
 
     def test_a_stream_already_there_reads_nothing(self):
         self.assertEqual(measure.catch_up(stream(), state(1, 1, 9.0), state(1, 1, 9.0), MIC), [])

@@ -55,21 +55,22 @@ usa), uma seca que o próprio teste faz acontecer, a thread do anel parada quand
 isso de verdade (manual: o microfone com o filtro, a placa de vídeo e os modelos, com o Ritmelli desligado), num
 servidor de verdade deste checkout, numa porta dele e com dados temporários, e só com o runtime do app (o
 `onnxruntime-directml`): sem o `DmlExecutionProvider`, ou com uma versão que não é a que o `instalador/travas.txt`
-trava, ele se recusa a rodar antes de abrir qualquer coisa, a não ser com `--provider cpu`, e o resultado leva a versão
-que rodou; uma voz que não está no `vozes.json` também é recusada antes. Cada ciclo, com o pedal ligado por `--on-s`
-segundos, precisa da voz de verdade (o processo da voz disse `pronto`, sem `erro`, e o `fim` do log dele tem blocos e,
-com `--provider dml`, as quatro sessões no DirectML: o `fim` traz o `Conversor.providers()`), da linha da subida da
-pista no log do servidor (o tempo dela entra na linha do ciclo, e o resultado dá o mais lento, `slowest_track_up_s`), de
-um stream de estado só, aberto depois de escolher o microfone, que dá a base e os estados de todos os ciclos (uma
-conexão nova pode começar por uma volta mais velha que a última lida), e no fim de cada ciclo a ferramenta lê o
-`GET /api/state` e segue o stream até um state chegar nos contadores dele (`secas`, `secas_pedal` e `volta_max_ms`; uma
-seca ainda na fila depois do prazo fica no ciclo dela), conferindo o estado do `GET` e cada um do stream como os do
-ciclo, e que não fecha antes do fim da espera, de um anel que mediu a folga e de um anel sem interrupção (leitor o tempo
-todo, o mesmo microfone, e contadores que não voltam, o que pega um `Injetor` aberto de novo), ou a medição para e diz
-qual ciclo. O `dev/test_measure_voice_pedal.py` confere a recusa e a linha de cada ciclo. Testes:
-`python dev/testa_pedal_voz.py` (o contrato, com um módulo falso), `python dev/testa_vozes.py` (o `vozes.json`, o que o
-instalador baixa e o `impedimento()`), `python dev/testa_pista.py` (o processo contra um anel falso; com
-`RITMELLI_VOZES_TESTE=1`, também com os modelos de verdade) e `python dev/testa_conversor.py` (o motor com modelos de
-mentira no processador: o tom deslocado, a onda sem degrau entre blocos, o `ajusta_tom` e o silêncio). O motor e o
-`compasso.py` desligam a telemetria do ONNX Runtime (ver o PRIVACIDADE.md), e os termos da DirectML vão no TERCEIROS
-pelo `instalador/terceiros.py`.
+trava, ele se recusa a rodar antes de abrir qualquer coisa, a não ser com `--provider cpu`; `--cycles` menor que 1 e um
+`--on-s` que não é um número positivo também são recusados, e o resultado leva a versão que rodou; uma voz que não está
+no `vozes.json` também é recusada antes. Cada ciclo, com o pedal ligado por `--on-s` segundos, precisa da voz de verdade
+(o processo da voz disse `pronto`, sem `erro`, e o `fim` do log dele tem blocos e, com `--provider dml`, as quatro
+sessões no DirectML: o `fim` traz o `Conversor.providers()`), da linha da subida da pista no log do servidor (o tempo
+dela entra na linha do ciclo, e o resultado dá o mais lento, `slowest_track_up_s`), de um stream de estado só, aberto
+depois de escolher o microfone, que dá a base e os estados de todos os ciclos (uma conexão nova pode começar por uma
+volta mais velha que a última lida), e no fim de cada ciclo a ferramenta lê o `GET /api/state` e segue o stream até um
+state chegar nos contadores dele (`secas`, `secas_pedal` e `volta_max_ms`, e a menor folga, `folga_min_ms`; uma seca
+ainda na fila depois do prazo fica no ciclo dela; o `GET` é o corte do ciclo e a base do seguinte, e o stream só segue
+andando e conferindo a continuidade), conferindo o estado do `GET` e cada um do stream como os do ciclo, e que não fecha
+antes do fim da espera, de um anel que mediu a folga e de um anel sem interrupção (leitor o tempo todo, o mesmo
+microfone, e contadores que não voltam, o que pega um `Injetor` aberto de novo), ou a medição para e diz qual ciclo. O
+`dev/test_measure_voice_pedal.py` confere a recusa e a linha de cada ciclo. Testes: `python dev/testa_pedal_voz.py` (o
+contrato, com um módulo falso), `python dev/testa_vozes.py` (o `vozes.json`, o que o instalador baixa e o
+`impedimento()`), `python dev/testa_pista.py` (o processo contra um anel falso; com `RITMELLI_VOZES_TESTE=1`, também com
+os modelos de verdade) e `python dev/testa_conversor.py` (o motor com modelos de mentira no processador: o tom
+deslocado, a onda sem degrau entre blocos, o `ajusta_tom` e o silêncio). O motor e o `compasso.py` desligam a telemetria
+do ONNX Runtime (ver o PRIVACIDADE.md), e os termos da DirectML vão no TERCEIROS pelo `instalador/terceiros.py`.
