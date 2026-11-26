@@ -325,6 +325,9 @@ class FailedListWriteAfterTheSingleEffect:
 class TestFailedEfxListWrite(FailedListWriteAfterTheSingleEffect, Base):
     failing_list = mf.EFX_LISTA
 
+    def test_the_mfx_list_gets_the_host(self):
+        self.assertEqual((self.le(mf.MFX_LISTA), self.le(mf.MFX), self.vaga(0)), ([HOST0], None, MFX_FM))
+
     @unittest.expectedFailure
     def test_the_maker_efx_survives(self):
         self.assertEqual((self.le(mf.EFX_LISTA), self.le(mf.EFX)), ([EFX_FM, mf.CLSID], None),
@@ -333,6 +336,9 @@ class TestFailedEfxListWrite(FailedListWriteAfterTheSingleEffect, Base):
 
 class TestFailedMfxListWrite(FailedListWriteAfterTheSingleEffect, Base):
     failing_list = mf.MFX_LISTA
+
+    def test_the_efx_list_keeps_the_maker(self):
+        self.assertEqual(self.le(mf.EFX_LISTA), [EFX_FM, mf.CLSID])
 
     @unittest.expectedFailure
     def test_the_maker_mfx_survives(self):
