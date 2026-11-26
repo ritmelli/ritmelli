@@ -424,8 +424,14 @@ def main():
     # o Chrome sem cabeca pede ingles: sem o ?lang=, a tela sairia na lingua dele, e nao na das referencias
     ap.add_argument("--lang", default="pt_BR", help="a lingua da tela (pt_BR ou en); a referencia e a comparacao na mesma")
     ap.add_argument("--raiz", default=str(RAIZ), help="o checkout do Ritmelli cujo servidor e tema saem nos prints")
+    ap.add_argument("--compare-only", action="store_true",
+                    help="compare the prints already in agora with the ref, without capturing")
     a = ap.parse_args()
     pasta = Path(a.pasta)
+    if a.compare_only:
+        if not any((pasta / "ref").glob("*.png")) or not any((pasta / "agora").glob("*.png")):
+            sys.exit(f"the --compare-only needs prints in {pasta / 'ref'} and in {pasta / 'agora'}")
+        return 2 if compara(pasta, [s.split("@")[0] for s in a.sizes.split(",")]) else 0
     raiz = Path(a.raiz).resolve()
     if not (raiz / "server.py").exists():
         sys.exit(f"sem o server.py em {raiz}: o --raiz e a pasta de um checkout do Ritmelli")

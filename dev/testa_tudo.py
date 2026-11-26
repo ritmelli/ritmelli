@@ -17,11 +17,11 @@ each in its own process, and exits 1 if any fails. It is what the .github/workfl
                                            the fitcheck in both languages against a --mock with temporary data and,
                                            with --base, the compara: the reference comes from the server and the theme
                                            of the base (in a temporary worktree), the comparison from the ones here
-    python dev\testa_tudo.py --compara --base origin/main [--ref-cache <dir>] [--head-cache <dir>]
-                                           only the compara of the --tela (the testa.yml runs it in a job of its own)
-    python dev\testa_tudo.py --capture <dir>
-                                           only the compara capture of the HEAD, into the folder with its key (the
-                                           push to main: the reference of the PRs that will have it as their base)
+    python dev\testa_tudo.py --compara --base origin/main [--ref-cache <dir>] [--head-capture <dir>]
+                                           only the compara of the --tela; with --head-capture, of that HEAD capture
+    python dev\testa_tudo.py --capture <dir> | --capture-base <dir> --base <rev>
+                                           only the compara capture of the HEAD or of the base, into the folder with
+                                           its key (the jobs Compara: HEAD and Compara: base of the testa.yml)
     python dev\testa_tudo.py --passo <name>
                                            a step of the testa.yml that runs one script (PASSOS): the "disco" is the
                                            testa_pasta_protegida.py --disco, the "metricas" the fitcheck.py --metricas
@@ -123,13 +123,13 @@ TELA = ("dev/fitcheck.py", "dev/compara.py", "dev/missing_script.py", "dev/theme
 NOT_ON_PUSH = "github.event_name != 'push'"
 AFTER_RUFF = "${{ !cancelled() && steps.ruff.outcome != 'skipped' }}"
 SUMMARY_ARG = r'--resumo "$env:RUNNER_TEMP\resumo.md"'
+HEAD_RUN = ('python dev/testa_tudo.py --capture "$env:RUNNER_TEMP\\compara-ref" --pasta "$env:RUNNER_TEMP\\tela" '
+            f'{SUMMARY_ARG}')
+BASE_RUN = ('python dev/testa_tudo.py --capture-base "$env:RUNNER_TEMP\\compara-ref" --base $env:BASE_SHA --pasta '
+            f'"$env:RUNNER_TEMP\\tela" {SUMMARY_ARG}')
 COMPARA_RUN = "\n".join((
-    "if ($env:GITHUB_EVENT_NAME -eq 'push') {",
-    f'  python dev/testa_tudo.py --capture "$env:RUNNER_TEMP\\compara-head" --pasta "$env:RUNNER_TEMP\\tela" {SUMMARY_ARG}',
-    "  exit $LASTEXITCODE",
-    "}",
     'python dev/testa_tudo.py --compara --base $env:BASE_SHA --pasta "$env:RUNNER_TEMP\\tela" --ref-cache '
-    f'"$env:RUNNER_TEMP\\compara-ref" {SUMMARY_ARG}',
+    f'"$env:RUNNER_TEMP\\compara-ref" --head-capture "$env:RUNNER_TEMP\\compara-head" {SUMMARY_ARG}',
     "$cod = $LASTEXITCODE",
     "if ($cod -eq 2) {",
     "  Add-Content -Path $env:GITHUB_OUTPUT -Value 'mudou=true' -Encoding utf8",
@@ -144,7 +144,8 @@ REQUIRED_MODES = {
     "--passo disco": ("testes", NOT_ON_PUSH, "Pasta protegida no disco", AFTER_RUFF,
                       "python dev/testa_tudo.py --passo disco"),
     "--long bench": ("bench", NOT_ON_PUSH, "Banca", None, f"python dev/testa_tudo.py --long bench {SUMMARY_ARG}"),
-    "--long capture": ("capture", NOT_ON_PUSH, "Captura", None, f"python dev/testa_tudo.py --long capture {SUMMARY_ARG}"),
+    "--long capture": ("capture", NOT_ON_PUSH, "Captura", "steps.areas.outputs.tela == 'true'",
+                       f"python dev/testa_tudo.py --long capture {SUMMARY_ARG}"),
     "--microfone": ("microfone", NOT_ON_PUSH, "Testes do filtro", "steps.areas.outputs.microfone == 'true'",
                     f"python dev/testa_tudo.py --microfone {SUMMARY_ARG}"),
     "--tela": ("tela", NOT_ON_PUSH, "fitcheck", "steps.areas.outputs.tela == 'true'",
@@ -154,11 +155,12 @@ REQUIRED_MODES = {
                          "python dev/testa_tudo.py --passo metricas"),
     "--passo pr-description": ("testes", NOT_ON_PUSH, "PR description", "${{ !cancelled() }}",
                                "python dev/testa_tudo.py --passo pr-description"),
-    "--compara": ("compara", None, "compara", "steps.areas.outputs.roda == 'true'", COMPARA_RUN),
-    "--capture": ("compara", None, "compara", "steps.areas.outputs.roda == 'true'", COMPARA_RUN),
+    "--compara": ("compara", NOT_ON_PUSH, "compara", "steps.areas.outputs.roda == 'true'", COMPARA_RUN),
+    "--capture": ("compara-head", None, "Captura do HEAD", "steps.areas.outputs.roda == 'true'", HEAD_RUN),
+    "--capture-base": ("compara-base", NOT_ON_PUSH, "Captura da base", "steps.areas.outputs.roda == 'true'", BASE_RUN),
 }
 COMPARA_ENV = {"EXTRACAO": "${{ steps.areas.outputs.extracao }}", "BASE_SHA": "${{ steps.chave.outputs.base }}"}
-REQUIRED_ENV = {"--compara": COMPARA_ENV, "--capture": COMPARA_ENV,
+REQUIRED_ENV = {"--compara": COMPARA_ENV, "--capture-base": {"BASE_SHA": "${{ steps.chave.outputs.base }}"},
                 "--passo pr-description": {"GH_TOKEN": "${{ github.token }}"}}
 BASE_ENV = "${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}"
 AREAS_RUN = "python dev/testa_tudo.py --areas $env:BASE"
@@ -175,6 +177,7 @@ SOURCE_STEPS = {
     ("testes", "ruff"): ("ruff", None, "python -m ruff check --output-format github .", None),
     ("microfone", "areas"): ("O PR mexe no filtro?", None, BUILD_AREAS_RUN, BUILD_BASE_ENV),
     ("tela", "areas"): ("O PR mexe na tela?", None, SCREEN_AREAS_RUN, LABELS_ENV),
+    ("capture", "areas"): ("O PR mexe na tela?", None, SCREEN_AREAS_RUN, LABELS_ENV),
     ("compara", "areas"): ("O PR mexe na tela?", None, "\n".join((
         """if ($env:GITHUB_EVENT_NAME -eq 'push') { Add-Content -Path $env:GITHUB_OUTPUT -Value "roda=true" -Encoding utf8; """
         "exit 0 }",
@@ -192,6 +195,8 @@ SOURCE_STEPS = {
         'Add-Content -Path $env:GITHUB_OUTPUT -Value "chave=$env:ImageOS-$env:ImageVersion-chrome$chrome`nbase=$base" '
         "-Encoding utf8")), None),
 }
+SOURCE_STEPS.update({(job, step): SOURCE_STEPS[("compara", step)] for job in ("compara-base", "compara-head")
+                     for step in ("areas", "chave")})
 PS1_TESTS = {
     "instalador/testa-atualizador.ps1": (
         "testa-atualizador", None, "Instala, a tarefa atualiza e o Ritmelli abre de novo", None,
@@ -222,7 +227,8 @@ AREAS = {
     "microfone": ("microfone/", "fx.py", "engine.py", "versao.py", "dev/testa_filtro.py", "dev/testa_voz.py",
                   "dev/testa_microfone.py", "dev/testa_aparelho_mudo.py", "instalador/mudos.iss"),
     "tela": ("themes/", "server.py", "i18n.py", "metricas.py", "dev/compara.py", "dev/fitcheck.py", "dev/so_mock.py",
-             "dev/missing_script.py", "dev/theme_scripts.py", "dev/theme_listeners.py", "dev/test_theme_listeners.py"),
+             "dev/missing_script.py", "dev/theme_scripts.py", "dev/theme_listeners.py", "dev/test_theme_listeners.py",
+             "dev/test_capture.py"),
 }
 TODAS = (".github/workflows/testa.yml", ".github/actions/", "dev/testa_tudo.py", "instalador/travas.txt", "dev/travas.txt")
 # a etiqueta do PR que dispara uma area mesmo sem arquivo dela: a extracao-tema, do PR que leva codigo de
@@ -605,14 +611,27 @@ def so_compara(a):
     return 1 if bloqueia else 2 if mudou else 0
 
 
-def capture_head(a):
+def capture(a):
     folder = Path(a.pasta).resolve()
     folder.mkdir(parents=True, exist_ok=True)
-    if Path(a.capture).resolve().is_relative_to(folder / "compara"):
-        raise SystemExit(f"the cache folder {a.capture} is inside {folder / 'compara'}: give it a folder of its own")
-    head = executa(["git", "rev-parse", "HEAD"], limite=60)[1].strip()
-    tree = Path(tempfile.mkdtemp(prefix="ritmelli-head-")) / "head"
-    code, out = executa(["git", "worktree", "add", "--detach", str(tree), head], limite=300)
+    cache = a.capture or a.capture_base
+    if Path(cache).resolve().is_relative_to(folder / "compara"):
+        raise SystemExit(f"the cache folder {cache} is inside {folder / 'compara'}: give it a folder of its own")
+    rev, what, de, output = ((a.base, "the base", "da base", "ref_cache") if a.capture_base else
+                             ("HEAD", "the HEAD", "do HEAD", "head_cache"))
+    title = "**Compara: base:**" if a.capture_base else "**Compara: HEAD:**"
+    code, commit = executa(["git", "rev-parse", "--verify", f"{rev}^{{commit}}"], limite=60)
+    commit = commit.strip()
+    if code != 0:
+        print(f"FALHA {rev} is not a commit here ({code})")
+        escreve(a.resumo, [title, "", f"- ❌ `{rev}` não é um commit daqui"])
+        return 1
+    if a.capture_base and le_captura(cache, chave_captura(commit)):
+        print(f"--- compara: the capture of the base {commit[:12]} is already in {cache}", flush=True)
+        escreve(a.resumo, [title, "", f"- ✅ captura da base `{commit[:12]}` já no cache"])
+        return 0
+    tree = Path(tempfile.mkdtemp(prefix="ritmelli-capture-")) / "tree"
+    code, out = executa(["git", "worktree", "add", "--detach", str(tree), commit], limite=300)
     try:
         if code == 0:
             code, out = executa([sys.executable, "dev/compara.py", "--ref", "--raiz", str(tree),
@@ -620,15 +639,15 @@ def capture_head(a):
     finally:
         executa(["git", "worktree", "remove", "--force", str(tree)], limite=300)
         shutil.rmtree(tree.parent, ignore_errors=True)
-    print(f"--- compara --ref of the HEAD {head[:12]}: exits {code}\n{out.rstrip()}", flush=True)
+    print(f"--- compara --ref of {what} {commit[:12]}: exits {code}\n{out.rstrip()}", flush=True)
     if code != 0:
-        md = [f"<details><summary>❌ compara: a captura do HEAD <code>{head[:12]}</code> não vale (sai {code})"
+        md = [f"<details><summary>❌ compara: a captura {de} <code>{commit[:12]}</code> não vale (sai {code})"
               "</summary>", "", cerca(cauda(out)), "", "</details>"]
     else:
-        guarda_captura(folder / "compara" / "ref", a.capture, chave_captura(head))
-        saida_do_job({"head_cache": "true"})
-        md = [f"- ✅ captura do HEAD `{head[:12]}` guardada para o cache"]
-    escreve(a.resumo, ["**Compara:**", ""] + md)
+        guarda_captura(folder / "compara" / "ref", cache, chave_captura(commit))
+        saida_do_job({output: "true"})
+        md = [f"- ✅ captura {de} `{commit[:12]}` guardada para o cache"]
+    escreve(a.resumo, [title, ""] + md)
     return 1 if code != 0 else 0
 
 
@@ -730,7 +749,7 @@ def compara(a, pasta):
     md, bloqueia, mudou, saidas = [], False, False, {"prints_mudaram": 0}
     ref = pasta / "compara" / "ref"
     # a cache folder inside the compara folder would be emptied by the capture it is meant to hold
-    for c in (a.ref_cache, a.head_cache):
+    for c in (a.ref_cache, a.head_cache, a.head_capture):
         if c and Path(c).resolve().is_relative_to(pasta / "compara"):
             raise SystemExit(f"the cache folder {c} is inside {pasta / 'compara'}: give it a folder of its own")
     cod, saida = executa(["git", "rev-parse", "--verify", f"{a.base}^{{commit}}"], limite=60)
@@ -771,8 +790,24 @@ def compara(a, pasta):
             finally:
                 executa(["git", "worktree", "remove", "--force", str(wt)], limite=300)
                 shutil.rmtree(wt.parent, ignore_errors=True)
+    extra = []
+    if not bloqueia and a.head_capture:
+        head = executa(["git", "rev-parse", "HEAD"], limite=60)[1].strip()
+        prints = le_captura(a.head_capture, chave_captura(head))
+        if prints:
+            agora = pasta / "compara" / "agora"
+            shutil.rmtree(agora, ignore_errors=True)
+            agora.mkdir(parents=True)
+            for png in prints:
+                shutil.copy2(png, agora / png.name)
+            extra = ["--compare-only"]
+        else:
+            print(f"--- compara: {a.head_capture} has no capture of the HEAD {head[:12]} with this Chrome and these "
+                  "scripts: the HEAD is captured here", flush=True)
+            md.append(f"- ⚠️ a captura do HEAD `{head[:12]}` do job Compara: HEAD não vale aqui (outro Chrome ou "
+                      "outros scripts): refeita neste job")
     if not bloqueia:
-        cod, saida = executa([sys.executable, "dev/compara.py", "--pasta", str(pasta / "compara")])
+        cod, saida = executa([sys.executable, "dev/compara.py", "--pasta", str(pasta / "compara"), *extra])
         print(f"--- compara of the PR: exits {cod}\n{saida.rstrip()}", flush=True)
         fim = saida.strip().splitlines()[-1:] or [""]
         if cod in (0, 2) and a.head_cache:
@@ -820,6 +855,7 @@ def main():
     modo.add_argument("--tela", action="store_true", help="the fitcheck and, with --base, the compara")
     modo.add_argument("--compara", action="store_true", help="only the compara of the --tela (needs --base)")
     modo.add_argument("--capture", metavar="DIR", help="only the compara capture of the HEAD, into DIR")
+    modo.add_argument("--capture-base", metavar="DIR", help="only the compara capture of the --base, into DIR")
     modo.add_argument("--passo", choices=sorted(PASSOS), help="a step of the testa.yml that runs one script")
     modo.add_argument("--areas", metavar="BASE", help="the areas that what changed since BASE triggers")
     ap.add_argument("--base", help="in the --tela and the --compara: the base of the compara (a commit, a branch)")
@@ -828,11 +864,12 @@ def main():
     ap.add_argument("--pasta", default=str(RAIZ / "logs" / "tela"), help="where the prints and the logs go")
     ap.add_argument("--ref-cache", help="a folder with the capture of the base, read and filled (see above)")
     ap.add_argument("--head-cache", help="a folder that gets the capture of the HEAD")
+    ap.add_argument("--head-capture", help="in the --compara: a folder with the --capture of the HEAD, compared as is")
     ap.add_argument("--resumo", help="appends the result in markdown to this file")
     ap.add_argument("--jobs", type=int, default=JOBS, help=f"how many tests at a time (default {JOBS})")
     a = ap.parse_args()
-    if a.compara and not a.base:
-        ap.error("the --compara needs the --base")
+    if (a.compara or a.capture_base) and not a.base:
+        ap.error("the --compara and the --capture-base need the --base")
     if a.areas:
         return diz_areas(a)
     if a.passo:
@@ -841,8 +878,8 @@ def main():
         return tela(a)
     if a.compara:
         return so_compara(a)
-    if a.capture:
-        return capture_head(a)
+    if a.capture or a.capture_base:
+        return capture(a)
     return testes(a)
 
 

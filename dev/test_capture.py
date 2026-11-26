@@ -31,6 +31,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix="ritmelli-capture-") as tmp:
         tmp = Path(tmp)
         cache, tela, output, wt = tmp / "cache", tmp / "tela", tmp / "github_output", tmp / "wt"
+        base_output = tmp / "github_output_base"
         output.touch()
         subprocess.run(["git", "worktree", "add", "--detach", str(wt), head], cwd=ROOT, check=True,
                        capture_output=True)
@@ -44,6 +45,12 @@ def main():
                                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=900)
             expected = subprocess.run([sys.executable, "-c", KEY, head], cwd=wt, capture_output=True, text=True,
                                       encoding="utf-8").stdout.strip()
+            base_output.touch()
+            base = [sys.executable, "dev/testa_tudo.py", "--capture-base", str(cache), "--pasta", str(tela), "--base"]
+            cached, missing = (subprocess.run(base + [rev], cwd=wt, capture_output=True, text=True, encoding="utf-8",
+                                              errors="replace", timeout=120,
+                                              env=dict(os.environ, PYTHONUTF8="1", GITHUB_OUTPUT=str(base_output)))
+                               for rev in (head, "ritmelli-test-no-such-commit"))
         finally:
             subprocess.run(["git", "worktree", "remove", "--force", str(wt)], cwd=ROOT, capture_output=True)
         print((p.stdout + p.stderr)[-3000:].rstrip())
@@ -58,6 +65,12 @@ def main():
         check(bool(taken) and saved == taken, f"the cache folder holds every print taken ({len(saved)} of {len(taken)})")
         check(testa_tudo.le_captura(cache, expected) != [],
               "a PR with the HEAD as its base reads the capture back from that folder")
+        check(cached.returncode == 0 and "is already in" in cached.stdout
+              and "ref_cache=true" not in base_output.read_text(encoding="utf-8").splitlines(),
+              f"the --capture-base of a base whose capture is already in the folder takes nothing and saves nothing "
+              f"(exit {cached.returncode})")
+        check(missing.returncode == 1 and "is not a commit here" in missing.stdout,
+              f"a --capture-base whose --base is not a commit fails saying so (exit {missing.returncode})")
     print(f"{'all passed' if not failures else f'{len(failures)} failed'}")
     return 1 if failures else 0
 
