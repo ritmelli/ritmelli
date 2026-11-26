@@ -201,7 +201,8 @@ def phase_excerpt_stays_after_the_outgoing_ramp():
     virar = 100.0
     failures = []
     for sa in (1 + transicao.SAI_MAX, 1 - transicao.SAI_MAX):
-        n_ra, ramp_start = transicao.rampa_saida(sa, virar)
+        n_ra, ideal_start = transicao.rampa_saida(sa, virar)
+        ramp_start = ideal_start + transicao.BLOCK / transicao.SR
         ramp_end = ramp_start + n_ra * (1 + sa) / 2 / transicao.SR
 
         def output_at(t):

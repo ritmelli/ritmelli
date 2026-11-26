@@ -187,6 +187,14 @@ def bad_bodies_for(extra, fields):
     return [{**c, **extra} for c in BAD_TRACK_BODIES if set(c) - {"youtube_id", "url"} <= set(fields)]
 
 
+def route_handler_names():
+    import ast
+    tree = ast.parse((RAIZ / "server.py").read_text(encoding="utf-8"))
+    return {fn.name for fn in ast.walk(tree) if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and any(isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute) and isinstance(d.func.value, ast.Name)
+                    and d.func.value.id == "r" for d in fn.decorator_list)}
+
+
 def track_field_routes(sources=None):
     import ast
     if sources is None:
@@ -488,6 +496,10 @@ async def papeis_no_guard():
                 f"{sorted(sem_head - set(perm.TABELA))}, so na tabela: {sorted(set(perm.TABELA) - sem_head)})")
         confere(("HEAD", "/api/state") in reais, "o roteador responde HEAD nas rotas GET")
         rota = {(r.method, r.resource.canonical): r.handler for r in app.router.routes() if r.resource is not None}
+        dynamic = {r.handler.__name__ for r in app.router.routes()
+                   if r.resource is not None and not isinstance(r.resource, web.StaticResource)}
+        confere(dynamic <= route_handler_names(), f"every route of the aiohttp router has a handler the route tracker "
+                f"follows, an @r.<method> function of server.py (not followed: {sorted(dynamic - route_handler_names())})")
 
         async def segue(req):  # a rota de verdade nao importa aqui: so se o guard deixou chegar nela
             return web.json_response({"ok": True, "chegou": True})
