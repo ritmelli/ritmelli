@@ -10,8 +10,9 @@ Servidor sem o marcador e recusado: nao ha excecao.
 Quem abre o tema (shot, fitcheck, perfcheck, celular) chama o confere antes de abrir a pagina e o confere_pagina antes
 de agir; no Chrome, o DOCUMENTOS e o libera_ou_barra barram o documento de outra origem (o redirecionamento).
 Quem sobe o proprio servidor (compara, previews, testa_mock) usa o sobe: a porta recusada antes do Popen se e a 8799 ou
-se alguem ja responde nela, e cada pedido, o /api/shutdown inclusive, so com o filho vivo e o marcador na origem; se
-nao, so o filho sai, pelo handle. Os medidores que abrem o anel de verdade saem antes com o sai_se_o_app_ligado."""
+se alguem ja responde nela, e cada pedido so com o filho vivo e o marcador na origem; se nao, so o filho sai, pelo
+handle. Os medidores que abrem o anel de verdade saem antes com o sai_se_o_app_ligado."""
+import ctypes
 import json
 import socket
 import subprocess
@@ -20,6 +21,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from ctypes import wintypes
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -27,6 +29,7 @@ from pastas import PORTA as PORTA_DO_APP  # 8799
 
 # no Fetch.enable do CDP: cada documento (a pagina, um iframe, um redirecionamento dele) para antes do pedido
 DOCUMENTOS = [{"urlPattern": "*", "resourceType": "Document", "requestStage": "Request"}]
+STOP_FLAG = "--stop-on-stdin-eof"
 
 
 class Recusa(Exception):
@@ -140,12 +143,172 @@ def libera_ou_barra(params, base):
     return "Fetch.failRequest", {"requestId": params["requestId"], "errorReason": "BlockedByClient"}
 
 
-class Filho:
-    """O servidor --mock que a ferramenta subiu (srv, o Popen) na porta dela. Cada pedido, o /api/shutdown inclusive,
-    so com ele vivo e a origem respondendo com o marcador; se nao, so ele sai, pelo handle."""
+class _BasicLimits(ctypes.Structure):
+    _fields_ = [("PerProcessUserTimeLimit", ctypes.c_int64), ("PerJobUserTimeLimit", ctypes.c_int64),
+                ("LimitFlags", wintypes.DWORD), ("MinimumWorkingSetSize", ctypes.c_size_t),
+                ("MaximumWorkingSetSize", ctypes.c_size_t), ("ActiveProcessLimit", wintypes.DWORD),
+                ("Affinity", ctypes.c_size_t), ("PriorityClass", wintypes.DWORD), ("SchedulingClass", wintypes.DWORD)]
 
-    def __init__(self, srv, porta):
-        self.srv, self.porta, self.base = srv, porta, f"http://127.0.0.1:{porta}"
+
+class _Limits(ctypes.Structure):
+    _fields_ = [("BasicLimitInformation", _BasicLimits), ("IoInfo", ctypes.c_uint64 * 6),
+                ("ProcessMemoryLimit", ctypes.c_size_t), ("JobMemoryLimit", ctypes.c_size_t),
+                ("PeakProcessMemoryUsed", ctypes.c_size_t), ("PeakJobMemoryUsed", ctypes.c_size_t)]
+
+
+class _Members(ctypes.Structure):
+    _fields_ = [("NumberOfAssignedProcesses", wintypes.DWORD), ("NumberOfProcessIdsInList", wintypes.DWORD),
+                ("ProcessIdList", ctypes.c_size_t * 256)]
+
+
+def _kernel():
+    k = ctypes.WinDLL("kernel32", use_last_error=True)
+    k.CreateJobObjectW.restype = wintypes.HANDLE
+    k.OpenProcess.restype = wintypes.HANDLE
+    return k
+
+
+class _Accounting(ctypes.Structure):
+    _fields_ = [("TotalUserTime", ctypes.c_int64), ("TotalKernelTime", ctypes.c_int64),
+                ("ThisPeriodTotalUserTime", ctypes.c_int64), ("ThisPeriodTotalKernelTime", ctypes.c_int64),
+                ("TotalPageFaultCount", wintypes.DWORD), ("TotalProcesses", wintypes.DWORD),
+                ("ActiveProcesses", wintypes.DWORD), ("TotalTerminatedProcesses", wintypes.DWORD)]
+
+
+def _resume(process):
+    return ctypes.WinDLL("ntdll").NtResumeProcess(wintypes.HANDLE(int(process)))
+
+
+class _Job:
+    def __init__(self, process):
+        k = self.k = _kernel()
+        self.job = k.CreateJobObjectW(None, None)
+        limits = _Limits()
+        limits.BasicLimitInformation.LimitFlags = 0x2000
+        ok = bool(self.job
+                  and k.SetInformationJobObject(self.job, 9, ctypes.byref(limits), ctypes.sizeof(limits))
+                  and k.AssignProcessToJobObject(self.job, wintypes.HANDLE(int(process))))
+        if not ok:
+            error = ctypes.get_last_error()
+            self.close()
+            raise Recusa(f"the test server did not go into a job (error {error})")
+
+    def active(self):
+        info = _Accounting()
+        if not self.k.QueryInformationJobObject(self.job, 1, ctypes.byref(info), ctypes.sizeof(info), None):
+            raise Recusa(f"the test server job did not answer (error {ctypes.get_last_error()})")
+        return info.ActiveProcesses
+
+    def members(self):
+        listed = _Members()
+        if not self.k.QueryInformationJobObject(self.job, 3, ctypes.byref(listed), ctypes.sizeof(listed), None):
+            raise Recusa(f"the test server job did not list its processes (error {ctypes.get_last_error()})")
+        if listed.NumberOfProcessIdsInList < listed.NumberOfAssignedProcesses:
+            raise Recusa(f"the test server job has {listed.NumberOfAssignedProcesses} processes, more than it lists")
+        found, complete = [], False
+        try:
+            for pid in listed.ProcessIdList[:listed.NumberOfProcessIdsInList]:
+                handle = self.k.OpenProcess(0x00100000 | 0x1000, False, pid)
+                if not handle:
+                    error = ctypes.get_last_error()
+                    if error != 87:
+                        raise Recusa(f"a process of the test server job could not be opened (error {error})")
+                    continue
+                inside = wintypes.BOOL()
+                if not self.k.IsProcessInJob(wintypes.HANDLE(handle), self.job, ctypes.byref(inside)):
+                    error = ctypes.get_last_error()
+                    self.k.CloseHandle(wintypes.HANDLE(handle))
+                    raise Recusa(f"a process of the test server job could not be checked (error {error})")
+                if inside:
+                    found.append(handle)
+                else:
+                    self.k.CloseHandle(wintypes.HANDLE(handle))
+            complete = True
+        finally:
+            if not complete:
+                for handle in found:
+                    self.k.CloseHandle(wintypes.HANDLE(handle))
+        return found
+
+    def left_after(self, seconds):
+        handles = self.members()
+        try:
+            fim = time.monotonic() + seconds
+            for handle in handles:
+                self.k.WaitForSingleObject(wintypes.HANDLE(handle), max(0, int((fim - time.monotonic()) * 1000)))
+        finally:
+            for handle in handles:
+                self.k.CloseHandle(wintypes.HANDLE(handle))
+        return self.active()
+
+    def end(self, seconds=10.0):
+        if not self.job:
+            return
+        handles = []
+        try:
+            try:
+                closed = _Limits()
+                closed.BasicLimitInformation.LimitFlags = 0x2000 | 0x8
+                closed.BasicLimitInformation.ActiveProcessLimit = 1
+                if not self.k.SetInformationJobObject(self.job, 9, ctypes.byref(closed), ctypes.sizeof(closed)):
+                    raise Recusa(f"the test server job did not close to new processes (error "
+                                 f"{ctypes.get_last_error()})")
+                handles = self.members()
+            finally:
+                if not self.k.TerminateJobObject(self.job, 1):
+                    raise Recusa(f"the test server job did not end (error {ctypes.get_last_error()})")
+            fim = time.monotonic() + seconds
+            for handle in handles:
+                left = max(0, int((fim - time.monotonic()) * 1000))
+                if self.k.WaitForSingleObject(wintypes.HANDLE(handle), left) != 0:
+                    raise Recusa(f"the test server processes did not exit within {seconds:g} s")
+            if self.active():
+                raise Recusa("the test server job still has processes after it ended")
+        finally:
+            for handle in handles:
+                self.k.CloseHandle(wintypes.HANDLE(handle))
+            self.close()
+
+    def close(self):
+        if self.job:
+            self.k.CloseHandle(wintypes.HANDLE(self.job))
+        self.job = None
+
+
+def start_job(cmd, **popen):
+    if sys.platform != "win32":
+        return subprocess.Popen(cmd, **popen), None
+    flags = popen.pop("creationflags", 0)
+    proc = subprocess.Popen(cmd, creationflags=flags | 0x4, **popen)
+    handle = getattr(proc, "_handle", None)
+    if handle is None:
+        return proc, None
+    job, started = None, False
+    try:
+        job = _Job(handle)
+        status = _resume(handle) & 0xFFFFFFFF
+        if status:
+            raise Recusa(f"the test server was not resumed (NTSTATUS {status:#010x})")
+        started = True
+    finally:
+        if not started:
+            try:
+                _kernel().TerminateProcess(wintypes.HANDLE(int(handle)), 1)
+            finally:
+                try:
+                    if job:
+                        job.close()
+                finally:
+                    proc.wait(10)
+    return proc, job
+
+
+class Filho:
+    """O servidor --mock que a ferramenta subiu (srv, o Popen) na porta dela. Cada pedido so com ele vivo e a origem
+    respondendo com o marcador; se nao, so ele sai, pelo handle."""
+
+    def __init__(self, srv, porta, job=None):
+        self.srv, self.porta, self.base, self.job = srv, porta, f"http://127.0.0.1:{porta}", job
 
     def confere(self):
         if self.srv.poll() is not None:
@@ -166,20 +329,44 @@ class Filho:
             return json.load(r)
 
     def mata(self):
-        if self.srv.poll() is None:
-            self.srv.kill()
-        self.srv.wait()
+        try:
+            if self.srv.poll() is None:
+                self.srv.kill()
+            self.srv.wait()
+        finally:
+            if self.job:
+                self.job.end()
 
     def encerra(self, espera=10):
-        """O /api/shutdown, se ele ainda e o --mock que subiu; se nao, ou se ele nao sai, o handle."""
         try:
-            self.api("POST", "/api/shutdown", espera=5)
-            self.srv.wait(espera)
-        except (Recusa, OSError, ValueError, subprocess.TimeoutExpired):
+            if self.srv.stdin:
+                self._stop_by_stdin(espera)
+                return
+            try:
+                self.api("POST", "/api/shutdown", espera=5)
+                self.srv.wait(espera)
+            except (Recusa, OSError, ValueError, subprocess.TimeoutExpired):
+                self.mata()
+        finally:
+            if self.job:
+                self.job.end()
+
+    def _stop_by_stdin(self, espera):
+        self.srv.stdin.close()
+        try:
+            code = self.srv.wait(espera)
+        except subprocess.TimeoutExpired:
             self.mata()
+            raise Recusa(f"the test server did not stop within {espera:g} s of its stdin closing: killed with the "
+                         "processes it started") from None
+        left = self.job.left_after(espera) if self.job else 0
+        if code != 0:
+            raise Recusa(f"the test server exited with code {code}, not by its own stop")
+        if left:
+            raise Recusa(f"the test server stopped and left {left} process(es) it started running: ended")
 
 
-def sobe(cmd, porta, limite=30.0, **popen):
+def sobe(cmd, porta, limite=30.0, stop_flag=True, **popen):
     """Sobe o servidor --mock (cmd e popen vao ao Popen) na porta. Antes, recusa a porta do app e a porta em que alguem
     ja responde; depois, so aceita a resposta com o filho vivo e o marcador. Volta o Filho; Recusa, com o filho
     encerrado pelo handle, se nao."""
@@ -187,7 +374,9 @@ def sobe(cmd, porta, limite=30.0, **popen):
         raise Recusa(f"a porta {porta} e a do Ritmelli de verdade: o servidor de teste sobe noutra")
     if porta_responde(porta):
         raise Recusa(f"a porta {porta} ja responde: outro servidor esta nela")
-    f = Filho(subprocess.Popen(cmd, **popen), porta)
+    stop = {"stdin": subprocess.PIPE} if stop_flag else {}
+    proc, job = start_job([*cmd, STOP_FLAG] if stop_flag else cmd, **stop, **popen)
+    f = Filho(proc, porta, job)
     fim = time.monotonic() + limite
     try:
         while True:
