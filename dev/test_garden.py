@@ -391,6 +391,13 @@ CASES = {
     ],
     "prose_justifications": [
         ("in a comment", {"a.py": "print('using the old one for now')\n"}, {"a.py": "x = 1  # for now\n"}),
+        ("sem teste in a comment", {"a.py": "x = 1  # sem testes de carga aqui\n"}, {"a.py": "x = 1  # sem teste\n"}),
+        ("have no test yet in a paragraph",
+         {"a.md": "These have no test yet, tracked in [#119](https://github.com/o/r/issues/119).\n"},
+         {"a.md": "These have no test yet.\n"}),
+        ("como antes in a comment, and in code",
+         {"a.js": "/* como antesala */\nlet a = 1;\n", "b.md": "The `como antes` text.\n"},
+         {"a.js": "/* segue como antes */\nlet a = 1;\n"}),
         ("the issue at the top of the comment block",
          {"a.js": "/* (#119) a prova de que a aba voltou em branco: o pixel do meio. Sem prova\n"
                   "   (fora da mesa), a mesa inteira */\nlet a = 1;\n"},
@@ -412,11 +419,6 @@ CASES = {
          {"a.md": "The old reader stays por\nenquanto, until #119 lands.\n",
           "b.md": "The scoreboard counts `por enquanto` with no issue.\n"},
          {"a.md": "The old reader stays por\nenquanto.\n"}),
-        ("a map row and a contributing note with no test",
-         {"a.md": "| Sem teste | `compasso.py` | o PR diz como conferiu |\nThe window has no test yet: say how you checked.\n"},
-         {"a.md": "| Sem teste | `compasso.py` | accepted risk |\n"}),
-        ("a description of what did not change", {"a.md": "as rotas que trocam no laço ainda esperam ali, como antes\n"},
-         {"a.md": "as rotas que trocam no laço ainda esperam ali, por enquanto\n"}),
         ("a docstring is not a comment", {"a.py": "def f():\n    '''Accepted risk.'''\n"},
          {"a.py": "def f():\n    '''Accepted risk.'''\n    return 1  # accepted risk\n"}),
         ("in a .md", {"a.md": "Sem prova: issue #5\n"}, {"a.md": "Sem prova.\n"}),
@@ -747,6 +749,11 @@ def test_description():
         check(garden.description_problems(body) != [], f"a proof section with {label} fails")
     prose = good + "\nThe rest stays for now.\n"
     check(any("for now" in p for p in garden.description_problems(prose)), "a prose phrase with no issue fails")
+    for phrase in ("sem teste", "have no test yet", "como antes"):
+        check(any(phrase in p for p in garden.description_problems(f"{good}\nThe old path stays, {phrase}.\n")),
+              f"\"{phrase}\" with no issue fails")
+        check(garden.description_problems(f"{good}\nThe old path stays, {phrase} (#250).\n") == [],
+              f"\"{phrase}\" with its issue passes")
     check(garden.description_problems(good + "\nThe fallback stays for now, tracked in ritmelli/ritmelli#254.\n") == [],
           "a prose phrase with an owner/repo#n reference passes")
     check(garden.description_problems(good + "\nThe rest stays for now (#250).\n") == [],
