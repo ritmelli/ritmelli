@@ -86,9 +86,9 @@ confere de novo, num processo à parte, e avisa quem usa. O `ok` do `--saida` de
 esteira reprova. O microfone que recusa o filtro também conta como erro: os outros recebem o filtro, e a conferência,
 quando o áudio reiniciou por causa deles ou da DLL nova, vai junto no `--saida`; só o aparelho velho sem as
 propriedades no registro fica de fora sem erro. O AudioEndpointBuilder que não reinicia também conta como erro (o
-Audiosrv volta do mesmo jeito), e o comando do Audiosrv que falha também, mesmo com o serviço rodando. O resultado é o `--saida` e o código de saída; o diagnóstico vai
-para o stderr, pelo `_log`, e some sem mudar o resultado quando não há console (o executável) ou quando o cano
-fechou. Na desinstalação não há conferência: não
+Audiosrv volta do mesmo jeito), e o comando do Audiosrv que falha também, mesmo com o serviço rodando. O
+resultado é o `--saida` e o código de saída; o diagnóstico vai para o stderr, pelo `_log`, e some sem mudar o
+resultado quando não há console (o executável) ou quando o cano fechou. Na desinstalação não há conferência: não
 sobra app para avisar. O `remove` com a pasta reprovada também não confere. Só a DLL nova
 reinicia só o Audiosrv, sem desmontar os aparelhos. Os programas do Windows (`schtasks`, `regsvr32`, `icacls`,
 `powershell`, `sc`) vão pelo caminho completo da System32: pelo nome solto, o Windows procuraria
