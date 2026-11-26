@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parent.parent
 MONTA = ROOT / ".github" / "workflows" / "monta.yml"
 VERSION = "${{ steps.congela.outputs.versao }}"
 MARK = "<version>"
-EXPRESSION = re.compile(r"\$\{\{.*?\}\}")
+EXPRESSION = re.compile(r"\$\{\{.*?\}\}", re.S)
 INPUTS = ("notas", "notas_en")
 REQUIRED_JOBS = ("testa", "testa-atualizador", "testa-migracao", "testa-parcial")
 GATED_JOBS = {"testa-migracao": "anterior", "testa-parcial": "parcial"}
@@ -28,7 +28,7 @@ NOTES = {"NOTAS": ("${{ inputs.notas }}", "--notas"), "NOTAS_EN": ("${{ inputs.n
 STEP_OUTPUTS = {"anterior": r"steps\.([\w-]+)\.outputs\.([\w-]+)\s*!=\s*''",
                 "parcial": r"steps\.([\w-]+)\.outputs\.(parcial)"}
 OTHER_VERSION = re.compile(
-    r"(?:Ritmelli|ritmelli-exe)-(?:[0-9]|<version>|\$\{\{.*?\}\})(?:[0-9.]|<version>|\$\{\{.*?\}\})*")
+    r"(?:Ritmelli|ritmelli-exe)-(?:[0-9]|<version>|\$\{\{.*?\}\})(?:[0-9.]|<version>|\$\{\{.*?\}\})*", re.S)
 
 failures = []
 
@@ -565,6 +565,11 @@ def main():
                 name="ritmelli-exe-0.6.0"),
         "a second upload named ritmelli-exe-<version> literally": lambda d: d["jobs"]["monta"]["steps"].append(
             {"uses": upload(d, exe)["uses"], "with": {"name": f"ritmelli-exe-{MARK}", "path": "x/ritmelli.exe"}}),
+        "a second Ritmelli artifact with the version expression across lines": lambda d: d["jobs"]["monta"][
+            "steps"].append({"uses": upload(d, setup)["uses"],
+                             "with": {"name": "Ritmelli-${{\n steps.congela.outputs.versao }}", "path": "x"}}),
+        "a Ritmelli artifact named by another expression across lines": lambda d: d["jobs"]["monta"]["steps"].append(
+            {"uses": upload(d, setup)["uses"], "with": {"name": "Ritmelli-${{\n github.run_number }}", "path": "x"}}),
         "a parcial=false in a one-line if block": lambda d: source_step(d, "parcial").update(
             run=source_step(d, "parcial")["run"].rstrip("\n")
             + '\nif ($env:ANTERIOR) { Add-Content -Path $env:GITHUB_OUTPUT -Value "parcial=false" -Encoding ascii }\n'),
