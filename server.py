@@ -1383,7 +1383,7 @@ class App:
         iid = b.get("id")
         by_id = isinstance(iid, str) and bool(iid)
         target = yid = j = None
-        if not by_id or b.get("youtube_id") or b.get("url"):
+        if not by_id or "youtube_id" in b or "url" in b:
             target, yid = parse_target(b, TRACK_FIELDS)
             if remoto and not yid:
                 raise ValueError("A remote session can only queue a record on the shelf or a YouTube video.")
