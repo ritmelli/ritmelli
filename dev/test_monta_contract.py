@@ -574,6 +574,12 @@ def main():
                              "with": {"name": "Ritmelli-${{\n steps.congela.outputs.versao }}", "path": "x"}}),
         "a Ritmelli artifact named by another expression across lines": lambda d: d["jobs"]["monta"]["steps"].append(
             {"uses": upload(d, setup)["uses"], "with": {"name": "Ritmelli-${{\n github.run_number }}", "path": "x"}}),
+        "a later PARCIAL=false in capitals": lambda d: source_step(d, "parcial").update(
+            run=source_step(d, "parcial")["run"].rstrip("\n")
+            + '\nAdd-Content -Path $env:GITHUB_OUTPUT -Value "PARCIAL=false" -Encoding ascii\n'),
+        "a later empty VERSAO= in capitals": lambda d: step_by_id(d["jobs"]["monta"], "congela").update(
+            run=step_by_id(d["jobs"]["monta"], "congela")["run"].rstrip("\n")
+            + '\nAdd-Content -Path $env:GITHUB_OUTPUT -Value "VERSAO=" -Encoding ascii\n'),
         "a parcial=false in a one-line if block": lambda d: source_step(d, "parcial").update(
             run=source_step(d, "parcial")["run"].rstrip("\n")
             + '\nif ($env:ANTERIOR) { Add-Content -Path $env:GITHUB_OUTPUT -Value "parcial=false" -Encoding ascii }\n'),
