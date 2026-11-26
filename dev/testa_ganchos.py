@@ -28,7 +28,7 @@ import sys
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
-TETO = 26
+TETO = 24
 ROUTES_CEILING = 3
 # the reaches into the engine's insides from the modules at the root, other than engine.py; it only goes down
 ENGINE_CEILING = 0
