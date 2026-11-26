@@ -959,7 +959,7 @@ class Injetor:
     def _volta(self, s):
         self.volta_max = max(self.volta_max, s)
         self.voltas[min(int(s * 1000), VOLTA_MS - 1)] += 1
-        self.dry_outs.counts = (self.secas, self.dry_outs.while_pedal_starting, self.volta_max)
+        self.dry_outs.publish(self.secas, self.volta_max)
 
     def _confere_fila(self, fila, volta, m):
         """O menor tanto no anel na chegada da thread, e a seca contada (o que diz, e quando: dryouts.RingDryOuts)."""

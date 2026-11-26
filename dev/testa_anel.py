@@ -563,6 +563,8 @@ class TestVoicePedalDryOut(unittest.TestCase):
         self.readers_gate.set()
         self.after_read_gate, self.after_read_held = threading.Event(), threading.Event()
         self.after_read_gate.set()
+        self.write_gate, self.write_held = threading.Event(), threading.Event()
+        self.write_gate.set()
         self.log = io.StringIO()
         full = eng.INJ_FOLGA * eng.BLOCK
 
@@ -585,6 +587,9 @@ class TestVoicePedalDryOut(unittest.TestCase):
             return full
 
         def escreve(m, x):
+            if not self.write_gate.is_set():
+                self.write_held.set()
+                self.write_gate.wait()
             self.wrote = True
             return len(x)
 
@@ -623,6 +628,7 @@ class TestVoicePedalDryOut(unittest.TestCase):
         self.addCleanup(self.read_gate.set)
         self.addCleanup(self.readers_gate.set)
         self.addCleanup(self.after_read_gate.set)
+        self.addCleanup(self.write_gate.set)
         self.assertTrue(espera(lambda: self.inj.folga_min is not None), "the injector never served the reader")
         self.dry_done = threading.Event()
         ran_dry = self.inj.dry_outs.ran_dry
@@ -1004,6 +1010,24 @@ class TestVoicePedalDryOut(unittest.TestCase):
         self.published()
         state = self.inj.estado()
         self.assertEqual((state["secas"], state["secas_pedal"]), (1, 1))
+
+    def test_a_dry_out_is_published_before_the_ring_is_filled_again(self):
+        self.pedal_on(1.0)
+        self.wait_filled()
+        self.held.clear()
+        self.gate.clear()
+        self.assertTrue(self.held.wait(3), "the injector never got to the ring")
+        since = time.perf_counter()
+        self.assertTrue(espera(lambda: time.perf_counter() - since > 0.3))
+        self.write_held.clear()
+        self.write_gate.clear()
+        self.drain_next = True
+        self.gate.set()
+        self.assertTrue(self.write_held.wait(3), "the ring was never filled again after it ran dry")
+        state = self.inj.estado()
+        self.assertEqual((state["secas"], state["secas_pedal"]), (1, 1),
+                         "a dry-out already classified waited for the ring to be filled again")
+        self.assertGreater(state["volta_max_ms"], 300, "its return waited for the ring to be filled again")
 
     def test_the_longest_return_is_published_with_the_counts(self):
         self.pedal_on(1.0)

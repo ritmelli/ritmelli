@@ -143,10 +143,14 @@ class RingDryOuts:
             self.empty_at = self.pedal.clock()
         return held
 
+    def publish(self, count, longest):
+        self.counts = (count, self.while_pedal_starting, longest)
+
     def ran_dry(self, back_s, count):
         start, starting = self.pedal.starting(self.filled_at, self.empty_at)
+        self.while_pedal_starting += starting is not None
+        self.publish(count, max(self.counts[2], back_s))
         if starting is not None:
-            self.while_pedal_starting += 1
             if start != self._start:
                 self._start, self._told_this_start = start, 0
             self._told_this_start += 1
