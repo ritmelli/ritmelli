@@ -59,7 +59,10 @@ BROAD = {"Exception", "BaseException"}
 SLEEP_MODULES = {"time", "asyncio"}
 PS_LOOP = re.compile(r"\b(?:for|foreach|while|do)\b", re.I)
 PS_TRY = re.compile(r"\btry\s*\{", re.I)
-PS_CATCH = re.compile(r"\bcatch\s*(?:\[[^\]]*\]\s*)*\{", re.I)
+PS_CATCH = re.compile(r"\bcatch\s*(?:\[[^\]]*\]\s*,?\s*)*\{", re.I)
+PS_LEAVES = re.compile(r"\b(?:break|return|exit|throw)\b", re.I)
+PS_EXITS = re.compile(r"\b(?:break|return|exit)\b", re.I)
+PS_STRING = re.compile(r"'(?:[^']|'')*'|\"(?:[^\"`]|`.)*\"", re.S)
 PS_VARIABLE = re.compile(r"\$(\w+)")
 PS_ASSIGNED = re.compile(r"\$(\w+)\s*=(?!=)")
 PROOF_LABEL = re.compile(r"^(?:how it was (?:proven|proved|tested)|proof\b|prova\b|como foi provado)", re.I)
@@ -770,7 +773,12 @@ def powershell_loops(code):
     return loops
 
 
+def mask_ps_strings(code):
+    return PS_STRING.sub(lambda m: m.group(0)[0] + re.sub(r"[^\n]", " ", m.group(0)[1:-1]) + m.group(0)[-1], code)
+
+
 def powershell_retries(code):
+    code = mask_ps_strings(code)
     loops = powershell_loops(code)
     found = []
     for start, body_start, body_end in loops:
@@ -783,12 +791,16 @@ def powershell_retries(code):
         body = "".join(own)
         if not (re.search(r"\btry\s*\{", body, re.I) and START_SLEEP.search(body)):
             continue
-        waits_on_failure = any(START_SLEEP.search(block) for block in ps_blocks(body, PS_CATCH))
-        ends = re.search(r"\b(?:break|return|exit)\b", body, re.I)
-        tried = {v.lower() for block in ps_blocks(body, PS_TRY) for v in PS_ASSIGNED.findall(block)}
+        again = [block for block in ps_blocks(body, PS_CATCH) if not PS_LEAVES.search(block)]
+        if not again:
+            continue
+        waits_on_failure = any(START_SLEEP.search(block) for block in again)
+        tries = list(ps_blocks(body, PS_TRY))
+        ends = any(PS_EXITS.search(block) for block in tries)
+        tried = {v.lower() for block in tries for v in PS_ASSIGNED.findall(block)}
         condition = code[start:body_start]
         after = re.match(r"\s*(?:while|until)\s*\(", code[body_end + 1:], re.I)
-        if after:
+        if after and re.match(r"do\b", code[start:], re.I):
             open_at = body_end + after.end()
             condition += code[open_at:closing(code, open_at, "(", ")") + 1]
         stops_on_success = tried & {v.lower() for v in PS_VARIABLE.findall(condition)}
@@ -855,6 +867,24 @@ def js_functions(code):
     return spans
 
 
+JS_CATCH_BLOCK = re.compile(r"\bcatch\s*(?:\([^)]*\))?\s*\{")
+JS_CATCH_CALL = re.compile(r"\.catch\s*\(")
+JS_EMPTY_CALLBACK = re.compile(r"^\s*(?:(?:async\s*)?(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>\s*\{\s*\}"
+                               r"|(?:async\s+)?function\s*[\w$]*\s*\([^)]*\)\s*\{\s*\})\s*$")
+
+
+def js_swallowed(code):
+    code = mask_js_strings(code)
+    found = []
+    for m in JS_CATCH_BLOCK.finditer(code):
+        if not code[m.end():closing(code, m.end() - 1, "{", "}")].strip():
+            found.append(code.count("\n", 0, m.start()) + 1)
+    for m in JS_CATCH_CALL.finditer(code):
+        if JS_EMPTY_CALLBACK.match(code[m.end():closing(code, m.end() - 1, "(", ")")]):
+            found.append(code.count("\n", 0, m.start()) + 1)
+    return found
+
+
 def js_retries(code):
     found = []
     code = mask_js_strings(code)
@@ -884,7 +914,8 @@ def retries(t):
         tree = t.tree(p)
         if tree is not None:
             items += [(p, n) for n in python_retries(tree)]
-            items += [(p, n) for n, s in python_strings(t, p) if START_SLEEP.search(s) and powershell_retries(s)]
+            items += [(p, n + k - 1) for n, s in python_strings(t, p) if START_SLEEP.search(s)
+                      for k in powershell_retries(s)]
     for p in t.paths(".yml", ".yaml"):
         if p.startswith(".github/"):
             items += [(p, offset + n) for offset, tree, _ in workflow_python(t, p) for n in python_retries(tree)]
@@ -930,6 +961,8 @@ def broad_excepts(t):
         if p.startswith(".github/"):
             for offset, tree, _ in workflow_python(t, p):
                 items += [(p, offset + n) for n in broad_handlers(tree)]
+    for p in t.paths(".js", ".html"):
+        items += [(p, n) for n in js_swallowed(joined_code(t.lexed(p)))]
     for p in t.paths(".iss"):
         lexed = t.lexed(p)
         code_start = next((n for n, c in sorted(lexed.code.items()) if c.strip().lower() == "[code]"), None)

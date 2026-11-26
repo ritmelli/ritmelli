@@ -226,6 +226,23 @@ CASES = {
          {"a.ps1": "foreach ($x in $y) {\n  while ($true) { try { f $x; break } catch { Start-Sleep 1 } }\n}\n"}),
         ("a powershell loop around a retry in a Python string", {"a.py": "ps = 'foreach($x in $y){f $x}'\n"},
          {"a.py": "ps = 'foreach($x in $y){while($true){try{f $x;break}catch{Start-Sleep 1}}}'\n"}),
+        ("a poll followed by a while that reads what its try set",
+         {"a.ps1": "while ($true) { try { $status = Get-Status } catch { Write-Warning $_ }; Start-Sleep 5 }\n"
+                   "while ($status) { f }\n"},
+         {"a.ps1": "do { try { $status = Get-Status } catch { }; Start-Sleep 5 } while (-not $status)\n"}),
+        ("a catch that waits and throws, and a break only on the failure path",
+         {"a.ps1": "while ($true) { try { f } catch { Start-Sleep 1; throw } }\n"
+                   "while ($true) { try { f } catch { break }; Start-Sleep 1 }\n"},
+         {"a.ps1": "while ($true) { try { f; break } catch { Start-Sleep 1 } }\n"}),
+        ("a poll whose warning says return",
+         {"a.ps1": "while ($true) { try { Get-Status } catch { Write-Warning 'will return later' }; Start-Sleep 5 }\n"},
+         {"a.ps1": "while ($true) { try { Get-Status } catch { Write-Warning 'again'; Start-Sleep 5 } }\n"}),
+        ("a catch of two types", {"a.ps1": "while ($true) { Get-Status; Start-Sleep 1 }\n"},
+         {"a.ps1": "while ($true) { try { f; break } catch [IO.FileNotFoundException], [IO.DirectoryNotFoundException] "
+                   "{ Start-Sleep 1 } }\n"}),
+        ("two retries in one Python string", {"a.py": "ps = 'f'\n"},
+         {"a.py": "ps = ('while($true){try{f;break}catch{Start-Sleep 1}}\\n'\n"
+                  "      'while($true){try{g;break}catch{Start-Sleep 1}}')\n"}, 2),
         ("a do-while followed by another loop", {"a.py": "ps = 'do{f}while($a);while($b){Start-Sleep 1}'\n"},
          {"a.py": "ps = 'do{try{f}catch{Start-Sleep 1}}while($a);while($b){Start-Sleep 1}'\n"}),
         ("a script's onerror that loads it again",
@@ -282,6 +299,14 @@ CASES = {
              "{handler}", "          except OSError:\n              pass\n")},
          {".github/workflows/w.yml": WORKFLOW.replace("python3 {0}", "python").replace(
              "{handler}", "          except Exception:\n              pass\n")}),
+        ("a JavaScript catch with nothing in it",
+         {"a.js": "try { f(); } catch (e) { report(e); }\np.catch(e => report(e));\n"},
+         {"a.js": "try { f(); } catch (e) { /* the pointer left */ }\n"}),
+        ("a promise catch with an empty callback", {"a.js": "api('GET', '/x').catch(e => mostrar(e));\n"},
+         {"a.js": "api('GET', '/x').catch(() => {});\n"}),
+        ("an empty catch in an inline script",
+         {"a.html": "<script>\ntry { f(); } catch { mostrar(); }\n</script>\n"},
+         {"a.html": "<script>\ntry { f(); } catch { }\n</script>\n"}),
         ("pascal", {"a.iss": "[Setup]\nA=except\n[Code]\nbegin end;\n"},
          {"a.iss": "[Code]\nbegin try f; except end; end;\n"}),
     ],
@@ -418,7 +443,8 @@ CASES = {
 KNOWN_MISSES_ISSUE = "https://github.com/ritmelli/ritmelli/issues/254"
 KNOWN_MISSES = [
     ("broad_excepts", "a PowerShell catch with no type", {"a.ps1": "try { f } catch { }\n"}),
-    ("broad_excepts", "a JavaScript catch", {"a.js": "try { f(); } catch (e) { }\n"}),
+    ("broad_excepts", "a JavaScript catch that handles nothing but is not empty",
+     {"a.js": "try { f(); } catch (e) { void e; }\n"}),
     ("retries", "a JavaScript failure told by an if (index.html, the transport not loaded)",
      {"a.js": "function carregarTransporte() {\n  s.onload = () => {\n"
               "    if (typeof TRANSPORTE === 'undefined') { s.remove(); reconT = setTimeout(conectar, 3000); return; }\n"
