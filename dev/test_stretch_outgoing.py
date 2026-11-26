@@ -8,10 +8,13 @@ tracks stretched, on its own, through the real Rubber Band:
   - level: on broadband noise, no LEVEL_WINDOW_MS window at the start of the output drops more than
     LEVEL_DROP_DB below the input, so the switch from what already played into the stretched audio has no gap;
   - short: an input shorter than the warm-up and the crossfade (SHORT_MS) comes back whole, one output frame per
-    position.
+    position;
+  - incoming level: the same level check on esticar, the next track's stretch, which still starts silent (#264). It is
+    a known failure: it runs and its result is shown, but its failure does not count, and passing does, so the fix
+    takes it off the list.
 
 Position, pitch and level run at a speed below and one above 1 (A slowed down and sped up, as in the dois and dois-106
-pairs); both short inputs run at SHORT_SPEED.
+pairs); both short inputs run at SHORT_SPEED; the incoming level runs at 1 - TEMPO_MAX and 1 + TEMPO_MAX.
 
     python dev/test_stretch_outgoing.py
 
@@ -44,6 +47,10 @@ LEVEL_DROP_DB = 3.0
 PITCH_TOLERANCE_HZ = 5.0
 SHORT_MS = (30.0, 75.0)
 SHORT_SPEED = 1.01
+INCOMING_SPEEDS = (1 - transicao.TEMPO_MAX, 1 + transicao.TEMPO_MAX)
+INCOMING_OVERLAP_S = 4.0
+INCOMING_RAMP_S = 8.0
+INCOMING_ISSUE = 264
 
 failures = []
 
@@ -108,19 +115,37 @@ def position(speed, rng):
     return worst, peak_hz
 
 
-def level(speed, rng):
-    x = stereo(0.1 * rng.standard_normal(int(DURATION_S * SR)))
-    z, _ = engine.esticar_saida(x, speed, ramp_samples(speed))
+def start_drop(x, z, what, speed):
     w = int(LEVEL_WINDOW_MS / 1000 * SR)
     ref = float(np.sqrt(np.mean(x[:int(LEVEL_CHECKED_S * SR), 0] ** 2)))
     drops = [20 * np.log10(max(float(np.sqrt(np.mean(z[i:i + w, 0] ** 2))), 1e-9) / ref)
              for i in range(0, int(LEVEL_CHECKED_S * SR), w)]
     worst = int(np.argmin(drops))
-    check(drops[worst] >= -LEVEL_DROP_DB,
-          f"level at speed {speed:.4f}: the quietest {LEVEL_WINDOW_MS:.0f} ms window of the first "
-          f"{LEVEL_CHECKED_S * 1000:.0f} ms, at {worst * LEVEL_WINDOW_MS:.0f} ms, is {drops[worst]:+.1f} dB from the "
-          f"input (at least -{LEVEL_DROP_DB} dB)")
-    return drops[worst]
+    msg = (f"{what} at speed {speed:.4f}: the quietest {LEVEL_WINDOW_MS:.0f} ms window of the first "
+           f"{LEVEL_CHECKED_S * 1000:.0f} ms, at {worst * LEVEL_WINDOW_MS:.0f} ms, is {drops[worst]:+.1f} dB from the "
+           f"input (at least -{LEVEL_DROP_DB} dB)")
+    return drops[worst], drops[worst] >= -LEVEL_DROP_DB, msg
+
+
+def level(speed, rng):
+    x = stereo(0.1 * rng.standard_normal(int(DURATION_S * SR)))
+    z, _ = engine.esticar_saida(x, speed, ramp_samples(speed))
+    drop, ok, msg = start_drop(x, z, "level", speed)
+    check(ok, msg)
+    return drop
+
+
+def incoming_level(speed, rng):
+    x = stereo(0.1 * rng.standard_normal(int(DURATION_S * SR)))
+    n_sob, n_ramp = int(INCOMING_OVERLAP_S * SR), int(INCOMING_RAMP_S * SR)
+    z, _ = engine.esticar(x, speed, n_sob, n_ramp, int(speed * n_sob + n_ramp * (1 + speed) / 2))
+    drop, ok, msg = start_drop(x, z, "incoming level", speed)
+    if ok:
+        check(False, f"{msg}: passed, but it is a known failure (#{INCOMING_ISSUE}): if the fix is on purpose, the "
+                     "case leaves the known failures in the same PR")
+    else:
+        print(f"known #{INCOMING_ISSUE} {msg}")
+    return drop
 
 
 def short(ms, rng):
@@ -141,8 +166,11 @@ def main():
         levels.append(f"{level(speed, np.random.default_rng(11)):+.1f} dB")
     for ms in SHORT_MS:
         short(ms, np.random.default_rng(13))
+    incoming = [f"{incoming_level(speed, np.random.default_rng(17)):+.1f} dB" for speed in INCOMING_SPEEDS]
     print(f"-- summary: {'FAIL' if failures else 'ok'} at speeds {' / '.join(f'{s:.2f}' for s in SPEEDS)}: position "
-          f"{' / '.join(positions)}, pitch {' / '.join(pitches)}, level {' / '.join(levels)}")
+          f"{' / '.join(positions)}, pitch {' / '.join(pitches)}, level {' / '.join(levels)}; known failure "
+          f"#{INCOMING_ISSUE}, the incoming level at {' / '.join(f'{s:.2f}' for s in INCOMING_SPEEDS)}: "
+          f"{' / '.join(incoming)}")
     print(f"{len(failures)} failure(s)" if failures else "all passed")
     return 1 if failures else 0
 

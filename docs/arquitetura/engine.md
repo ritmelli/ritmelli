@@ -90,7 +90,8 @@ A saída da Rubber Band vem alinhada com a entrada, mas só soa depois de uns 45
 nenhum, e os primeiros `RUBBER_BAND_WARMUP` (60 ms) dele são o próprio áudio reamostrado, que passa para o da Rubber
 Band em `RUBBER_BAND_CROSSFADE`. O `dev/test_stretch_outgoing.py` confere a posição dos ataques com um tom forte por
 baixo deles (#197), o tom de volta ao original depois da rampa, o nível sem buraco no começo, com ruído de banda
-larga, e a entrada mais curta que o aquecimento.
+larga, e a entrada mais curta que o aquecimento. O mesmo nível no começo do `esticar`, o lado da próxima, que ainda
+sai mudo, roda ali como falha conhecida da #264: passa a contar quando passar.
 
 ## O bloco e a linha de reprodução
 
