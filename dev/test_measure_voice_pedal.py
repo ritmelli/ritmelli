@@ -262,6 +262,8 @@ class Main(unittest.TestCase):
                          "one stream for the whole measurement, and /api/state only to check the microphone")
         self.assertEqual((result["dry_outs"], result["dry_outs_while_starting"], result["onnxruntime"],
                           result["cycles"][0]["new_longest_return_ms"]), (1, 1, PINNED, 656.0))
+        self.assertEqual((result["cycles"][0]["requested_on_s"], result["cycles"][0]["on_s_between_responses"]),
+                         (0.5, 10.0), "the pedal was on for one step of the test's clock, not the 0.5 s asked")
 
     def test_a_dry_out_captured_just_past_the_end_is_its_cycles(self):
         why, _, result = self.run_main(state(), "--cycles", "1",

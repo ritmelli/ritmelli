@@ -245,9 +245,11 @@ def main():
                 seen = len(lines(work / "server.err"))
                 try:
                     call("POST", "/api/settings", {"effect": "pistavoz"})
-                    during = record.until(clock() + a.on_s)
+                    on_at = clock()
+                    during = record.until(on_at + a.on_s)
                     call("POST", "/api/settings", {"effect": "nenhum"})
-                    during += record.until(clock() + OFF_S)
+                    off_at = clock()
+                    during += record.until(off_at + OFF_S)
                 except StreamBroken as ex:
                     sys.exit(f"cycle {n}: {ex} (see {server_err} and {log})")
                 states_seen = [start, *during]
@@ -255,6 +257,7 @@ def main():
                 c, problem = cycle_row(n, states_seen, mic, a.provider, lines(server_err)[seen:], lines(log), a.on_s)
                 if problem:
                     sys.exit(f"{problem} (see {work / 'server.err'} and {log})")
+                c.update(requested_on_s=a.on_s, on_s_between_responses=round(off_at - on_at, 3))
                 cycles.append(c)
                 print(json.dumps(c), flush=True)
         finally:
