@@ -19,7 +19,8 @@ FORK_ISSUE = "https://github.com/ritmelli/ritmelli/issues/255"
 SHA = "c" * 40
 QUEUE_BASE = "b" * 40
 QUEUE_REF = f"refs/heads/gh-readonly-queue/main/pr-7-{QUEUE_BASE}"
-NEEDS = ("ETIQUETAS", "TESTES", "BENCH", "CAPTURE", "MICROFONE", "TELA", "COMPARA")
+NEEDS = tuple(job.upper().replace("-", "_") for job in
+              load(ROOT / ".github" / "workflows" / "testa.yml")["jobs"]["testa-o-pr"]["needs"])
 
 failures = []
 

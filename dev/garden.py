@@ -32,6 +32,10 @@ ISSUE_URL = re.compile(r"(?<![\w./-])(?:https?://)?(?:www\.)?github\.com/[\w.-]+
 URL = re.compile(r"\b[a-z][a-z\d+.-]*://\S+|\bwww\.\S+", re.I)
 SHORT_ISSUE = re.compile(r"(?<![^\s(\[{,;:])(?:[A-Za-z\d-]+/[\w.-]+)?#\d+\b")
 LINK_TARGET = re.compile(r"\]\([^)]*\)")
+CLOSING = re.compile(r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?):?\s+(?:(?:https?://)?(?:www\.)?github\.com/"
+                     r"[\w.-]+/[\w.-]+/issues/\d+|(?:[A-Za-z\d-]+/[\w.-]+)?#\d+)\b", re.I)
+CLOSING_SEPARATOR = re.compile(r"\s*(?:,\s*and\b|,|;|\band\b)\s*", re.I)
+LIST_MARKER = re.compile(r"\s*(?:(?:[-*+]|\d+[.)])\s+)?")
 RESULT = re.compile(r"\b(?:pass(?:es|ed)?|fail(?:s|ed)?|successfully|\d+ of \d+|\d+/\d+)\b", re.I)
 OPEN_ITEM = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+\[ \]\s")
 CODE_SPAN = re.compile(r"(`+)(?!`)(?:(?!\n[ \t]*\n).)*?(?<!`)\1(?!`)", re.S)
@@ -1603,6 +1607,18 @@ def proof_sections(lines):
             yield "\n".join(section)
 
 
+def stray_closings(line):
+    pos, own = LIST_MARKER.match(line).end(), set()
+    while m := CLOSING.match(line, pos):
+        own.add(m.start())
+        pos = m.end()
+        sep = CLOSING_SEPARATOR.match(line, pos)
+        if not sep:
+            break
+        pos = sep.end()
+    return [m for m in CLOSING.finditer(line) if m.start() not in own]
+
+
 def description_problems(body):
     lines = re.sub(r"<!--.*?-->", "", body or "", flags=re.S).splitlines()
     problems = []
@@ -1613,6 +1629,9 @@ def description_problems(body):
     elif not any(has_proof(s) for s in sections):
         problems.append("the proof section has no run, test or screenshot (a command or a test file in `code`, a code "
                         "block, a link to a run or an image)")
+    for n, line in outside_fences(lines):
+        problems += [f"line {n + 1}: \"{m.group(0)}\" closes the issue wherever it stands: put it on a line of its own "
+                     f"that starts with it, or write \"Refs\"" for m in stray_closings(mask_code(line))]
     for chunk in paragraphs(lines):
         text = mask_code("\n".join(line for _, line in chunk)).replace("\n", " ")
         phrase = PROSE.search(text)
@@ -1664,7 +1683,8 @@ def check_description(fetch=fetch_description):
     for p in problems:
         print(f"FAIL  PR #{number} description: {p}")
     if not problems:
-        print(f"ok    the description of PR #{number} has its proof section and no prose without an issue")
+        print(f"ok    the description of PR #{number} has its proof section, no prose without an issue and no "
+              f"closing word inside a sentence")
     return 1 if problems else 0
 
 
