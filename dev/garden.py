@@ -11,6 +11,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "dev"))
+import workflow_yaml
+
 CEILINGS = ROOT / "dev" / "garden.json"
 USAGE = """The garden scoreboard: counts the weeds of the repo and holds each count to its ceiling in dev/garden.json.
 
@@ -629,7 +632,6 @@ def broad_handlers(tree):
 
 
 def workflow_python(t, path):
-    import workflow_yaml
     try:
         doc = workflow_yaml.loads(t.files[path], name=path)
     except workflow_yaml.YamlError:
@@ -660,7 +662,6 @@ def broad_excepts(t):
         tree = t.tree(p)
         if tree is not None:
             items += [(p, n) for n in broad_handlers(tree)]
-    sys.path.insert(0, str(ROOT / "dev"))
     for p in t.paths(".yml"):
         if p.startswith(".github/"):
             for _, run in workflow_python(t, p):
@@ -823,8 +824,6 @@ def verification_names():
 
 
 def workflow_jobs(t):
-    import workflow_yaml
-    sys.path.insert(0, str(ROOT / "dev"))
     text = t.files.get(".github/workflows/testa.yml")
     if text is None:
         return set()
@@ -848,7 +847,6 @@ def agents_rules(text):
 
 
 def agents_rules_without_check(t):
-    sys.path.insert(0, str(ROOT / "dev"))
     valid = verification_names() | workflow_jobs(t)
     items = []
     for n, rule in agents_rules(t.files.get("AGENTS.md", "")):
