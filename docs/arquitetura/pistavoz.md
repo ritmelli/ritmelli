@@ -23,6 +23,18 @@ dos quadros que o `conversor.py` congela a cada bloco (o `tom_congelado`, a cont
 o `medido` pela saída padrão e passa ao deslocamento medido (`ajusta_tom`, com a linha do tempo zerada). O
 `pistavoz.py` põe isso no visor e guarda o tom de quem fala no `pedal_voz.json` da pasta de dados, com a voz
 escolhida. No `--mock` o pedal não liga.
+A subida do pedal e as secas do anel da música (#137), no `dryouts.py`: o `VoicePedalStart` do motor guarda quando o
+pedal ligou (o `_pedal_voz_liga` conta) e quando a pista da voz ficou viva (o `Injetor` conta, a cada bloco), e o
+`RingDryOuts` do `Injetor` conta cada seca entre o pedal ligar e `AFTER_TRACK_S` depois de a pista ficar viva no
+`secas_pedal` do `/api/state` e a põe no log, sem o limite de uma linha a cada `QUIET_S` das outras secas, com quanto
+tempo depois do pedal e da pista ela veio. O `dev/testa_anel.py` confere essa conta com uma pista e uma seca que o
+próprio teste faz acontecer, no relógio dele (o `clock` do `VoicePedalStart`), e o `dev/testa_pedal_voz.py` confere o
+que o motor guarda quando o pedal liga e desliga. O `dev/measure_voice_pedal.py` mede isso de verdade (manual: o
+microfone com o filtro, a placa de vídeo e os modelos, com o Ritmelli desligado), num servidor de verdade deste
+checkout, numa porta dele e com dados temporários, e só com o runtime do app (o `onnxruntime-directml`): sem o
+`DmlExecutionProvider`, ele se recusa a rodar antes de abrir qualquer coisa, a não ser com `--provider cpu`, e o
+`dev/test_measure_voice_pedal.py` confere a recusa: uma medição com o conversor no processador, num Python sem o
+runtime do app, secava o anel na subida do pedal, e com o runtime do app o mesmo PC não secou (0 em 24 ciclos).
 Testes: `python dev/testa_pedal_voz.py` (o contrato, com um módulo falso), `python dev/testa_vozes.py` (o
 `vozes.json`, o que o instalador baixa e o `impedimento()`), `python dev/testa_pista.py` (o processo contra um anel
 falso; com `RITMELLI_VOZES_TESTE=1`, também com os modelos de verdade) e `python dev/testa_conversor.py` (o motor com

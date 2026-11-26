@@ -567,7 +567,10 @@ The description at the top of each test file explains what it checks.
 - The voice changer pedal (`pistavoz.py`, `pista.py`, `conversor.py`, `vozes.json` and the `pistavoz` hook in
   `fx.py`, `engine.py` and `server.py`; the contract is in [API.md](API.md#pedal-de-troca-de-voz)):
   `dev/testa_pedal_voz.py`, `dev/testa_vozes.py`, `dev/testa_pista.py` and `dev/testa_conversor.py` (the voice
-  conversion engine with mock models on the CPU; it needs `onnx`, from `requirements-dev.txt`). The pedal needs the voice models, which
+  conversion engine with mock models on the CPU; it needs `onnx`, from `requirements-dev.txt`). The dry-outs of the
+  microphone's music ring while the pedal starts (`dryouts.py`): `dev/testa_anel.py`, `dev/testa_pedal_voz.py`, and
+  `dev/test_measure_voice_pedal.py` for the refusal of the manual `dev/measure_voice_pedal.py` to measure without the
+  app's runtime. The pedal needs the voice models, which
   `python dev\vozes.py baixa` downloads from the [ritmelli-voices](https://github.com/ritmelli/ritmelli-voices)
   releases into `vozes\` (about 325 MB, checked by SHA-256), and a graphics card; without them the Alien pedal stays.
   With the models downloaded, `set RITMELLI_VOZES_TESTE=1` also runs `testa_pista.py` against the real models.
