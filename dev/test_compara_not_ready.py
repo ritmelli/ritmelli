@@ -13,9 +13,9 @@ from websockets.exceptions import ConnectionClosedError
 ROOT = Path(__file__).resolve().parent.parent
 CONSOLE_MARK = "ritmelli-test-console-error"
 SCRIPT_MARK = "ritmelli-test-missing.js"
-NEVER_READY = ("(() => { if (!window.__ritmelliTest) { window.__ritmelliTest = true; console.error('" + CONSOLE_MARK +
-               "'); const s = document.createElement('script'); s.src = '" + SCRIPT_MARK + "'; "
-               "document.head.appendChild(s); } return false; })()")
+NEVER_READY = ("(() => { if (!window.__ritmelliTest && document.head) { console.error('" + CONSOLE_MARK + "'); "
+               "const s = document.createElement('script'); s.src = '" + SCRIPT_MARK + "'; "
+               "document.head.appendChild(s); window.__ritmelliTest = true; } return false; })()")
 DRIVER = r"""
 import sys
 from pathlib import Path

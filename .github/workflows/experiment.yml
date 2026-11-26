@@ -105,12 +105,12 @@ jobs:
       - name: Mutant whose clock starts at Page.navigate, the CDP instrumentation kept; both slow cases must fail
         if: always()
         run: |
-          python experiment/clock_mutant.py
+          python dev/experiment_clock_mutant.py
           if ($LASTEXITCODE -ne 0) { exit 1 }
-          python experiment/clock_mutant_check.py
+          python dev/experiment_clock_mutant_check.py
           $code = $LASTEXITCODE
           git checkout HEAD -- dev/fitcheck.py
           exit $code
       - name: Mutant that checks the page's origin before the verdict; the run() test must fail
         if: always()
-        run: python experiment/run_order_mutant.py
+        run: python dev/experiment_run_order_mutant.py
