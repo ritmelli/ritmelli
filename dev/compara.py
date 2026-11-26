@@ -441,8 +441,8 @@ def main():
     shutil.rmtree(pasta / "nao-pronto", ignore_errors=True)
     destino.mkdir(parents=True)
     tmp = Path(tempfile.mkdtemp(prefix="ritmelli-compara-"))
-    porta = free_port()
     try:
+        porta = free_port()
         with open(pasta / "servidor.log", "w", encoding="utf-8") as log:
             srv = sobe_servidor(tmp, porta, log, raiz)
             try:

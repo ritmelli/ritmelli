@@ -1,6 +1,5 @@
 import _winapi
 import ctypes
-import gc
 import io
 import json
 import os
@@ -9,7 +8,6 @@ import sys
 import tempfile
 import threading
 import time
-import tracemalloc
 import wave
 from ctypes import wintypes
 from pathlib import Path
@@ -56,6 +54,7 @@ sys.argv = ["server.py", *sys.argv[2:]]
 server.main()
 """
 HOLDER_WAIT_S = 30.0
+ERROR_OPERATION_ABORTED = 995
 CHILD_HOLDS_THE_TRACK = '''
 import subprocess
 import sys
@@ -217,25 +216,36 @@ def connect_within(pipe, seconds):
     return error == 0
 
 
-def connect_that_times_out_leaves_nothing_pending():
-    rounds = 300
-    gc.collect()
-    tracemalloc.start()
-    before = tracemalloc.take_snapshot()
-    connected = []
-    for i in range(rounds):
-        pipe = pipe_named(rf"\\.\pipe\ritmelli-nobody-{os.getpid()}-{i}")
-        try:
-            connected.append(connect_within(pipe, 0.001))
-        finally:
-            _winapi.CloseHandle(pipe)
-    gc.collect()
-    after = tracemalloc.take_snapshot()
-    tracemalloc.stop()
-    kept = sum(d.size_diff for d in after.compare_to(before, "filename") if d.size_diff > 0)
-    check(not any(connected) and kept < rounds * 50,
-          f"a pipe connect that nobody answers is cancelled and collected before the pipe closes: {rounds} of them "
-          f"keep {kept} bytes ({connected.count(True)} connected)")
+class RecordedConnect:
+    def __init__(self, overlapped, calls):
+        self.overlapped, self.calls, self.event = overlapped, calls, overlapped.event
+
+    def cancel(self):
+        self.calls.append("cancel")
+        self.overlapped.cancel()
+
+    def GetOverlappedResult(self, wait):
+        result = self.overlapped.GetOverlappedResult(wait)
+        self.calls.append(("result", wait, result[1]))
+        return result
+
+
+def connect_that_times_out_is_cancelled_then_collected():
+    calls, connected = [], []
+    real = _winapi.ConnectNamedPipe
+    pipe = pipe_named(rf"\\.\pipe\ritmelli-nobody-{os.getpid()}")
+    connecting = threading.Thread(target=lambda: connected.append(connect_within(pipe, 0.001)), daemon=True)
+    _winapi.ConnectNamedPipe = lambda handle, overlapped: RecordedConnect(real(handle, overlapped=overlapped), calls)
+    try:
+        connecting.start()
+        connecting.join(HOLDER_WAIT_S)
+    finally:
+        _winapi.ConnectNamedPipe = real
+        _winapi.CloseHandle(pipe)
+        connecting.join(HOLDER_WAIT_S)
+    check(connected == [False] and calls == ["cancel", ("result", True, ERROR_OPERATION_ABORTED)],
+          f"a pipe connect that nobody answers is cancelled, then its result collected before the pipe closes, and "
+          f"it reports no connection ({connected}, {calls})")
 
 
 def endless_wav_header():
@@ -501,7 +511,8 @@ def compara_folder_removed_when_the_server_refuses():
             sys.argv = argv
             compara.tempfile.mkdtemp = real_mkdtemp
     server_folders = [m for m in made if "ritmelli-compara-" in Path(m).name]
-    check(refused is not None and len(server_folders) == 1 and not Path(server_folders[0]).exists(),
+    check(refused is not None and "(codigo 3)" in refused and len(server_folders) == 1
+          and not Path(server_folders[0]).exists(),
           f"a compara whose server refuses to start exits with that refusal and still removes its temporary folder "
           f"({refused}, {server_folders})")
 
@@ -510,7 +521,7 @@ def main():
     sys.stdout.reconfigure(encoding="utf-8")
     compara_folder_removed_when_the_stop_fails()
     compara_folder_removed_when_the_server_refuses()
-    connect_that_times_out_leaves_nothing_pending()
+    connect_that_times_out_is_cancelled_then_collected()
     job_api_failures()
     resume_cleanup_when_terminate_fails()
     resume_that_fails()
