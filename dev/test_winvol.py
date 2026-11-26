@@ -28,13 +28,37 @@ class Activated:
 
 
 class Device:
-    def __init__(self, endpoint):
+    def __init__(self, endpoint, name=""):
         self.endpoint = endpoint
+        self.name = name
         self.activations = 0
+        self.iids = []
 
     def Activate(self, iid, context, params):
         self.activations += 1
-        return Activated(self.endpoint)
+        self.iids.append(iid)
+        return Activated(self.endpoint) if iid == winvol.IAudioEndpointVolume._iid_ else None
+
+
+class Collection:
+    def __init__(self, devices):
+        self.devices = devices
+
+    def GetCount(self):
+        return len(self.devices)
+
+    def Item(self, i):
+        return self.devices[i]
+
+
+class Enumerator:
+    def __init__(self, by_flow):
+        self.by_flow = by_flow
+        self.calls = []
+
+    def EnumAudioEndpoints(self, flow, state):
+        self.calls.append((flow, state))
+        return Collection(self.by_flow.get(flow, []) if state == winvol.DEVICE_STATE_ACTIVE else [])
 
 
 class Patched(unittest.TestCase):
@@ -56,6 +80,21 @@ class VolumeDo(Patched):
     def test_no_input_with_that_name_is_none(self):
         self.assertIsNone(winvol.volume_do("Headset"))
         self.assertIsNone(winvol.volume_do(None))
+
+
+class VolumeDoThroughTheEnumerator(Patched):
+    def test_looks_for_the_input_among_the_capture_devices_and_activates_its_volume(self):
+        mic = Endpoint()
+        speaker = Device(Endpoint(), "Headset")
+        capture = Device(mic, "Headset")
+        enumerator = Enumerator({winvol.E_CAPTURE: [capture], winvol.E_RENDER: [speaker]})
+        self.patch("comtypes", type("C", (), {"CoCreateInstance": staticmethod(lambda *a: enumerator),
+                                             "COMError": winvol.comtypes.COMError}))
+        self.patch("_nome", lambda d: d.name)
+        self.assertIs(winvol.volume_do("headset"), mic)
+        self.assertEqual(enumerator.calls, [(winvol.E_CAPTURE, winvol.DEVICE_STATE_ACTIVE)])
+        self.assertEqual(capture.iids, [winvol.IAudioEndpointVolume._iid_])
+        self.assertEqual(speaker.activations, 0)
 
 
 class LerGravar(unittest.TestCase):

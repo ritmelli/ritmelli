@@ -36,8 +36,8 @@ até 80 linhas (o `dev/garden.py` confere as duas).
 - O PR que mexe na montagem (o `BUILD_PATHS` do `dev/testa_tudo.py`) só passa no "Testa o PR" com uma execução aprovada
   do "Monta o instalador" (`monta.yml`) no head: rode-o na branch (o "Verdict", provado pelo `dev/test_ci_workflow.py`).
   Os nomes dos artefatos dele (`Ritmelli-<versão>` e `ritmelli-exe-<versão>`) e dos jobs `testa`, `testa-atualizador`,
-  `testa-migracao` e `testa-parcial` são contrato com a esteira de publicação do `ritmelli-server`, e o
-  `dev/test_monta_contract.py` falha se um deles mudar: muda junto com o server.
+  `testa-migracao` e `testa-parcial` ficam como estão: o `dev/test_monta_contract.py` falha se um deles mudar
+  ([dev.md](docs/arquitetura/dev.md#a-montagem)).
 
 ## O mapa: área, arquivos e teste
 
