@@ -222,7 +222,7 @@ for form in ("from Cryptodome.Signature import eddsa", "import Cryptodome.Signat
 print("--- build_manifest.py builds the publica.py call")
 BUILD_MANIFEST = (AQUI / "build_manifest.py").read_text(encoding="utf-8")
 RELEASES = "https://github.com/ritmelli/ritmelli-releases/releases/download"
-VERSION_FILE, VERSION_LINES = re.subn(r'^VERSAO = ".*"$', 'VERSAO = "<version>"',
+VERSION_FILE, VERSION_LINES = re.subn(r'^VERSAO = "[^"\r\n]*"', 'VERSAO = "<version>"',
                                       (AQUI.parents[1] / "versao.py").read_text(encoding="utf-8"), flags=re.M)
 caso("the fake versao.py is the real one with only the VERSAO line swapped", VERSION_LINES == 1)
 RECORDER = f"""import argparse
@@ -305,12 +305,16 @@ def output_case(source):
     return code == 0 and options.get("saida") == output.as_posix(), (options, log)
 
 
+LONG_NOTES = {"notas": ["á" * 501, *(f"Nota {n}" for n in range(1, 31))],
+              "notas_en": ["Don’t " * 84, *(f"Note {n}" for n in range(1, 31))]}
+
+
 def notes_case(source):
     runs = [(dict(notas=" Correção do áudio | Nota dois |"), {"notas": ["Correção do áudio", "Nota dois"]}),
-            (dict(notas_en="Audio fix|| Note two ", partial=True, partial_info=True),
-             {"notas_en": ["Audio fix", "Note two"]}),
-            (dict(notas="|".join(f"Nota {n}" for n in range(30)), notas_en="|".join(f"Note {n}" for n in range(30))),
-             {"notas": [f"Nota {n}" for n in range(30)], "notas_en": [f"Note {n}" for n in range(30)]})]
+            (dict(notas_en="Don’t skip this fix|| Note two ", partial=True, partial_info=True),
+             {"notas_en": ["Don’t skip this fix", "Note two"]}),
+            (dict(notas="|".join(LONG_NOTES["notas"]), notas_en="|".join(LONG_NOTES["notas_en"])),
+             {k: [n.strip() for n in v] for k, v in LONG_NOTES.items()})]
     results = [(manifest_call(source, **inputs), expected) for inputs, expected in runs]
     return all(code == 0 and notes == expected for (code, _, notes, _, _), expected in results), results
 
@@ -321,13 +325,13 @@ def no_notes_case(source):
 
 
 def no_partial_case(source):
-    code, options, _, _, log = manifest_call(source, partial_info=True)
-    return code == 0 and options.get("setup") and options.get("parcial") is None \
-        and options.get("parcial_info") is None, (options, log)
+    results = [manifest_call(source, partial_info=info) for info in (False, True)]
+    return all(code == 0 and options.get("setup") and options.get("parcial") is None
+               and options.get("parcial_info") is None for code, options, _, _, _ in results), results
 
 
 def partial_case(source):
-    runs = ((VERSIONS[0], {}), (VERSIONS[1], dict(notas="Nota", notas_en="Note")))
+    runs = ((VERSIONS[0], {}), (VERSIONS[1], dict(notas="Nota", notas_en="Note")), (VERSIONS[0], dict(notas_en="Note")))
     results = [(v, manifest_call(source, version=v, partial=True, partial_info=True, **notes)) for v, notes in runs]
     return all(code == 0 and options.get("parcial") == (output / f"Ritmelli-{v}-parcial.exe").as_posix()
                and options.get("parcial_info") == (output / f"PARCIAL-{v}.json").as_posix()
@@ -361,9 +365,11 @@ MANIFEST_CASES = {
         notes_case, [
             ('("NOTAS", "--notas"), ("NOTAS_EN", "--notas-en")', '("NOTAS", "--notas-en"), ("NOTAS_EN", "--notas")'),
             ("if n.strip()]", "if n.strip()][:1]"),
-            ("if n.strip()]", "if n.strip()][:29]"),
+            ("if n.strip()]", "if n.strip()][:30]"),
+            ("[n.strip() for n in", "[n.strip()[:500] for n in"),
             ('.split("|")', '.split(",")'),
             ('encoding="utf-8-sig"', 'encoding="cp1252"'),
+            ('encoding="utf-8-sig"', 'encoding="cp1252" if variable == "NOTAS_EN" else "utf-8-sig"'),
             ("        if lines:\n", '        if lines and os.environ.get("NOTAS_EN"):\n'),
             ("        if lines:\n", "        if not lines:\n            return []\n        if True:\n"),
             ("*notes_options(notes_folder)]", '*(notes_options(notes_folder) if not any(OUTPUT.glob("*-parcial.exe")) '
@@ -372,10 +378,12 @@ MANIFEST_CASES = {
         ('(os.environ.get(variable) or "")', "os.environ[variable]")]),
     "no --parcial or --parcial-info without the partial setup, even with a PARCIAL-<version>.json": (no_partial_case, [
         ("if partial.exists():", "if True:"),
-        ("if partial.exists():", 'if partial.exists() or (OUTPUT / f"PARCIAL-{version}.json").exists():')]),
+        ("if partial.exists():", 'if partial.exists() or (OUTPUT / f"PARCIAL-{version}.json").exists():'),
+        ("if partial.exists():", 'if partial.exists() or not (OUTPUT / f"PARCIAL-{version}.json").exists():')]),
     "--parcial and --parcial-info with the partial setup": (partial_case, [
         ("if partial.exists():", "if not partial.exists():"),
         ("if partial.exists():", "if partial.exists() and not notes_options(notes_folder):"),
+        ("if partial.exists():", 'if partial.exists() and (not os.environ.get("NOTAS_EN") or os.environ.get("NOTAS")):'),
         ('f"Ritmelli-{version}-parcial.exe"', 'f"Ritmelli-{version}-partial.exe"'),
         ('f"PARCIAL-{version}.json"', 'f"PARCIAL.json"'),
         ('f"PARCIAL-{version}.json"', '"PARCIAL-0.3.4.json"'),
