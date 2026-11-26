@@ -959,7 +959,8 @@ KNOWN_MISSES = [
     ("retries", "a JavaScript failure told by an if (index.html, the transport not loaded)",
      {"a.js": "function carregarTransporte() {\n  s.onload = () => {\n"
               "    if (typeof TRANSPORTE === 'undefined') { s.remove(); reconT = setTimeout(conectar, 3000); return; }\n"
-              "    carregar();\n  };\n}\nfunction conectar() {\n  carregarTransporte();\n}\n"}, None),
+              "    carregar();\n  };\n}\nfunction conectar() {\n  carregarTransporte();\n}\n"},
+     ((".js", ".html"), r"onload\s*=[^;]*?\{[^}]*?if\s*\([^)]*\)\s*\{[^}]*setTimeout\(")),
 ]
 
 
@@ -1100,12 +1101,11 @@ def test_known_misses():
     for name, label, files, detector in KNOWN_MISSES:
         check(count(name, files) == 0, f"known miss ({KNOWN_MISSES_ISSUE}): {name} does not count {label}; when it "
               f"does, move the case to CASES")
-        if detector:
-            check(bool(uses_of(files, *detector)), f"known miss ({KNOWN_MISSES_ISSUE}): the detector of {label} "
-                  f"finds its own case")
-            used = uses_of(tree, *detector)
-            check(not used, f"known miss ({KNOWN_MISSES_ISSUE}): the repo does not use {label} yet ({used[:3]}); "
-                  f"when it does, make {name} count it and move the case to CASES")
+        check(bool(uses_of(files, *detector)), f"known miss ({KNOWN_MISSES_ISSUE}): the detector of {label} "
+              f"finds its own case")
+        used = uses_of(tree, *detector)
+        check(not used, f"known miss ({KNOWN_MISSES_ISSUE}): the repo does not use {label} yet ({used[:3]}); "
+              f"when it does, make {name} count it and move the case to CASES")
 
 
 def test_check():
