@@ -273,6 +273,11 @@ CASES = {
          {"a.yml": "steps:\n  - run: echo '--   o pedal ficou de fora'  # no issue\n"}),
         ("ficou de fora in a PowerShell script", {"a.ps1": "# o pedal ficou de fora num comentario\n"},
          {"a.ps1": "'--   o pedal ficou de fora'\n"}),
+        ("skipIf in a workflow's Python step",
+         {".github/workflows/w.yml": PY_STEP.replace("JOB", "testa").replace(
+             "time.sleep(1)\n", "@unittest.skipIf(X, 'no X (#12)')\n          class T: pass\n")},
+         {".github/workflows/w.yml": PY_STEP.replace("JOB", "testa").replace(
+             "time.sleep(1)\n", "@unittest.skipIf(X, 'no X')\n          class T: pass\n")}),
     ],
     "todo_markers": [
         ("in a comment", {"a.py": "PIXELS = ['XXX', '.X.']\n", "a.md": "o METODO e o MÉTODO\n"},
@@ -517,6 +522,8 @@ def test_description():
         "a proof hidden in an HTML comment": "## Proof\n<!-- `python dev/garden.py` fails on the base -->\n",
         "a code block that never closes": "## Proof\n\n```\npython dev/x.py\n```text\n",
         "a proof section only inside an example block": "```markdown\n## Proof\n`python dev/garden.py`\n```\n",
+        "a fragment of a link as the issue": good + "\nThe rest stays for now ([details](https://example.org/page#250)).\n",
+        "an issues path off GitHub as the issue": good + "\nThe rest stays for now (https://example.org/issues/250).\n",
     }
     for label, body in failing.items():
         check(garden.description_problems(body) != [], f"a proof section with {label} fails")
@@ -524,6 +531,8 @@ def test_description():
     check(any("for now" in p for p in garden.description_problems(prose)), "a prose phrase with no issue fails")
     check(garden.description_problems(good + "\nThe rest stays for now (#250).\n") == [],
           "a prose phrase with its issue passes")
+    check(garden.description_problems(good + "\nThe rest stays for now ([details](https://github.com/o/r/issues/250)).\n")
+          == [], "a prose phrase with a link to its issue passes")
     check(garden.pr_number("pull_request", {"pull_request": {"number": 7}}) == 7, "the PR number of a pull_request")
     check(garden.pr_number("merge_group", {"merge_group": {"head_ref": "refs/heads/gh-readonly-queue/main/pr-246-"
                                                            + "a" * 40}}) == 246, "the PR number of a merge_group entry")

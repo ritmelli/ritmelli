@@ -27,7 +27,7 @@ against the base goes to the PR summary as a "-- summary:" line."""
 COMMENT_EXTENSIONS = (".py", ".js", ".css", ".ps1", ".yml", ".cpp", ".h", ".iss", ".bat", ".html", ".rc", ".spec",
                       ".sh", ".toml", ".psd1", ".isl")
 GARDEN_FILES = ("dev/garden.py", "dev/test_garden.py")
-ISSUE = re.compile(r"#\d+\b|/issues/\d+\b")
+ISSUE = re.compile(r"(?<![\w/&=])#\d+\b|\bgithub\.com/[\w.-]+/[\w.-]+/issues/\d+\b")
 BLOCK_MARKER = re.compile(r"^\s*(?:[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-(?:INICIO|FIM)|[a-z]+:(?:inicio|fim))\b")
 KEPT_COMMENT = re.compile(r"^\s*manual:|^\s*i18n-ok\s*$|^ inline-script: [\w-]+\.js $")
 GENERATED_MARKERS = {"molduras:inicio (gravado pelo dev/molduras.py: o desenho mora la, nao editar aqui)"}
@@ -889,11 +889,6 @@ def broad_excepts(t):
     return items
 
 
-def marker_has_issue(t, path, node):
-    source = "\n".join(t.files[path].splitlines()[node.lineno - 1:node.end_lineno])
-    return bool(ISSUE.search(source))
-
-
 def skip_names(tree):
     names = set()
     for node in ast.walk(tree):
@@ -902,21 +897,32 @@ def skip_names(tree):
     return names
 
 
+def skip_markers(tree, lines):
+    imported = skip_names(tree)
+    called = {id(c.func) for c in ast.walk(tree) if isinstance(c, ast.Call)}
+    found = []
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.Call, ast.Attribute, ast.Name)):
+            continue
+        target = node.func if isinstance(node, ast.Call) else node
+        hit = (isinstance(target, ast.Attribute) and target.attr in SKIP_NAMES) or (
+            isinstance(target, ast.Name) and target.id in imported)
+        if hit and (isinstance(node, ast.Call) or id(node) not in called) and not ISSUE.search(
+                "\n".join(lines[node.lineno - 1:node.end_lineno])):
+            found.append(node.lineno)
+    return found
+
+
 def skipped_tests(t):
     items = []
+    for p in workflow_paths(t):
+        items += [(p, offset + n) for offset, tree, script in workflow_python(t, p)
+                  for n in skip_markers(tree, script.splitlines())]
     for p in t.paths(".py", ".spec"):
         tree = t.tree(p)
         if tree is None:
             continue
-        imported = skip_names(tree)
-        for node in ast.walk(tree):
-            target = node.func if isinstance(node, ast.Call) else node
-            hit = (isinstance(target, ast.Attribute) and target.attr in SKIP_NAMES) or (
-                isinstance(target, ast.Name) and target.id in imported)
-            if hit and isinstance(node, (ast.Call, ast.Attribute, ast.Name)) and not marker_has_issue(t, p, node):
-                if isinstance(node, ast.Call) or not any(
-                        isinstance(c, ast.Call) and c.func is node for c in ast.walk(tree)):
-                    items.append((p, node.lineno))
+        items += [(p, n) for n in skip_markers(tree, t.files[p].splitlines())]
         raw = t.files[p].splitlines()
         items += [(p, n) for n, s in python_strings(t, p) if (LEFT_OUT.match(s) or KNOWN_FAILURE.match(s))
                   and not ISSUE.search(s) and not ISSUE.search(raw[n - 1] if n <= len(raw) else "")]
