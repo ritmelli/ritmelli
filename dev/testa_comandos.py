@@ -2603,32 +2603,52 @@ def mixa():
 
 
 def engine_seams(A, E):
-    print("--- the engine's public seams: take_prepare_failure and with_lock")
+    print("--- the engine's public seams: state_section, take_prepare_failure and with_lock")
+    with E.state_section() as handle:
+        held = E._qlock.locked()
+    confere(handle is None and held and not E._qlock.locked(),
+            f"state_section holds the _qlock in its body, hands out no lock and releases it ({handle})")
+    with contextlib.suppress(KeyError), E.state_section():
+        raise KeyError("body")
+    confere(not E._qlock.locked(), "and releases it when the body raises")
+
     cmd.tocar(A, "d1")
+    confere(ate(lambda: E.status() == "playing"), f"the record plays ({E.status()})")
+    x, _, _ = cmd.enfileirar(A, {"id": "d2"})
     A.passagem_falhou = None
-    with E.state_section():
-        E._pronto_falhou = "failed-qid"
     engine_class, uses = type(E), []
 
     class Watched(engine_class):
         @property
-        def _pronto_falhou(self):
+        def _prepare_failure_tag(self):
             uses.append(self._qlock.locked())
-            return self.__dict__["_pronto_falhou"]
+            return self.__dict__["_prepare_failure_tag"]
 
-        @_pronto_falhou.setter
-        def _pronto_falhou(self, value):
+        @_prepare_failure_tag.setter
+        def _prepare_failure_tag(self, value):
             uses.append(self._qlock.locked())
-            self.__dict__["_pronto_falhou"] = value
-    E.__class__ = Watched
-    try:
+            self.__dict__["_prepare_failure_tag"] = value
+    with mock.patch.object(eng, "TRANS_PREP_S", 1e6), mock.patch.object(A, "_prepara") as prepara:
         A._volta_passagem()
-        again = E.take_prepare_failure()
-    finally:
-        E.__class__ = engine_class
-    confere(A.passagem_falhou == (id(E.track), "failed-qid") and again is None,
+        confere(ate(lambda: prepara.called) and prepara.call_args.args[1] is x,
+                "inside the preparation window, the head of the queue is prepared")
+        A.preparando = None
+        prepara.reset_mock()
+        with E.state_section():
+            E._prepare_failure_tag = x["qid"]
+        E.__class__ = Watched
+        try:
+            A._volta_passagem()
+            again = E.take_prepare_failure()
+        finally:
+            E.__class__ = engine_class
+        A._volta_passagem()
+    confere(A.passagem_falhou == (id(E.track), x["qid"]) and again is None,
             f"the passage watcher takes the prepare failure out of the engine, once ({A.passagem_falhou})")
     confere(uses and all(uses), f"and reads and clears it under the engine's _qlock ({uses})")
+    confere(not prepara.called and A.preparando is None,
+            f"and the head that failed is not prepared again ({prepara.call_count}, {A.preparando})")
+    cmd.tirar_da_fila(A, x["qid"])
 
     real, holding, release, waiting = E._lock, threading.Event(), threading.Event(), threading.Event()
 

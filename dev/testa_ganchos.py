@@ -379,6 +379,8 @@ def module_privates(tree):
     for s in class_level(tree.body):
         if isinstance(s, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             out.add(s.name)
+        elif isinstance(s, (ast.Import, ast.ImportFrom)):
+            out |= {a.asname or a.name.split(".")[0] for a in s.names}
         for target in assigned_targets(s):
             out |= set(bound_names(target))
     return {n for n in out if is_private(n)}
@@ -624,6 +626,8 @@ MODULE_CAUGHT = [
     ("getattr on the module", MODULE_OWNER, "import owner\n\n\ndef f():\n    return getattr(owner, '_x')\n"),
     ("a private class", "class _x:\n    pass\n", "import owner\n\nowner._x\n"),
     ("a private constant", "_x = 1\n", "import owner\n\nowner._x\n"),
+    ("a module imported under a private name", "import helper as _x\n", "import owner\n\nowner._x\n"),
+    ("a name imported under a private name", "from helper import y as _x\n", "import owner\n\nowner._x\n"),
     ("a private defined under a try", "try:\n    import y\nexcept ImportError:\n    _x = None\n",
      "import owner\n\nowner._x\n"),
 ]

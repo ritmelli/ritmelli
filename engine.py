@@ -434,7 +434,7 @@ def _regular(bt):
     return ibi, bool(np.mean(np.abs(ibi / m - 1) <= 0.08) >= REDE_REGULAR)
 
 
-def grade_rede(x):
+def network_beat_grid(x):
     """A Grade do trecho x pela rede, para quando o batida.py nao firma (None sem o modelo ou com as batidas
     irregulares): o andamento pelo ajuste de reta nas batidas (o numero de cada uma pela soma dos intervalos: pela
     distancia ao comeco dividida pela mediana, que vem presa nos quadros de 20 ms dela, a 40a virava a 41a), na
@@ -1295,7 +1295,7 @@ class Engine:
         self.reserva_quadros = 0  # os quadros da voz que vieram do microfone de reserva (o _mic_cb), idem
         self._virou_em = -1e9    # monotonic da ultima virada (a seca logo depois dela e da passagem)
         self.periodo_saida = None  # a batida do que sai na saida (s), pelo plano no tempo: a regua dos testes (dev/)
-        self._pronto_falhou = None
+        self._prepare_failure_tag = None
         # o servidor religa a parecida do Automatico cujo stream caiu: religar_stream(disco, onde parou, desistir), na
         # thread do leitor; sem ele (ou desistindo), o disco acaba e a fila segue, como antes
         self.religar_stream = None
@@ -2228,11 +2228,13 @@ class Engine:
 
     def take_prepare_failure(self):
         with self._qlock:
-            tag, self._pronto_falhou = self._pronto_falhou, None
+            tag, self._prepare_failure_tag = self._prepare_failure_tag, None
             return tag
 
+    @contextlib.contextmanager
     def state_section(self):
-        return self._qlock
+        with self._qlock:
+            yield
 
     def with_lock(self, outer, f):
         after = []
@@ -2683,7 +2685,7 @@ class Engine:
         if not cabeca:  # a proxima nao decodificou: o servidor toca ela no fim, como antes
             with self._qlock:
                 if self._pronto is prox:
-                    self._pronto_falhou = self.pronto_tag
+                    self._prepare_failure_tag = self.pronto_tag
                     self._cancela_passagem()
             return
         fim, queda, baixo = medir_fim(cauda)
@@ -2819,11 +2821,11 @@ class Engine:
             # Despacito media 90,0 em vez de 89,0, e 1% em 14 s de sobreposicao e mais de 100 ms)
             antes = queda if fade else fim
             t_r, xr = _junta(blocos_a, antes - BATIDA_S, antes)
-            g = grade_rede(xr) if xr is not None and len(xr) >= BATIDA_MIN_S * SR else None
+            g = network_beat_grid(xr) if xr is not None and len(xr) >= BATIDA_MIN_S * SR else None
             if g is not None:
                 ga, t_a = g, t_r
         if not gb.firme:
-            g = grade_rede(xb)
+            g = network_beat_grid(xb)
             if g is not None:
                 gb = g
         if not ga.firme:
@@ -3767,7 +3769,7 @@ class MockEngine(Engine):
             if self._pronto is not prox or self._deck is not atual:
                 return
             if not prox.q or not dur:
-                self._pronto_falhou = self.pronto_tag
+                self._prepare_failure_tag = self.pronto_tag
                 self._cancela_passagem()
                 return
             ini = prox.q[0][0]
