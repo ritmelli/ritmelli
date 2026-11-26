@@ -60,6 +60,8 @@ pelo `POST /api/shutdown`, só enquanto responde como `--mock`, e o job dele tam
 a chave e o `head_cache` que o workflow lê para salvar) e o `--capture-base` de uma base cuja captura já está na
 pasta (não captura nem salva) e de uma base que não é commit. O `dev/test_compara_push_steps.py` roda os
 passos do Compara: HEAD que, no push, capturam sem calcular as áreas nem resolver a base. O
+`dev/test_uninstall_wait.py` roda a espera do desinstalador do `instalador/testa-atualizador.ps1` com a pasta da
+atualização recusada (acesso negado, como enquanto o desinstalador a apaga): conta como pasta ainda lá. O
 `dev/test_release_workflow.py` lê os workflows e as ações locais como YAML: toda action fixada num
 commit (as duas da SignPath no mesmo), o `sparse-checkout` de cada job da `monta.yml` com o que os
 scripts dele leem, a conferência do recurso de versão das DLLs depois da montagem e no job do
