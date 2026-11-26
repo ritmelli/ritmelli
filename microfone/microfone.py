@@ -758,20 +758,20 @@ def instala_todos(dll):
     FilterChangeFailed carries the check (or None). Only an endpoint without Properties and a
     LockedEndpointNotPresent are left out without an error."""
     parou = _prepara_dll(dll)
-    novos, failures = [], []
+    novos, failures, left_out = [], [], 0
     for m in microfones(todos=True):
         try:
             if _pendura(m[0]):
                 novos.append(m)
         except (MissingEndpointProperties, LockedEndpointNotPresent):
-            continue
+            left_out += 1
         except OSError as ex:
             failures.append(f"the filter wasn't installed on {m[1]} ({m[2]}): {ex}")
     if novos or parou:
         restart_error = reinicia_audio(so_servico=not novos)
         if restart_error:
             failures.append(restart_error)
-    _log(f"filter on {len(microfones(todos=True))} microphones; now: {len(novos)}{'; DLL replaced' if parou else ''}")
+    _log(f"microphones changed: {len(novos)}; left out: {left_out}{'; DLL replaced' if parou else ''}")
     check = _depois_do_reinicio() if novos or parou else None
     if failures:
         raise FilterChangeFailed(failures, check)

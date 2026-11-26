@@ -345,8 +345,10 @@ class TestaReinicio(unittest.TestCase):
 
         def locked(ep):
             raise filtro.LockedEndpointNotPresent(13, "Access is denied")
-        self.assertIsNone(self._install_with([gone], locked))
+        with mock.patch.object(filtro, "_log") as log:
+            self.assertIsNone(self._install_with([gone], locked))
         self.assertEqual(self.c.nomes(), [])
+        log.assert_called_once_with("microphones changed: 0; left out: 1")
 
         def denied(ep):
             raise PermissionError(13, "Access is denied")
@@ -1197,13 +1199,13 @@ class TestaInstalador(unittest.TestCase):
         log = self._log("fail", exit_code=9)
         self.assertIn("aparelhos: sem conferencia", log, "the summary is there, and it is not enough")
         self.assertIn("mic filter: failed: a microphone failed (test)", log)
-        self.assertRegex(log, r"Parameters: .*--microfone instala-todos.*\s+.*Process exit code: 1")
+        self.assertRegex(log, r"Parameters: .*--microfone instala-todos.*\s+.*Process exit code: 1\b")
 
     def test_device_error_fails_the_setup_with_the_summary(self):
         log = self._log("denied", exit_code=9)
         self.assertIn("aparelhos: devices: 5 checked", log)
         self.assertIn("mic filter: failed: the filter wasn't installed on IN 1 (X): [Errno 13] Access is denied", log)
-        self.assertRegex(log, r"Parameters: .*--microfone instala-todos.*\s+.*Process exit code: 1")
+        self.assertRegex(log, r"Parameters: .*--microfone instala-todos.*\s+.*Process exit code: 1\b")
 
     def test_filter_ok_logs_it(self):
         log = self._log([])
