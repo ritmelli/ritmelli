@@ -373,7 +373,6 @@ jobs:
           $chrome = (Get-Item 'C:\Program Files\Google\Chrome\Application\chrome.exe').VersionInfo.ProductVersion
           $base = ''
           if ($env:GITHUB_EVENT_NAME -ne 'push') {
-            # the base as a commit sha, the way the push to main saves its capture
             $base = git rev-parse --verify "$env:COMPARA_BASE^{commit}"
             if ($LASTEXITCODE -ne 0) { "::error::the compara base $env:COMPARA_BASE is not a commit here"; exit 1 }
           }

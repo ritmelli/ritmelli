@@ -27,7 +27,7 @@ comentário `# manual: <comando> precisa de <aparelho>` no topo, antes da docstr
 `dev/bumbo.py` tem um). Antes de rodar, o `COMPLETO`, o `--long`, o `--so-stdlib` e o `--microfone`
 falham com o teste sem destino, com o arquivo que tem o `manual:` e roda nos checks, e com o modo do
 `REQUIRED_MODES` que saiu do check exigido: o job, o passo, o comando, o env ou a condição de cada um,
-e o passo que a condição lê pelo `id`. O
+e os passos que a condição e o env leem pelo `id` (os do `SOURCE_STEPS`, fixados do mesmo jeito). O
 `dev/test_ci_workflow.py` confere o que
 nenhuma execução de PR exercita: o bloco do "Testa o PR" num bash com um `gh` falso (o comentário
 que o GitHub não confirma reprova dizendo isso; no push, os jobs pulados só passam com uma

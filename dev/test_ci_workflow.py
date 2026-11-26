@@ -3,6 +3,7 @@ import copy
 import importlib.util
 import os
 import re
+import subprocess
 import sys
 import tempfile
 import threading
@@ -106,6 +107,8 @@ def required_check_failures(flows):
         out.append(f"the steps of the required job with an if: are {conditioned}, not only the Cancelada, last")
     if any("continue-on-error" in x for x in [required, *steps]):
         out.append("the required job or a step of it has continue-on-error")
+    if "defaults" in testa or "defaults" in required or any("shell" in s for s in steps):
+        out.append("the required job runs its steps in a shell of its own (defaults or shell:)")
     verdict = find_step(required, "Verdict") or {}
     if steps[:1] != [verdict] or len(steps) != 2:
         out.append(f"the required job is not the Verdict and the Cancelada ({[s.get('name') for s in steps]})")
@@ -157,6 +160,11 @@ def test_required_check(flows, text):
             ("continue-on-error on the Verdict", lambda f: step_of(f, "testa-o-pr", "Verdict").update({"continue-on-error": "true"})),
             ("a job the required job does not need", lambda f: f[TESTA]["jobs"].update({"extra": {"runs-on": "x"}})),
             ("the result of the etiquetas job not read", lambda f: step_of(f, "testa-o-pr", "Verdict")["env"].pop("S_ETIQUETAS")),
+            ("shell: cat {0} on the Verdict", lambda f: step_of(f, "testa-o-pr", "Verdict").update({"shell": "cat {0}"})),
+            ("shell: cat {0} on the Cancelada", lambda f: step_of(f, "testa-o-pr", "Cancelada").update({"shell": "cat {0}"})),
+            ("a default shell on the required job",
+             lambda f: f[TESTA]["jobs"]["testa-o-pr"].update({"defaults": {"run": {"shell": "cat {0}"}}})),
+            ("a default shell on the testa.yml", lambda f: f[TESTA].update({"defaults": {"run": {"shell": "cat {0}"}}})),
     ):
         check(required_check_failures(mutated(flows, change)) != [], f"the mutant with {why} fails")
     with tempfile.TemporaryDirectory(prefix="ritmelli-flows-") as tmp:
@@ -194,12 +202,32 @@ def test_modes(flows):
             ("compara", "compara", "the compara base taken from the event", lambda s: s["env"].update({"BASE_SHA": "${{ env.BASE }}"})),
             ("tela", "fitcheck", "the id of the fitcheck step removed", lambda s: s.pop("id")),
             ("tela", "O PR mexe na tela?", "the id of the areas step changed",
-             lambda s: s.update({"id": "areas-later"}))):
+             lambda s: s.update({"id": "areas-later"})),
+            ("compara", "O PR mexe na tela?", "if: false on the areas step", lambda s: s.update({"if": "false"})),
+            ("compara", "O PR mexe na tela?", "an exit 0 first in the areas step",
+             lambda s: s.update({"run": "exit 0\n" + s["run"]})),
+            ("compara", "Capture key", "continue-on-error on the capture key step",
+             lambda s: s.update({"continue-on-error": "true"})),
+            ("microfone", "O PR mexe no filtro?", "if: false on the filter areas step", lambda s: s.update({"if": "false"})),
+            ("tela", "O PR mexe na tela?", "another env on the areas step", lambda s: s.update({"env": {"ETIQUETAS": "[]"}})),
+            ("testes", "ruff", "if: false on the ruff step", lambda s: s.update({"if": "false"})),
+            ("compara", "compara", "shell: cmd on the compara step", lambda s: s.update({"shell": "cmd"})),
+            ("compara", "O PR mexe na tela?", "BASE: HEAD on the areas step",
+             lambda s: s.update({"env": {**s["env"], "BASE": "HEAD"}}))):
         found = testa_tudo.mode_failures(mutated(flows, lambda f: change(step_of(f, job, step))))
         check(found != [], f"the mutant with {why} ({job} job) fails")
+    for why, change in (("BASE: HEAD on the testa.yml", lambda f: f[TESTA]["env"].update({"BASE": "HEAD"})),
+                        ("BASE: HEAD on the tela job", lambda f: f[TESTA]["jobs"]["tela"].update({"env": {"BASE": "HEAD"}})),
+                        ("BASE: HEAD on a step of the tela job",
+                         lambda f: f[TESTA]["jobs"]["tela"]["steps"][0].update({"env": {"BASE": "HEAD"}})),
+                        ("a default shell on the testa.yml", lambda f: f[TESTA].update({"defaults": {"run": {"shell": "cmd"}}})),
+                        ("a default shell on the microfone job",
+                         lambda f: f[TESTA]["jobs"]["microfone"].update({"defaults": {"run": {"shell": "cmd"}}}))):
+        check(testa_tudo.mode_failures(mutated(flows, change)) != [], f"the mutant with {why} fails the modes")
     monta = ".github/workflows/monta.yml"
     for rel, (job, _, step, _, _) in testa_tudo.PS1_TESTS.items():
         for why, change in (("if: false on its step", lambda s: s.update({"if": "false"})),
+                            ("shell: cmd on its step", lambda s: s.update({"shell": "cmd"})),
                             ("if: false on its job", None)):
             found = testa_tudo.ps1_failures(mutated(flows, lambda f: (
                 change(find_step(f[monta]["jobs"][job], step)) if change else f[monta]["jobs"][job].update({"if": "false"}))))
@@ -298,6 +326,12 @@ def test_summary_block(flows):
     code, out, summary, calls = run_summary(block, "pull_request", ["success", "success", "cancelled"] + ["success"] * 4)
     check(code != 0 and not any(c.startswith("gh pr comment") for c in calls) and "cancelada" in summary,
           f"a cancelled job fails the check and leaves the PR comment as it was (exit {code})")
+    cancelled = step_of(flows, "testa-o-pr", "Cancelada")["run"]
+    ran = run_step(cancelled, {})
+    check(ran.code != 0 and not ran.calls and "cancelada" in ran.summary,
+          f"the Cancelada step, which runs when the Verdict is skipped, fails the check (exit {ran.code})")
+    ran = run_step(cancelled.replace("exit 1", "exit 0"), {})
+    check(ran.code == 0, f"the mutant Cancelada with exit 0 passes, so the case above catches it (exit {ran.code})")
 
 
 def requirement(line):
@@ -371,19 +405,24 @@ def test_without_destination(flows):
             "microfone/apo/teste/teste_novo.py": "print('a new C++ test runner')\n",
             "instalador/ffmpeg/testa.py": "print('a test named testa.py')\n",
             "instalador/testa-novo.ps1": "Write-Output 'a PowerShell test no workflow runs'\n",
+            "instalador/test_new.ps1": "Write-Output 'a new PowerShell test named test_'\n",
             "instalador/testa-atualizador.ps1": "Write-Output 'run by the monta.yml'\n",
             "instalador/testa-a-mao.ps1": "# manual: instalador\\testa-a-mao.ps1 precisa de um Windows de teste\n",
             "instalador/atualizacao/testa_parcial.py": "print('in the COMPLETO')\n",
             "dev/bad_manual.py": "# manual: run me\n",
         }
-        for rel, body in files.items():
+        for rel, body in {**files, "instalador/test_untracked.py": "print('not in the git index')\n"}.items():
             (root / rel).parent.mkdir(parents=True, exist_ok=True)
             (root / rel).write_text(body, encoding="utf-8")
-        found = testa_tudo.sem_destino(root=root, files=sorted(files), flows=flows)
+        subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+        subprocess.run(["git", "add", "--", *files], cwd=root, check=True)
+        found = testa_tudo.sem_destino(root=root, flows=flows)
         flagged = sorted(f.split()[0].rstrip(":") for f in found if "runs nowhere" in f or "does not follow" in f)
         check(flagged == ["dev/bad_manual.py", "dev/test_lost.py", "dev/testa_perdido.py", "instalador/ffmpeg/testa.py",
-                          "instalador/test_new.py", "instalador/testa-novo.ps1", "microfone/apo/teste/teste_novo.py"],
-              f"the lock flags every test of the git ls-files without destination, in or out of dev/, and only them "
+                          "instalador/test_new.ps1", "instalador/test_new.py", "instalador/testa-novo.ps1",
+                          "microfone/apo/teste/teste_novo.py"],
+              f"the lock flags every test of the git ls-files without destination, in or out of dev/, and only them, "
+              f"not a file outside the index "
               f"({flagged})")
         echo = mutated(flows, lambda f: next(
             s for j in f[".github/workflows/monta.yml"]["jobs"].values() for s in job_steps(j)
