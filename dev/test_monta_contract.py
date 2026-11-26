@@ -110,9 +110,12 @@ def code(run):
     return "\n".join(line.split("#", 1)[0] for line in str(run).splitlines())
 
 
+SAIDA = r"""['"]--saida['"],\s*(?:(['"])([^'"]*)\1|\$(\w+))\s*[,)]"""
+
+
 def output_folder(run):
     run = str(run)
-    found = re.search(r"""['"]--saida['"],\s*(?:(['"])([^'"]*)\1|\$(\w+))\s*[,)]""", run)
+    found = re.search(SAIDA, run) if re.search(SAIDA, code(run)) else None
     if found and found.group(3):
         if len(re.findall(rf"\${found.group(3)}\s*[-+*/]?=(?!=)", run, re.I)) != 1:
             return None
@@ -412,6 +415,8 @@ def main():
             "'--saida', $saida)", "'--saida', $saida + '\\sub')")),
         "the only assignment of the --saida folder commented out": lambda d: edit_run(d, lambda run: re.sub(
             r"^(\s*)(\$saida\s*=.*)$", r"\1# \2", run, count=1, flags=re.M)),
+        "the --saida option left only in a comment": lambda d: edit_run(d, lambda run: run.replace(
+            ", '--saida', $saida)", ")\n# '--saida', $saida)")),
         "a comment that assigns the folder of --saida": lambda d: edit_run(d, lambda run: re.sub(
             r"^(\s*)(\$saida\s*=.*)$", r"\1# $saida = 'saida'\n\1\2", run, count=1, flags=re.M)),
         "a trailing comment on the --saida assignment": lambda d: edit_run(d, lambda run: re.sub(
