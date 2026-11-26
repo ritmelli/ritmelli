@@ -11,6 +11,11 @@ ERRO_DO_VIDEO = re.compile(r"video unavailable|this video is (?:not available|un
 ERRO_DE_LIMITE = re.compile(r"try again later|rate[- ]?limit|not a bot|too many requests|\b429\b", re.I)
 
 
+def yt_msg(ex):
+    m = re.sub(r"^(ERROR:\s*)?(\[[^\]]+\]\s*)*", "", str(ex)).strip()
+    return m[:160] or type(ex).__name__
+
+
 def erro_do_video(msg):
     """O erro e do proprio video (nao adianta trocar o processo nem tentar de novo), e nao do YouTube com a gente."""
     msg = str(msg or "")

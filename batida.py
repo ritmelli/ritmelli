@@ -18,6 +18,8 @@ from collections import namedtuple
 import numpy as np
 from scipy import ndimage, signal
 
+import compasso
+
 HOP = 512           # quadros de ~10,7 ms a 48 kHz
 NFFT = 2048
 BPM_MIN, BPM_MAX = 60.0, 200.0
@@ -36,6 +38,8 @@ CAIXA_TROCA = 2.0   # com isso de folga, e as duas metades apontando o mesmo, va
                     # (calibrado 21/10 contra o BPM publicado de 22 musicas e um tap manual no Bota Tudo Em Mim, 130)
 TRECHO_MIN_S = 6.0  # menos que isso nao mede
 
+REDE_ATRASO = 0.038
+REDE_REGULAR = 0.9
 Grade = namedtuple("Grade", "bpm periodo fase firme motivo")
 # bpm na oitava lenta; periodo em s; fase = a primeira batida, em s desde o comeco do trecho;
 # firme = da para alinhar; motivo = por que nao (ou o resumo da medicao), para o log
@@ -239,3 +243,59 @@ def fase(x, sr, periodo, perto):
     _, f, _, _ = _pente(o, periodo * fps, afinar=False, perto=perto * fps)
     nota = _pente(o, periodo * fps, afinar=False)[2]
     return f / fps, nota
+
+
+def network_intervals(bt):
+    """The intervals between the network's beats, and whether they are regular (REDE_REGULAR of them within 8% of
+    the median)."""
+    ibi = np.diff(bt)
+    if len(ibi) < 4:
+        return ibi, False
+    m = float(np.median(ibi))
+    return ibi, bool(np.mean(np.abs(ibi / m - 1) <= 0.08) >= REDE_REGULAR)
+
+
+def network_beat_grid(x, sr):
+    """The Grade of stretch x (at sample rate sr) from the network, for when medir is not firm: None without the model
+    or with irregular beats. The tempo is a line fitted to the beats, each one numbered by the sum of the rounded
+    intervals, in the slow octave, with the phase anchored on the first downbeat when there is one, REDE_ATRASO
+    earlier, and the kick choosing between the beat and the offbeat."""
+    r = compasso.uns(x, sr)
+    if r is None or len(r[0]) < 8:
+        return None
+    bt, ut = r
+    ibi, ok = network_intervals(bt)
+    if not ok:
+        return None
+    k = np.r_[0, np.cumsum(np.maximum(np.round(ibi / np.median(ibi)), 1))]
+    p, c = np.polyfit(k, bt, 1)
+    P = float(p)
+    while 60 / P >= 2 * LENTA:
+        P *= 2
+    while 60 / P < LENTA:
+        P /= 2
+    ancora = float(ut[0]) if len(ut) else float(bt[0])
+    f = (float(c + np.round((ancora - c) / p) * p) - REDE_ATRASO) % P
+    mono = x.mean(axis=1) if x.ndim > 1 else x
+    fps = sr / HOP
+    meios = np.array([f, (f + P / 2) % P]) * fps
+    ng = _notas(_suave(ataques(np.asarray(mono, np.float32), sr, GRAVE_HZ)), P * fps, meios)
+    virou = bool(ng[1] > ng[0] and ng[0] <= GRAVE_DECIDE * ng[1])
+    if virou:
+        f = (f + P / 2) % P
+    return Grade(60 / P, P, f, True, f"by the network: {60 / float(p):.1f} BPM{', the kick flipped the side' if virou else ''}")
+
+
+def network_phase(x, sr, periodo, perto):
+    """The phase (s from the start of x, at sample rate sr) of the grid with the given period, near perto, from the
+    network's beats in x: the median offset of the beats within a quarter period of the grid. None without regular
+    beats or with fewer than three on the grid."""
+    r = compasso.uns(x, sr)
+    if r is None:
+        return None
+    bt = r[0] - REDE_ATRASO
+    if not network_intervals(bt)[1]:
+        return None
+    d = (bt - perto + periodo / 2) % periodo - periodo / 2
+    d = d[np.abs(d) < periodo / 4]
+    return float((perto + np.median(d)) % periodo) if len(d) >= 3 else None
