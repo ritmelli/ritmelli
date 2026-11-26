@@ -949,7 +949,7 @@ class App:
         return self._troca(lambda: dict(item, path=str(LIB / item["file"]), **(extra or {})), start=start,
                            loop=loop, historico=historico, entrada=entrada, reserva=reserva, anterior=anterior)
 
-    def _troca(self, tr, start=0.0, stream=False, loop=None, historico=True, entrada=None, reserva=None,
+    def _troca(self, source, start=0.0, stream=False, loop=None, historico=True, entrada=None, reserva=None,
                anterior=False):
         """O disco tr entra no prato (o load; com stream, (alvo, tem_titulo), o espera e depois o _abre_stream), sob a
         fila_lock e o _lock do motor (with_engine). A virada pendente fecha antes e a passagem preparada sai
@@ -961,7 +961,7 @@ class App:
         so com a troca feita), volta ao topo da fila. O Repetir vale para o disco do prato: loop decide, e sem ele o
         motor o desliga se o disco que sai e outro (na mesma publicacao da faixa). A posicao do que saiu e gravada fora
         das travas. Volta se trocou."""
-        e, (tr, build) = self.engine, (tr(), tr) if callable(tr) else (tr, None)
+        e, tr = self.engine, source() if callable(source) else source
         ganho = e.gain_for(tr)  # fora das travas: o motor pergunta ao servidor
 
         def na_fila():
@@ -989,7 +989,7 @@ class App:
                     return None  # outro avanco mexeu no historico depois da escolha do Anterior
                 pode = (lambda: e.on_line(linha0))  # o prato que ele viu
             cap = (e.espera(tr, pode=pode, ganho=ganho, depois=depois) if stream
-                   else e.load(build or tr, start=start, pode=pode, loop=loop, ganho=ganho, depois=depois))
+                   else e.load(source, start=start, pode=pode, loop=loop, ganho=ganho, depois=depois))
             if cap is None:
                 return None
             if reserva is not None:

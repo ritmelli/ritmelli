@@ -10,6 +10,16 @@ ENTRY_ATTRS = {"x", "entrada"}
 MUTATORS = {"update", "setdefault", "pop", "popitem", "clear", "__setitem__", "__delitem__"}
 FILLERS = {"append", "insert", "extend"}
 CHANGERS = {"append", "insert", "extend", "remove", "pop", "clear", "sort", "reverse"}
+CONTEXTS = {(ast.Assign, "targets"), (ast.Assign, "value"), (ast.AugAssign, "target"), (ast.AugAssign, "value"),
+            (ast.Attribute, "value"), (ast.Call, "args"), (ast.Call, "func"), (ast.keyword, "value"),
+            (ast.Compare, "left"), (ast.Compare, "comparators"), (ast.For, "iter"), (ast.For, "target"),
+            (ast.comprehension, "iter"), (ast.comprehension, "target"), (ast.List, "elts"), (ast.Tuple, "elts"),
+            (ast.UnaryOp, "operand"), (ast.BinOp, "left"), (ast.BinOp, "right"), (ast.BoolOp, "values"),
+            (ast.If, "test"), (ast.IfExp, "test"), (ast.IfExp, "body"), (ast.IfExp, "orelse"), (ast.Return, "value"),
+            (ast.Subscript, "value"), (ast.Dict, "values"), (ast.Lambda, "body"), (ast.FormattedValue, "value"),
+            (ast.Expr, "value")}
+ACCEPTED = ("bind an entry or a container to one plain name (name = ...), unpack only a call or a tuple of the same "
+            "length, loop over it with a plain name or enumerate(...), and call a mutator where it is taken")
 
 failures = []
 
@@ -106,7 +116,7 @@ class Entries:
     def __init__(self, modules, attrs=CONTAINERS, owner_only=False):
         self.modules, self.attrs, self.owner_only = modules, attrs, owner_only
         self.params, self.cparams, self.walks, self.scopes, self.returns = {}, {}, {}, {}, set()
-        self.creturns = set()
+        self.creturns, self.refused = set(), []
 
     def walk(self, func):
         if id(func) not in self.walks:
@@ -222,7 +232,13 @@ class Entries:
                             isinstance(root, (ast.Tuple, ast.List)) and isinstance(node.value, (ast.Tuple, ast.List))
                             and len(root.elts) == len(node.value.elts)) else [(root, node.value)]
                         for t, value in pairs:
-                            if isinstance(t, ast.Attribute) and t.attr in self.attrs:
+                            if isinstance(t, (ast.Tuple, ast.List)) and self.is_container(value, scope):
+                                for e in t.elts:
+                                    if isinstance(e, ast.Starred):
+                                        scope.containers |= set(targets(e.value))
+                                    else:
+                                        scope.entries |= set(targets(e))
+                            elif isinstance(t, ast.Attribute) and t.attr in self.attrs:
                                 scope.containers |= set(targets(value))
                             elif self.is_container(value, scope):
                                 scope.containers |= set(targets(t))
@@ -289,6 +305,48 @@ class Entries:
                 for n in ast.walk(func) if isinstance(n, ast.Return) and n.value is not None
                 and (self.mutator(n.value, scope) or (isinstance(n.value, ast.Name) and n.value.id in bound))]
 
+    def refused_form(self, node, up, field, callees):
+        if isinstance(node, (ast.NamedExpr, ast.Starred)):
+            return "an assignment expression or a starred value"
+        if (type(up), field) not in CONTEXTS:
+            return f"an entry or a container in a {type(up).__name__}"
+        if isinstance(up, ast.Assign) and field == "value":
+            t = up.targets[0]
+            if len(up.targets) > 1:
+                return "a chained assignment"
+            if isinstance(t, (ast.Tuple, ast.List)) and not isinstance(node, ast.Call) and not (
+                    isinstance(node, (ast.Tuple, ast.List)) and len(node.elts) == len(t.elts)
+                    and not any(isinstance(e, ast.Starred) for e in t.elts)):
+                return "unpacking the queue or the Mix"
+        if isinstance(up, (ast.For, ast.comprehension)) and field == "iter" and not isinstance(up.target, ast.Name):
+            return "a loop that unpacks the entries"
+        if isinstance(up, ast.Attribute) and up.attr in MUTATORS | CHANGERS and id(up) not in callees:
+            return "a mutator taken without its call"
+        if isinstance(up, ast.Call) and isinstance(up.func, ast.Name) and up.func.id == "getattr":
+            return "getattr"
+        return None
+
+    def refusals(self, module, func, scope):
+        parent, callees, out = {}, set(), []
+        for node in own_nodes(func):
+            callees |= {id(node.func)} if isinstance(node, ast.Call) else set()
+            for field, value in ast.iter_fields(node):
+                for child in value if isinstance(value, list) else [value]:
+                    if isinstance(child, ast.AST):
+                        parent[id(child)] = (node, field)
+        for node in own_nodes(func):
+            if id(node) not in parent or not (self.is_entry(node, scope) or self.is_container(node, scope)):
+                continue
+            up, field = parent[id(node)]
+            if (self.is_entry(up, scope) or self.is_container(up, scope)) and \
+                    not isinstance(node, (ast.NamedExpr, ast.Starred)):
+                continue
+            form = self.refused_form(node, up, field, callees)
+            if form:
+                out.append(f"{module}:{node.lineno}: {form} ({ast.unparse(up)[:60]}), in {func.name}, is not a form "
+                           f"the check reads: {ACCEPTED}")
+        return out
+
     def write_target(self, node, scope):
         return isinstance(node, ast.Subscript) and self.is_entry(node.value, scope)
 
@@ -306,6 +364,7 @@ class Entries:
                         and n is not func and n.name in names}
         out = []
         for module, func, cls, parent in funcs:
+            self.refused += self.refusals(module, func, self.scope_of(func, parent, parents))
             if ((module, cls) == OWNER) != self.owner_only:
                 continue
             if self.owner_only and (id(func) in allowed or func.name == "__init__"):
@@ -504,7 +563,8 @@ def queue_params(modules, passing):
 
 def scan(sources):
     modules = [(name, ast.parse(text, name)) for name, text in sources.items()]
-    entry_writes = Entries(modules).writes() + Entries(modules, attrs=QUEUE, owner_only=True).writes()
+    entries, owner = Entries(modules), Entries(modules, attrs=QUEUE, owner_only=True)
+    entry_writes = entries.writes() + owner.writes()
     params, changes = {}, []
     for _ in range(3):
         passing, changes = [], []
@@ -514,7 +574,7 @@ def scan(sources):
             changes += v.found
             passing += v.passing
         params = queue_params(modules, passing)
-    return entry_writes, changes + callback_escapes(modules)
+    return entry_writes, changes + callback_escapes(modules), list(dict.fromkeys(entries.refused + owner.refused))
 
 
 BASE_USES = '''
@@ -607,6 +667,12 @@ ENTRY_FORMS = {
                                                             "        x['fixa'] = True\n"}, 1),
     "a new dict made from an entry, then changed": ({"case.py": "def f(A):\n    y = dict(A.fila[0])\n"
                                                                 "    y['fixa'] = True\n"}, 0),
+    "an entry unpacked from the queue": ({"case.py": "def f(A):\n    x, _ = A.fila\n    x.update(a=1)\n"}, 1),
+    "an entry from a starred unpacking of the queue": (
+        {"case.py": "def f(A):\n    x, *_ = A.fila\n    x['k'] = 1\n"}, 1),
+    "the rest of the Automatico's Mix from a starred unpacking": (
+        {"automatico.py": "class Automatico:\n    def f(self):\n        _, *rest = self._mix\n"
+                          "        rest[0]['ordem'] = 1\n"}, 1),
     "an entry of the Mix from unpacking": ({"case.py": "def f(A):\n    x, _ = A.mix[0], None\n    x.update(a=1)\n"}, 1),
     "a new dict from an entry":({"case.py": "def f(A):\n    for m in A.mix:\n        m = dict(m, ordem=1)\n"}, 0),
     "a dict that is no entry": ({"case.py": "def f(A):\n    d = {}\n    d['k'] = 1\n    d.update(a=1)\n"}, 0),
@@ -682,59 +748,78 @@ QUEUE_FORMS = {
 }
 
 
+REFUSED_FORMS = {
+    "an entry bound by an assignment expression", "an entry written on an assignment expression",
+    "a captured update of an entry", "a mutator of an entry returned from the App's change",
+    "a mutator of an entry returned through a chain of names from the App's change",
+    "a mutator of an entry returned by a lambda passed as the App's change", "an update of an entry taken by getattr",
+    "an entry of a queue bound inline", "an annotated alias", "an entry unpacked from the queue",
+    "an entry from a starred unpacking of the queue", "the rest of the Automatico's Mix from a starred unpacking",
+    "a captured append of the queue", "a changer of the queue returned from the change",
+    "a changer of the queue returned through a name from the change",
+    "a changer of the queue returned through a chain of names from the change",
+    "a changer of the queue returned by a lambda passed as the change",
+    "a captured append of the queue inside the change", "an append of the queue taken by getattr",
+    "a queue bound by an assignment expression"}
+
+
 def production_sources():
     paths = sorted(ROOT.glob("*.py")) + sorted((ROOT / "microfone").glob("*.py"))
     return {p.relative_to(ROOT).as_posix(): p.read_text(encoding="utf-8") for p in paths}
 
 
 def main():
-    found, _ = scan({"automatico.py": BASE_USES})
+    found, _, _ = scan({"automatico.py": BASE_USES})
     lines = sorted(int(w.split(":")[1]) for w in found)
     check(lines == [9, 15, 17], f"the check flags the three writes the base made outside the App (the Mix numbering, "
                                 f"the audio mark and the update of _poe_versao): {found}")
-    for what, (sources, expected) in ENTRY_FORMS.items():
-        got, _ = scan(sources)
-        check(len(got) == expected, f"the entry check {'flags' if expected else 'accepts'} {what} ({got})")
-    for what, (sources, expected) in QUEUE_FORMS.items():
-        _, got = scan(sources)
-        check(len(got) == expected, f"the queue check {'flags' if expected else 'accepts'} {what} ({got})")
+    for name, table, pick in (("entry", ENTRY_FORMS, 0), ("queue", QUEUE_FORMS, 1)):
+        for what, (sources, expected) in table.items():
+            result = scan(sources)
+            got, refused = result[pick], result[2]
+            if what in REFUSED_FORMS:
+                check(bool(refused), f"the {name} check refuses {what} as a form it does not read ({refused[:1]})")
+            else:
+                check(len(got) == expected and not refused,
+                      f"the {name} check {'flags' if expected else 'accepts'} {what} ({got}{refused[:1]})")
     sources = production_sources()
     direct = sources["server.py"].replace("self.change_queue(swap_entries)", "swap_entries()")
-    got, _ = scan(dict(sources, **{"server.py": direct}))
+    got, _, _ = scan(dict(sources, **{"server.py": direct}))
     check(direct != sources["server.py"] and len(got) == 1,
           f"with the App's audio version writing the entries without change_queue, the check fails ({got})")
     captured = sources["automatico.py"].replace(
         "        for x in A.fila:\n            vistas |= music.chaves_musica(x)\n",
         "        for x in A.fila:\n            mark = x.update\n            mark(seen=True)\n"
         "            vistas |= music.chaves_musica(x)\n", 1)
-    got, _ = scan(dict(sources, **{"automatico.py": captured}))
+    _, _, got = scan(dict(sources, **{"automatico.py": captured}))
     check(captured != sources["automatico.py"] and len(got) == 1,
-          f"with the Automatico writing a queue entry through its captured update, the check fails ({got})")
+          f"with the Automatico writing a queue entry through its captured update, the check refuses the form ({got})")
     direct = sources["server.py"].replace("self.change_queue(swap_entries)",
                                           "swap_entries()\n        self.change_queue(swap_entries)")
-    _, got = scan(dict(sources, **{"server.py": direct}))
+    _, got, _ = scan(dict(sources, **{"server.py": direct}))
     check(direct != sources["server.py"] and len(got) == 1,
           f"with the App's audio version also calling its change_queue callback by itself, the check fails ({got})")
     direct = sources["server.py"].replace("self.change_queue(replace_queue)", "replace_queue()")
-    _, got = scan(dict(sources, **{"server.py": direct}))
+    _, got, _ = scan(dict(sources, **{"server.py": direct}))
     check(direct != sources["server.py"] and len(got) == 1,
           f"with the App replacing its queue without change_queue, the check fails ({got})")
     direct = sources["server.py"].replace("        self.change_queue(remove_entry)\n",
                                           "        self.change_queue(remove_entry)\n"
                                           "        if q := self.fila:\n            q.remove(x)\n", 1)
-    _, got = scan(dict(sources, **{"server.py": direct}))
+    _, _, got = scan(dict(sources, **{"server.py": direct}))
     check(direct != sources["server.py"] and len(got) == 1,
-          f"with the App removing from its queue through an assignment expression, the check fails ({got})")
+          f"with the App removing from its queue through an assignment expression, the check refuses the form ({got})")
     escaped = sources["server.py"].replace(
         "        def remove_entry():\n            self.fila.remove(x)\n", "        def remove_entry():\n", 1).replace(
         "                self.fila_ordem.remove(x)\n        self.change_queue(remove_entry)\n",
         "                self.fila_ordem.remove(x)\n            return self.fila.remove\n"
         "        self.change_queue(remove_entry)(x)\n", 1)
-    _, got = scan(dict(sources, **{"server.py": escaped}))
+    _, _, got = scan(dict(sources, **{"server.py": escaped}))
     check(escaped.count("return self.fila.remove") == 1 and len(got) == 1,
           f"with the App's remove_from_queue returning the queue's remove from its change and calling it after, the "
-          f"check fails ({got})")
-    writes, changes = scan(sources)
+          f"check refuses the form ({got})")
+    writes, changes, refused = scan(sources)
+    check(not refused, f"the {len(sources)} modules use only the forms the check reads ({refused[:3]})")
     check(not writes, f"no module writes an entry of the queue or the Mix outside the {OWNER[1]} ({writes})")
     check(not changes, f"every change to the queue in the {len(sources)} modules goes through change_queue "
                        f"({changes})")

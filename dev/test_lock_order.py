@@ -1,4 +1,5 @@
 import ast
+import functools
 import re
 import sys
 from pathlib import Path
@@ -26,7 +27,7 @@ ENGINE_GUARD = ["_lock", "_qlock"]
 BUILDERS = {("engine.py", "Engine", "trocar_fonte"): ("novo", 1, ENGINE_GUARD),
             ("engine.py", "Engine", "preparar"): ("track", 0, ENGINE_GUARD),
             ("engine.py", "Engine", "load"): ("track", 0, ENGINE_GUARD),
-            ("server.py", "App", "_troca"): ("tr", 0, ["fila_lock"] + ENGINE_GUARD)}
+            ("server.py", "App", "_troca"): ("source", 0, ["fila_lock"] + ENGINE_GUARD)}
 WRITERS = {"save_json", "_save", "write_text", "write_bytes"}
 WRITES = "a file write"
 NO_WRITES = {"fila_lock", "_lock", "_qlock"}
@@ -194,60 +195,15 @@ def section_yields_under_qlock(engine):
     return bool(yields) and all(id(y) in held for y in yields)
 
 
+@functools.lru_cache(maxsize=20000)
 def scope_nodes(func):
-    todo = list(ast.iter_child_nodes(func))
+    todo, out = list(ast.iter_child_nodes(func)), []
     while todo:
         n = todo.pop()
-        yield n
+        out.append(n)
         if not isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)):
             todo.extend(ast.iter_child_nodes(n))
-
-
-def local_assignments(func):
-    assigned = {}
-    for n in scope_nodes(func):
-        pairs = [(t, n.value) for t in n.targets] if isinstance(n, ast.Assign) else \
-            [(n.target, n.value)] if isinstance(n, (ast.AnnAssign, ast.NamedExpr)) and n.value is not None else []
-        while pairs:
-            t, v = pairs.pop()
-            if isinstance(t, (ast.Tuple, ast.List)) and isinstance(v, (ast.Tuple, ast.List)) and len(t.elts) == len(v.elts):
-                pairs += list(zip(t.elts, v.elts))
-            elif isinstance(t, (ast.Tuple, ast.List)):
-                pairs += [(e, v) for e in t.elts]
-            elif isinstance(t, ast.Name):
-                assigned.setdefault(t.id, []).append(v)
-    return assigned
-
-
-def value_parts(value):
-    if isinstance(value, ast.BoolOp):
-        return [p for v in value.values for p in value_parts(v)]
-    if isinstance(value, ast.IfExp):
-        return value_parts(value.body) + value_parts(value.orelse)
-    if isinstance(value, ast.NamedExpr):
-        return value_parts(value.value)
-    if isinstance(value, (ast.Tuple, ast.List)):
-        return [p for v in value.elts for p in value_parts(v)]
-    return [value]
-
-
-def held_callables(func, exprs):
-    local = {n.name: n for n in scope_nodes(func) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
-    assigned, todo, names, found, calls, refs = local_assignments(func), list(exprs), set(), [], [], []
-    while todo:
-        value = todo.pop()
-        for part in map(by_getattr, value_parts(value)):
-            if isinstance(part, ast.Lambda):
-                found.append(part)
-            elif isinstance(part, ast.Call):
-                calls.append(part)
-            elif isinstance(part, ast.Attribute):
-                refs.append(part)
-            elif isinstance(part, ast.Name) and part.id not in names:
-                names.add(part.id)
-                found += [local[part.id]] if part.id in local else []
-                todo += assigned.get(part.id, [])
-    return found, calls, refs
+    return tuple(out)
 
 
 def returns_of(func):
@@ -265,11 +221,31 @@ def own_calls(func):
     return out
 
 
-def binds(func, name):
+def params_of(func):
     a = func.args
-    params = [p.arg for p in a.posonlyargs + a.args + a.kwonlyargs + [a.vararg, a.kwarg] if p]
-    return name in params or name in local_assignments(func) or any(
-        isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name for n in scope_nodes(func))
+    return [p.arg for p in a.posonlyargs + a.args + a.kwonlyargs + [a.vararg, a.kwarg] if p]
+
+
+def stores_of(func, name):
+    return [n for n in scope_nodes(func) if isinstance(n, ast.Name) and n.id == name and isinstance(n.ctx, ast.Store)]
+
+
+def defs_of(func, name):
+    return [n for n in scope_nodes(func) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name]
+
+
+def binds(func, name):
+    return name in params_of(func) or bool(stores_of(func, name) or defs_of(func, name))
+
+
+def is_record(value):
+    return (isinstance(value, ast.Constant) and value.value is None) or isinstance(value, ast.Dict) or (
+        isinstance(value, ast.Call) and isinstance(value.func, ast.Name) and value.func.id == "dict")
+
+
+ACCEPTED = ("a lambda, None, a record built there (dict(...) or {...}), a conditional between those, a local def, a "
+            "name bound only by plain assignments to those, a parameter that is the function's own slot, or a name "
+            "bound to self.<method>(...) whose every return is one of those")
 
 
 def by_getattr(node):
@@ -462,7 +438,8 @@ class Walker(ast.NodeVisitor):
     def __init__(self, name, order, before, table, summary):
         self.name, self.order, self.before, self.table, self.summary = name, order, before, table, summary
         self.cls, self.held, self.bad, self.used, self.nested, self.followed = None, [], [], set(), 0, 0
-        self.callbacks, self.walked, self.scopes, self.slot_checked = {}, 0, [], set()
+        self.callbacks, self.walked, self.scopes, self.refused = {}, 0, [], set()
+        self.keys = {id(f): k for k, f in table.items()}
 
     def take(self, lock, line, waits=True):
         self.used.add(lock)
@@ -542,51 +519,87 @@ class Walker(ast.NodeVisitor):
         self.generic_visit(node)
         self.cls = outer
 
-    def methods(self, refs, module, cls):
-        return [k for ref in refs for k in resolve(self.table, ast.Call(func=ref, args=[], keywords=[]), module, cls)]
+    def slots_of(self, key):
+        slots = dict(CALLBACKS.get(key, {}))
+        if key[0] == "engine.py":
+            slots["pode"] = ENGINE_GUARD
+        if key in BUILDERS:
+            name, at, locks = BUILDERS[key]
+            slots[name] = slots[at] = locks
+        return slots
 
-    def callables(self, func, arg):
-        if isinstance(arg, ast.Lambda):
-            return [arg], []
-        if isinstance(arg, ast.Name):
-            func = next((f for f in reversed(self.scopes + [func]) if binds(f, arg.id)), func)
-        found, calls, refs = held_callables(func, [arg])
-        keys = self.methods(refs, self.name, self.cls)
-        for key in (k for call in calls for k in resolve(self.table, call, self.name, self.cls)):
-            more, _, back = held_callables(self.table[key], returns_of(self.table[key]))
-            found, keys = found + more, keys + self.methods(back, key[0], key[1])
-        return found, keys
+    def forwards(self, func, name):
+        key = self.keys.get(id(func))
+        if key is None:
+            return False
+        slots, params = self.slots_of(key), [p.arg for p in func.args.posonlyargs + func.args.args]
+        params = params[1:] if key[1] and params[:1] == ["self"] else params
+        return name in slots or (name in params and params.index(name) in slots)
 
-    def against_slot(self, locks, keys, node):
-        outer, self.held = self.held, list(locks)
-        for key in keys:
-            if (id(node), key) not in self.slot_checked:
-                self.slot_checked.add((id(node), key))
-                self.followed += 1
-                self.against_held(self.summary[key], node, f"{key[1] + '.' if key[1] else ''}{key[2]}")
-        self.held = outer
+    def accepted(self, value, chain, bound=False):
+        if bound and isinstance(value, ast.Name):
+            return [], f"{ast.unparse(value)}, an alias of another name"
+        if isinstance(value, ast.Lambda):
+            return [value], None
+        if is_record(value):
+            return [], None
+        if isinstance(value, ast.IfExp):
+            (a, pa), (b, pb) = self.accepted(value.body, chain), self.accepted(value.orelse, chain)
+            return a + b, pa or pb
+        if isinstance(value, ast.Name):
+            return self.named(value.id, chain)
+        if bound and isinstance(value, ast.Call) and isinstance(value.func, ast.Attribute) and \
+                isinstance(value.func.value, ast.Name) and value.func.value.id == "self":
+            key = (self.name, self.cls, value.func.attr)
+            if key in self.table:
+                found = [self.accepted(r, [self.table[key]]) for r in returns_of(self.table[key])]
+                problem = next((p for _, p in found if p), None)
+                return [t for ts, _ in found for t in ts], problem and f"{ast.unparse(value)}, which returns {problem}"
+        return [], ast.unparse(value)[:80]
+
+    def named(self, name, chain):
+        at = next((i for i in reversed(range(len(chain))) if binds(chain[i], name)), None)
+        if at is None:
+            return [], f"{name}, which no enclosing function binds"
+        func = chain[at]
+        stores, defs = stores_of(func, name), defs_of(func, name)
+        plain = [n for n in scope_nodes(func) if isinstance(n, ast.Assign) and len(n.targets) == 1
+                 and isinstance(n.targets[0], ast.Name) and n.targets[0].id == name]
+        if name in params_of(func):
+            if stores or defs or not self.forwards(func, name):
+                return [], f"{name}, a parameter of {func.name} that is not one of its own slots"
+            return [], None
+        if len(defs) == 1 and not stores:
+            return defs, None
+        if defs or not stores or len(stores) != len(plain):
+            return [], f"{name}, bound in a form the check does not read"
+        found = [self.accepted(n.value, chain[:at + 1], bound=True) for n in plain]
+        return [t for ts, _ in found for t in ts], next((p for _, p in found if p), None)
 
     def mark_callbacks(self, func):
         for call in own_calls(func):
             for key in resolve(self.table, call, self.name, self.cls):
-                slots = dict(CALLBACKS.get(key, {}))
-                if key[0] == "engine.py":
-                    slots["pode"] = ENGINE_GUARD
-                if key in BUILDERS:
-                    name, at, locks = BUILDERS[key]
-                    slots[name] = slots[at] = locks
+                slots = self.slots_of(key)
                 args = list(enumerate(call.args)) + [(k.arg, k.value) for k in call.keywords]
                 for slot, arg in args:
                     if slot in slots:
-                        targets, keys = self.callables(func, arg)
+                        targets, problem = self.accepted(arg, self.scopes + [func])
+                        if problem and id(arg) not in self.refused:
+                            self.refused.add(id(arg))
+                            self.bad.append(f"{self.name}:{arg.lineno}: {problem}, in the slot {slot} of "
+                                            f"{key[1] + '.' if key[1] else ''}{key[2]}, is not a form the check reads: "
+                                            f"pass {ACCEPTED}")
                         for target in targets:
-                            self.callbacks[id(target)] = slots[slot]
-                        self.against_slot(slots[slot], keys, call)
+                            held = self.callbacks.setdefault(id(target), list(slots[slot]))
+                            if held != list(slots[slot]) and id(target) not in self.refused:
+                                self.refused.add(id(target))
+                                self.bad.append(f"{self.name}:{arg.lineno}: {ast.unparse(arg)[:60]}, passed to slots "
+                                                f"run under {held} and {list(slots[slot])}, is not a form the check "
+                                                f"reads: give each slot its own function")
 
     def visit_FunctionDef(self, node):
         self.walked += id(node) in self.callbacks
         outer, self.held = self.held, list(self.callbacks.get(id(node), []))
-        self.mark_callbacks(node)
         self.scopes.append(node)
         self.generic_visit(node)
         self.scopes.pop()
@@ -823,8 +836,13 @@ def scope_failures(trees):
     return out
 
 
+@functools.lru_cache(maxsize=64)
+def parsed(text, name):
+    return ast.parse(text, name)
+
+
 def scan(sources, order, before):
-    trees = {name: ast.parse(text, name) for name, text in sources.items()}
+    trees = {name: parsed(text, name) for name, text in sources.items()}
     table = function_table(trees)
     summary = summaries(table)
     bad, used, nested, followed, walked = [], set(), 0, 0, 0
@@ -990,6 +1008,11 @@ def self_test(order, before):
         "a with_engine body that takes the proximo_lock": (
             "def f(A):\n    def body(depois):\n        with A.proximo_lock:\n            pass\n"
             "    A.with_engine(body)\n", 1),
+        "one callback passed as both concilia's under and its closed, refused as a form the check does not read": (
+            "def f(A, E):\n    def cb(v):\n        with E._qlock:\n            return None\n"
+            "    cmd.concilia(A, cb, cb)\n", 1),
+        "one bound method passed as both concilia's closed and its under, refused as a form the check does not read": (
+            "def f(A):\n    cmd.concilia(A, closed=A.automatico.head_held, under=A.automatico.head_held)\n", 1),
         "a concilia round that takes the proximo_lock": (
             "def f(A):\n    def under(v):\n        with A.proximo_lock:\n            return None\n"
             "    cmd.concilia(A, under)\n", 1),
@@ -1063,6 +1086,20 @@ def self_test(order, before):
         _, taken = audio_locks("class Engine:\n    def _mixa(self):\n" + body + vira)
         check(taken.get("_lock") == {"_vira"},
               f"the audio check sees the _lock taken by a method the _mixa reaches {what} ({taken})")
+
+
+def refusals(sources, order, before):
+    trees = {name: parsed(text, name) for name, text in sources.items()}
+    table, out = function_table(trees), []
+    for name, tree in trees.items():
+        w = Walker(name, order, before, table, {})
+        w.premark_module(tree)
+        out += [b for b in w.bad if "is not a form the check reads" in b]
+    return out
+
+
+def refuses(bad):
+    return any("is not a form the check reads" in b for b in bad)
 
 
 def main():
@@ -1196,27 +1233,27 @@ def main():
           f"with the passage's builder, which fonte_de returns and the preparar runs under the _qlock, taking the "
           f"shelf's lock, the order check fails ({[b for b in bad if 'lib_lock' in b][:1]})")
     fallback = locked.replace("novo = self.fonte_de(seen)\n", "novo = self.fonte_de(seen) or None\n", 1)
-    bad, *_ = scan(dict(sources, **{"server.py": fallback}), order, before)
-    check(fallback != locked and any("lib_lock" in b for b in bad),
+    bad = refusals(dict(sources, **{"server.py": fallback}), order, before)
+    check(fallback != locked and refuses(bad),
           f"and so it does with the builder reached through a fallback, fonte_de(seen) or None "
-          f"({[b for b in bad if 'lib_lock' in b][:1]})")
+          f"({[b for b in bad if 'form the check' in b][:1]})")
     chained = locked.replace("novo = self.fonte_de(seen)\n", "loaded = self.fonte_de(seen)\n            novo = loaded\n", 1)
-    bad, *_ = scan(dict(sources, **{"server.py": chained}), order, before)
-    check(chained != locked and any("lib_lock" in b for b in bad),
+    bad = refusals(dict(sources, **{"server.py": chained}), order, before)
+    check(chained != locked and refuses(bad),
           f"and through a local name the builder passes on its way, loaded = self.fonte_de(seen); novo = loaded "
-          f"({[b for b in bad if 'lib_lock' in b][:1]})")
+          f"({[b for b in bad if 'form the check' in b][:1]})")
     inline = sources["server.py"].replace(
         'self.engine.trocar_fonte(tr, lambda: dict(item, path=str(LIB / item["file"])))',
         'self.engine.trocar_fonte(tr, (lambda: self.lib.update(item["id"]) and dict(item)) or None)', 1)
-    bad, *_ = scan(dict(sources, **{"server.py": inline}), order, before)
-    check(inline != sources["server.py"] and any("lib_lock" in b for b in bad),
+    bad = refusals(dict(sources, **{"server.py": inline}), order, before)
+    check(inline != sources["server.py"] and refuses(bad),
           f"and with the download's builder passed inline behind a fallback, (lambda: ...) or None "
-          f"({[b for b in bad if 'lib_lock' in b][:1]})")
+          f"({[b for b in bad if 'form the check' in b][:1]})")
     direct = locked.replace("e.preparar(novo, ", "e.preparar(self.fonte_de(seen), ", 1)
-    bad, *_ = scan(dict(sources, **{"server.py": direct}), order, before)
-    check(direct != locked and any("calls Library.update" in b for b in bad),
+    bad = refusals(dict(sources, **{"server.py": direct}), order, before)
+    check(direct != locked and refuses(bad),
           f"and with the factory's call passed directly, e.preparar(self.fonte_de(seen), ...) "
-          f"({[b for b in bad if 'lib_lock' in b][:1]})")
+          f"({[b for b in bad if 'form the check' in b][:1]})")
     inner = locked.replace("            novo = self.fonte_de(seen)\n", "", 1).replace(
         "            def publica(depois):\n", "            def publica(depois):\n                novo = self.fonte_de(seen)\n", 1)
     bad, *_ = scan(dict(sources, **{"server.py": inner}), order, before)
@@ -1224,10 +1261,10 @@ def main():
           f"and with the factory called inside the nested function that hands its builder on "
           f"({[b for b in bad if 'lib_lock' in b][:1]})")
     ternary = locked.replace("novo = self.fonte_de(seen)\n", "novo = self.fonte_de(seen) if seen else None\n", 1)
-    bad, *_ = scan(dict(sources, **{"server.py": ternary}), order, before)
-    check(ternary != locked and any("lib_lock" in b for b in bad),
+    bad = refusals(dict(sources, **{"server.py": ternary}), order, before)
+    check(ternary != locked and refuses(bad),
           f"and through either branch of a conditional, fonte_de(seen) if seen else None "
-          f"({[b for b in bad if 'lib_lock' in b][:1]})")
+          f"({[b for b in bad if 'form the check' in b][:1]})")
     named = sources["server.py"].replace(
         '            return lambda: dict(it, path=str(LIB / it["file"]), **marca_auto(x))\n',
         '            def build():\n                self.lib.update(it["id"])\n'
@@ -1237,9 +1274,9 @@ def main():
           f"and with fonte_de returning a local function as the builder "
           f"({[b for b in bad if 'lib_lock' in b][:1]})")
     alias = named.replace("            return build\n", "            builder = build\n            return builder\n", 1)
-    bad, *_ = scan(dict(sources, **{"server.py": alias}), order, before)
-    check(alias != named and any("lib_lock" in b for b in bad),
-          f"and through a local name bound to that function ({[b for b in bad if 'lib_lock' in b][:1]})")
+    bad = refusals(dict(sources, **{"server.py": alias}), order, before)
+    check(alias != named and refuses(bad),
+          f"and through a local name bound to that function ({[b for b in bad if 'form the check' in b][:1]})")
     shadowed = sources["server.py"].replace(
         '            return lambda: dict(it, path=str(LIB / it["file"]), **marca_auto(x))\n',
         '            def helper():\n                builder = lambda: self.lib.update(it["id"])\n'
@@ -1262,30 +1299,49 @@ def main():
              '            return lambda: dict(it, path=str(LIB / it["file"]), **marca_auto(x))\n',
              "            return self._locked_builder\n")):
         method = with_helper.replace(old, new, 1)
-        bad, *_ = scan(dict(sources, **{"server.py": method}), order, before)
-        check(with_helper != sources["server.py"] and method != with_helper and any("lib_lock" in b for b in bad),
+        bad = refusals(dict(sources, **{"server.py": method}), order, before)
+        check(with_helper != sources["server.py"] and method != with_helper and refuses(bad),
               f"with {what} as a bound method that takes the shelf's lock, the order check fails "
-              f"({[b for b in bad if 'lib_lock' in b][:1]})")
+              f"({[b for b in bad if 'form the check' in b][:1]})")
+    for what, form in (("behind a fallback", "e.preparar(novo or None, "),
+                       ("through a name the nested function binds to it", None),
+                       ("wrapped in functools.partial", "e.preparar(functools.partial(novo), "),
+                       ("through an assignment expression", "e.preparar((handed := novo), ")):
+        held = (locked.replace("                    e.preparar(novo, ",
+                               "                    alias = novo\n                    e.preparar(alias, ", 1)
+                if form is None else locked.replace("e.preparar(novo, ", form, 1))
+        bad = refusals(dict(sources, **{"server.py": held}), order, before)
+        check(held != locked and refuses(bad),
+              f"and with the passage's builder handed on in the nested function {what} "
+              f"({[b for b in bad if 'form the check' in b][:1]})")
+    two_levels = sources["server.py"].replace(
+        "    # passagem para a proxima (a transicao de DJ) --------------------------\n",
+        '    def _shelf_builder(self, it):\n        return lambda: self.lib.update(it["id"]) and dict(it)\n\n'
+        "    # passagem para a proxima (a transicao de DJ) --------------------------\n", 1).replace(
+        '            return lambda: dict(it, path=str(LIB / it["file"]), **marca_auto(x))\n',
+        "            return self._shelf_builder(it)\n", 1)
+    bad = refusals(dict(sources, **{"server.py": two_levels}), order, before)
+    check(two_levels.count("_shelf_builder") == 2 and refuses(bad),
+          f"and with fonte_de returning the builder another method returns ({[b for b in bad if 'form the check' in b][:1]})")
     closure = locked.replace("                if self.fila and self.fila[0] is x and x == seen:\n",
                              "                novo = dict(seen)\n                if self.fila and self.fila[0] is x and x == seen:\n", 1)
     bad, *_ = scan(dict(sources, **{"server.py": closure}), order, before)
     check(closure != locked and not any("lib_lock" in b for b in bad),
           f"a nested function's own novo is the one its call passes, not the outer function's "
           f"({[b for b in bad if 'lib_lock' in b][:1]})")
-    for what, form, flags in (("in the slot it returns", "            builder, _ = build, (lambda: None)\n", True),
-                              ("in the slot it does not return",
-                               "            builder, _ = (lambda: {}), build\n", False)):
+    for what, form in (("in the slot it returns", "            builder, _ = build, (lambda: None)\n"),
+                       ("in the slot it does not return", "            builder, _ = (lambda: {}), build\n")):
         paired = named.replace("            return build\n", form + "            return builder\n", 1)
-        bad, *_ = scan(dict(sources, **{"server.py": paired}), order, before)
-        check(paired != named and any("lib_lock" in b for b in bad) == flags,
-              f"a tuple unpacking pairs each name with its value: the shelf-locking builder {what} is "
-              f"{'flagged' if flags else 'not flagged'} ({[b for b in bad if 'lib_lock' in b][:1]})")
+        bad = refusals(dict(sources, **{"server.py": paired}), order, before)
+        check(paired != named and refuses(bad),
+              f"a builder fonte_de returns from a tuple unpacking, {what}, is refused as a form the check does not "
+              f"read ({[b for b in bad if 'form the check' in b][:1]})")
     for what, form in (("an annotated name", "            builder: object = build\n"),
                        ("a name unpacked from a tuple", "            builder, _ = build, None\n")):
         held = named.replace("            return build\n", form + "            return builder\n", 1)
-        bad, *_ = scan(dict(sources, **{"server.py": held}), order, before)
-        check(held != named and any("lib_lock" in b for b in bad),
-              f"and through {what} bound to that function ({[b for b in bad if 'lib_lock' in b][:1]})")
+        bad = refusals(dict(sources, **{"server.py": held}), order, before)
+        check(held != named and refuses(bad),
+              f"and through {what} bound to that function ({[b for b in bad if 'form the check' in b][:1]})")
     bound = sources["server.py"].replace(
         '            return lambda: dict(it, path=str(LIB / it["file"]), **marca_auto(x))\n',
         '            build = lambda: (self.lib.update(it["id"]), dict(it, path=str(LIB / it["file"]), **marca_auto(x)))[1]\n'
