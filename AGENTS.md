@@ -30,11 +30,11 @@ até 80 linhas (o `dev/garden.py` confere as duas).
   `permissao.py`, os acessos dos outros módulos da raiz aos privados do motor, do `App` e do Automático, os do resto do
   `server.py` aos da `Library` e as escritas diretas no estado do `App` e do motor; o `dev/garden.py` segura cada conta
   no seu teto ([fx.md](docs/arquitetura/fx.md), [comandos.md](docs/arquitetura/comandos.md)).
-- A página do tema e a da galeria saem do servidor numa peça só, com o JS e o CSS dentro: o `theme_page.py` recusa com
-  500 o modelo que não monta (o `dev/testa_mock.py` confere cada recusa; o `dev/theme_page_oracle.py`, no Chrome, que o
-  modelo aceito tem os scripts e as folhas que a montagem leu), a página servida não tem `<link rel="stylesheet">` nem
-  `<script src>` do tema (o `dev/missing_script.py`), e o `themes/ritmelli/index.html` tem 0 linhas dentro de `<style>`
-  e `<script>` (o teto `theme_inline_lines` do `dev/garden.py`).
+- A página do tema e a da galeria saem do servidor numa peça só, com o JS e o CSS: o `theme_page.py` recusa o modelo que
+  não monta, e a rota responde 500 (o `dev/testa_mock.py` confere os casos de recusa e o 500 da rota; o
+  `dev/theme_page_oracle.py`, no Chrome, que o aceito tem os scripts e as folhas lidos), a página servida não tem
+  `<script src>` nem `<link rel="stylesheet">` do tema (o `dev/missing_script.py`), e o `themes/ritmelli/index.html` tem
+  0 linhas dentro de `<style>` e `<script>` (o teto `theme_inline_lines` do `dev/garden.py`).
 - PR que só muda código do tema de lugar: `python dev/theme_rebuild.py origin/main` sai 0 só se ele só move código, 1 se
   muda algo e 3 se a página sai da forma estrita (o `dev/test_theme_rebuild.py` confere a ferramenta).
 - O PR que mexe na montagem (o `BUILD_PATHS` do `dev/testa_tudo.py`) só passa no "Testa o PR" com uma execução aprovada
