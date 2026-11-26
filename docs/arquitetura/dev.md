@@ -86,7 +86,20 @@ montagens), o `congela`, o passo do manifesto (que roda exatamente a chamada do 
 Python do venv e o `throw` do `$LASTEXITCODE`, como o server lê, com um `#requires` contando como linha) e os
 passos das saídas `anterior` e `parcial` não podem ter `if:`; nenhum outro passo cita `build_manifest` ou
 `publica`, em qualquer campo, comentário ou passo desligado (como o server lê); e, nas saídas, o que está em
-comentário do PowerShell não conta. O
+comentário do PowerShell não conta. A chamada do `publica.py` que o `build_manifest.py` monta (o `--setup` e o
+`--url` do setup da versão do `versao.py`, a `--saida` na `instalador/saida`, onde o `monta.ps1` grava os setups, o
+`--notas` e o `--notas-en` com as linhas do `NOTAS` e do `NOTAS_EN`, cada língua por si e todas as linhas (as
+repetidas e as que passam do limite que o `publica.py` recusa), e nenhuma nota com as duas ausentes, vazias ou em
+branco, o `--parcial` e o `--parcial-info` só com o setup parcial, todas as opções certas em cada combinação das duas
+línguas (ausente, em branco ou com nota) com e sem a parcial, e o código de saída do `publica.py`) o
+`instalador/atualizacao/testa_parcial.py` confere rodando o script numa pasta de mentira, com um `publica.py` que passa
+a linha de comando pelo parser do `publica.py` de verdade e grava o que ele leu (os caminhos resolvidos, menos o
+nome do `--setup` e do `--parcial`, que o `publica.py` confere como veio, e as notas como o `publica.py` as lê), e
+que para, como o de verdade, se o `--setup`, o `--parcial` ou o `--parcial-info` não existem, e grava um
+`manifest.json` na `--saida`; a pasta `instalador/saida` (com um `PARCIAL-<versão>.json` de verdade quando há
+parcial) tem de sair do jeito que o caso a montou, mais esse `manifest.json`, e cada caso traz os mutantes do script
+que ele reprova. O `atualizacao/test_contract.py` do `ritmelli-server` roda o mesmo script num build de mentira, até a
+assinatura de ensaio e as notas da versão. O
 `--tela` junta o `fitcheck` e o `compara` do jeito do PR (no `testa.yml` o `compara` roda em três jobs:
 o Compara: base e o Compara: HEAD capturam em paralelo, pelo `--capture-base` e pelo `--capture`, a base só
 quando o cache do Actions não a tem, e o Compara compara as duas pelo `--compara --head-capture`; o
