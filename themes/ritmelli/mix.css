@@ -33,7 +33,7 @@ body.mesa-dj #pads.px-ok > h2 { position: absolute; opacity: 0; pointer-events: 
 body.mesa-dj #pads.px-ok .pads-grade { position: relative; z-index: 2; grid-template-columns: repeat(3, 50px); gap: 8px 6px; justify-content: center; }
 body.mesa-dj #pads.px-ok .pad { grid-template-rows: 50px 20px; row-gap: 4px; }
 body.mesa-dj #pads.px-ok .pad-face { width: 50px; height: 50px; aspect-ratio: auto; opacity: 0; }
-body.mesa-dj #pads.px-ok .pad-nome { height: 20px; padding: 0; opacity: 0; }
+body.mesa-dj #pads.px-ok .pad-nome { height: 20px; padding: 0; }
 body.mesa-dj #pads.px-ok .pads-vazio { position: relative; z-index: 2; }
 body.mesa-dj #pads > canvas.pads-px { position: absolute; left: 0; top: 0; z-index: 0; display: block; pointer-events: none; image-rendering: pixelated; }
 /* o visor de DJ em pixel art (o MIX-JS desenha o gabinete, a moldura do tubo, a luz, os botoes e a grade num canvas por
@@ -47,7 +47,7 @@ body.mesa-dj #tv.px-ok .tv-lado .lampada { width: 14px; height: 14px; }
 body.mesa-dj #tv.px-ok .tv-knob { width: 26px; height: 26px; }
 body:not(.mesa-dj) #pads > canvas { display: none; }
 body:not(.mesa-dj) #pads { translate: none !important; }
-body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome { opacity: 1; padding: 0 5px; font-family: "Archivo", sans-serif; font-weight: 700; font-size: 12px; font-stretch: 70%; line-height: 20px; letter-spacing: -.01em; text-align: center; color: #2A1812; background: none; border-image: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome[data-curto] { font-size: 0; }
-body.mesa-dj #pads.px-ok.nomes-vetor .pad-nome[data-curto]::after { content: attr(data-curto); font-size: 12px; }
+body.mesa-dj #pads.px-ok .pad-nome { opacity: 1; padding: 0 5px; font-family: "Archivo", sans-serif; font-weight: 700; font-size: 12px; font-stretch: 70%; line-height: 20px; letter-spacing: -.01em; text-align: center; color: #2A1812; background: none; border-image: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body.mesa-dj #pads.px-ok .pad-nome[data-curto] { font-size: 0; }
+body.mesa-dj #pads.px-ok .pad-nome[data-curto]::after { content: attr(data-curto); font-size: 12px; }
 /* MIX-FIM */

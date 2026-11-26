@@ -6,7 +6,7 @@ export const M = { M0: cor(248, 190, 140), P1: cor(234, 146, 92), P2: cor(206, 1
             P35: cor(150, 70, 38), W6: cor(142, 67, 35), W5: cor(134, 64, 33), P4: cor(120, 52, 26) };
 export const CH = { veio: cor(223, 216, 201), base: cor(227, 220, 205), risca: cor(220, 213, 197), risca2: cor(231, 225, 212), luz: cor(244, 239, 228), sombra: cor(196, 187, 170) };
 export const TINTA = cor(42, 24, 18), CREME = cor(239, 230, 213), CREME_L = cor(252, 247, 236), CREME_S = cor(206, 192, 168);
-export const FONTES = { j: { fam: '"Jersey 10"', S: 300, u: 32 }, v: { fam: '"VT323"', S: 300, u: 24 } };
+const FONTES = { j: { fam: '"Jersey 10"', S: 300, u: 32 }, v: { fam: '"VT323"', S: 300, u: 24 } };
 
 export const F57 = {
   A: [".###.", "#...#", "#...#", "#####", "#...#", "#...#", "#...#"], B: ["####.", "#...#", "#...#", "####.", "#...#", "#...#", "####."],
@@ -55,14 +55,14 @@ export const F57 = {
   "•": ["...", "...", ".#.", "###", ".#.", "...", "..."], "·": [".", ".", ".", "#", ".", ".", "."], "~": [".....", ".....", ".#..#", "#.##.", ".....", ".....", "....."],
   "$": [".###.", "#.#.#", "#.#..", ".###.", "..#.#", "#.#.#", ".###."], "<": ["...#", "..#.", ".#..", "#...", ".#..", "..#.", "...#"], ">": ["#...", ".#..", "..#.", "...#", "..#.", ".#..", "#..."],
 };
-export const MARCA = { "́": ["..#", ".#."], "̀": ["#..", ".#."], "̂": [".#.", "#.#"], "̃": [".#.#", "#.#."], "̈": ["#.#"] };
+const MARCA = { "́": ["..#", ".#."], "̀": ["#..", ".#."], "̂": [".#.", "#.#"], "̃": [".#.#", "#.#."], "̈": ["#.#"] };
 export const ACENTO = { "á": "á", "à": "à", "â": "â", "ã": "ã", "ä": "ä", "é": "é", "è": "è", "ê": "ê", "ë": "ë",
   "í": "í", "ì": "ì", "î": "î", "ï": "ï", "ó": "ó", "ò": "ò", "ô": "ô", "õ": "õ", "ö": "ö",
   "ú": "ú", "ù": "ù", "û": "û", "ü": "ü", "ñ": "ñ", "Á": "Á", "À": "À", "Â": "Â", "Ã": "Ã", "Ä": "Ä",
   "É": "É", "Ê": "Ê", "Í": "Í", "Ó": "Ó", "Ô": "Ô", "Õ": "Õ", "Ö": "Ö", "Ú": "Ú", "Ü": "Ü", "Ñ": "Ñ" };
 
 export function glyphs(extra = {}) {
-  const F = { ...F57, ...extra };
+  const rows57 = { ...F57, ...extra };
   const OVRV = { B: ["###.", "#..#", "#..#", "###.", "#..#", "#..#", "###."], "8": [".##.", "#..#", "#..#", ".##.", "#..#", "#..#", ".##."],
                  ",": [".#", "#."] };
   const GC = new Map();
@@ -105,9 +105,9 @@ export function glyphs(extra = {}) {
     const k = '5' + (bold ? 'b' : '') + (tab ? 't' : '') + ch;
     let g = GC.get(k);
     if (g) return g;
-    let rows = F[ch], marca = null, cedilha = false;
-    if (!rows && ACENTO[ch]) { rows = F[ACENTO[ch][0]]; marca = MARCA[ACENTO[ch][1]]; }
-    if (!rows && (ch === 'ç' || ch === 'Ç')) { rows = F[ch === 'ç' ? 'c' : 'C']; cedilha = true; }
+    let rows = rows57[ch], marca = null, cedilha = false;
+    if (!rows && ACENTO[ch]) { rows = rows57[ACENTO[ch][0]]; marca = MARCA[ACENTO[ch][1]]; }
+    if (!rows && (ch === 'ç' || ch === 'Ç')) { rows = rows57[ch === 'ç' ? 'c' : 'C']; cedilha = true; }
     if (!rows) return null;
     const w0 = rows[0].length, maius = ch === ch.toUpperCase() && ch !== ch.toLowerCase();
     const top = marca ? (maius ? -2 : 0) : 0;
@@ -197,7 +197,6 @@ export function disco(P, x0, y0, R, f, sombra) {
     px(P, x, y, f(dx, dy, r));
   }
 }
-export const esfera = (c, luz, somb, R) => (dx, dy) => (dx + dy) / R > .55 ? somb : Math.hypot(dx + R * .4, dy + R * .4) < R * .38 ? luz : c;
 export const esfera3 = (c, luz, somb, R, hb = 1.1, rl = null, kc = .42) => (dx, dy) => {
   const r = Math.hypot(dx, dy), k = (dx + dy) / (r * Math.SQRT2 || 1);
   if (Math.hypot(dx + R * kc, dy + R * kc) < (rl ?? Math.max(hb, R * .2))) return luz;
@@ -216,7 +215,7 @@ export const lg = (t, f) => [...t].reduce((s, ch, i) => s + f[ch][0].length + (i
 export function mapa(P, t, f, x, y, c) {
   for (const ch of t) { const g = f[ch]; g.forEach((l, j) => [...l].forEach((q, i) => { if (q === '#') px(P, x + i, y + j, c); })); x += g[0].length + 1; }
 }
-export const ICONE = {
+const ICONE = {
   ant: ["##.....#", "##....##", "##...###", "##..####", "##.#####", "##.#####", "##..####", "##...###", "##....##", "##.....#"],
   prox: ["#.....##", "##....##", "###...##", "####..##", "#####.##", "#####.##", "####..##", "###...##", "##....##", "#.....##"],
   tocar: ["#..........", "###........", "####.......", "######.....", "#######....", "#########..", "##########.", "###########",

@@ -258,15 +258,15 @@ import { glyphs, cor, esc, O, O2, SOMBRA, SOMBRA_F, M, TINTA, CREME_L, F57, ACEN
   }
 
   // ---- a placa da transicao automatica: a luz dela (verde) e mais seis que acendem com a passagem, e o nome
-  function placaEst(P, A, PL) {
-    const tTop = 21 + (PL.folga ? 2 : 0), rows = Math.ceil((tTop + A.thp) / 2) + 4;
+  function placaEst(P, A) {
+    const tTop = 21, rows = Math.ceil((tTop + A.thp) / 2) + 4;
     const w = Math.max(A.tw + 18, 7 * 8 + 19), x0 = Math.round((A.x0 + A.x1 - w) / 2), x1 = x0 + w;   // (r24) 2 celulas a mais de cada lado: os rebites de baixo encostavam nas pontas do texto; as bordas na dos botoes A e B
     let y0 = A.y0 + 3;   // (r18) a placa sobe junto com o crossfader
     if (y0 + rows > A.yMax) y0 = Math.max(A.y0 + 1, A.yMax - rows);
     const y1 = y0 + rows;
     sombraCaixa(P, x0, y0, x1, y1, 1, 1, 2);
     caixa(P, x0, y0, x1, y1, cor(226, 216, 196), cor(246, 240, 228), cor(186, 174, 152), 2);
-    const reb = [[x0 + 3, y0 + 3], [x1 - 5, y0 + 3]].concat(PL.folga ? [] : [[x0 + 3, y1 - 5], [x1 - 5, y1 - 5]]);
+    const reb = [[x0 + 3, y0 + 3], [x1 - 5, y0 + 3]].concat([[x0 + 3, y1 - 5], [x1 - 5, y1 - 5]]);
     for (const [px_, py_] of reb) {
       px(P, px_, py_, cor(250, 246, 236)); px(P, px_ + 1, py_, cor(170, 158, 136)); px(P, px_, py_ + 1, cor(170, 158, 136)); px(P, px_ + 1, py_ + 1, cor(130, 118, 98));
     }
@@ -324,29 +324,7 @@ import { glyphs, cor, esc, O, O2, SOMBRA, SOMBRA_F, M, TINTA, CREME_L, F57, ACEN
     " ": ["...", "...", "...", "...", "...", "...", "...", "..."],
   };
   const A8 = { "Ã": ["A", [".##..#", "#..##."]], "Á": ["A", ["...##.", "..##.."]], "Ó": ["O", ["...##.", "..##.."]], "É": ["E", ["...##.", "..##.."]], "Õ": ["O", [".##..#", "#..##."]] };
-  const G10 = {
-    D: ["#####.", "##..##", "##..##", "##..##", "##..##", "##..##", "##..##", "##..##", "##..##", "#####."],
-    I: ["##", "##", "##", "##", "##", "##", "##", "##", "##", "##"],
-    S: [".####.", "##..##", "##....", "##....", ".####.", "....##", "....##", "....##", "##..##", ".####."],
-    C: [".####.", "##..##", "##....", "##....", "##....", "##....", "##....", "##....", "##..##", ".####."],
-    O: [".####.", "##..##", "##..##", "##..##", "##..##", "##..##", "##..##", "##..##", "##..##", ".####."],
-    N: ["##...##", "###..##", "###..##", "####.##", "##.####", "##..###", "##..###", "##...##", "##...##", "##...##"],
-    J: ["....##", "....##", "....##", "....##", "....##", "....##", "....##", "##..##", "##..##", ".####."],
-    G: [".####.", "##..##", "##....", "##....", "##.###", "##..##", "##..##", "##..##", "##..##", ".#####"],
-    F: ["######", "##....", "##....", "##....", "#####.", "##....", "##....", "##....", "##....", "##...."],
-    E: ["######", "##....", "##....", "##....", "#####.", "##....", "##....", "##....", "##....", "######"],
-    V: ["##..##", "##..##", "##..##", "##..##", "##..##", "##..##", "##..##", ".####.", ".####.", "..##.."],
-    Z: ["######", "....##", "....##", "...###", "..###.", ".###..", "###...", "##....", "##....", "######"],
-    M: ["##...##", "###.###", "#######", "##.#.##", "##.#.##", "##...##", "##...##", "##...##", "##...##", "##...##"],
-    T: ["######", "..##..", "..##..", "..##..", "..##..", "..##..", "..##..", "..##..", "..##..", "..##.."],
-    R: ["#####.", "##..##", "##..##", "##..##", "#####.", "##.##.", "##..##", "##..##", "##..##", "##..##"],
-    A: [".####.", "##..##", "##..##", "##..##", "##..##", "######", "##..##", "##..##", "##..##", "##..##"],
-    U: ["##..##", "##..##", "##..##", "##..##", "##..##", "##..##", "##..##", "##..##", "##..##", ".####."],
-    H: ["##..##", "##..##", "##..##", "##..##", "######", "##..##", "##..##", "##..##", "##..##", "##..##"],
-    P: ["#####.", "##..##", "##..##", "##..##", "#####.", "##....", "##....", "##....", "##....", "##...."],
-    " ": ["...", "...", "...", "...", "...", "...", "...", "...", "...", "..."],
-  };
-  const F8 = { G: G8, A: A8, h: 8 }, F10 = { G: G10, A: A8, h: 10 };
+  const F8 = { G: G8, A: A8, h: 8 };
   const gB = (F, ch) => { const a = F.A[ch], b = a ? a[0] : ch === 'Ç' ? 'C' : ch; return { rows: F.G[b] || F.G[' '], mark: a ? a[1] : null, ced: ch === 'Ç' }; };
   const largB = (t, F = F8, esp = 1) => [...t].reduce((s_, ch, i) => s_ + gB(F, ch).rows[0].length + (i ? esp : 0), 0);
   const larg8 = t => largB(t);
@@ -364,10 +342,8 @@ import { glyphs, cor, esc, O, O2, SOMBRA, SOMBRA_F, M, TINTA, CREME_L, F57, ACEN
   // o rotulo desenhado tem largura fixa (cada palavra numa linha cabe em 46 pixels da letra, com o pixel da letra em 2 do
   // palco, o Windows a 125%): o do fone tem um texto curto so para ele, e o do label segue para o resto
   const TEXTO_DESENHADO = { 'f-mon': I18N.t('mixer.recordInHeadphonesShort') };
-  // como os rotulos dos volumes saem: a fonte (8 ou 10 de altura), o espaco entre letras, a cor e o filete claro embaixo
-  // (gravado)
-  const ROT0 = { alt: 8, esp: 2, cor: [46, 33, 26], grav: true };   // 4 + 2: mais espaco e gravado (escolha dele, 06/11)
-  const PLACA0 = { esp: 2, alt: 8, linhas: 1, folga: false, grav: false };   // 1: mais espaco entre as letras (escolha dele, 06/11)
+  const ROT0 = { esp: 2, cor: [46, 33, 26], grav: true };
+  const PLACA0 = { esp: 2, grav: false };
   const relM = (el, D) => { const r = rectP(el); return { x0: Math.round((r.left - D.left) / 2), y0: Math.round((r.top - D.top) / 2), x1: Math.round((r.right - D.left) / 2), y1: Math.round((r.bottom - D.top) / 2), h: r.height, w: r.width }; };
   const vis = el => el && !el.hidden && el.offsetParent !== null && getComputedStyle(el).display !== 'none';
   function preparaMx(rec) {
@@ -438,7 +414,7 @@ import { glyphs, cor, esc, O, O2, SOMBRA, SOMBRA_F, M, TINTA, CREME_L, F57, ACEN
       };
       for (const e of Object.values(m.txt || {})) e.style.display = 'none';
       // as linhas de cada rotulo antes, para todos ficarem com o meio na mesma altura (o de uma linha no meio do de duas)
-      const RT = { ...ROT0 }, FR = RT.alt === 10 ? F10 : F8, lg = t => largB(t, FR, RT.esp);
+      const RT = ROT0, FR = F8, lg = t => largB(t, FR, RT.esp);
       const AL = FR.h;
       let LSr = LS, LH = AL + 4;   // o pixel da letra e a distancia entre as linhas dos rotulos (a placa segue no LS)
       const quebra8 = t => {
@@ -486,8 +462,8 @@ import { glyphs, cor, esc, O, O2, SOMBRA, SOMBRA_F, M, TINTA, CREME_L, F57, ACEN
         // vazio pelo meio do alfa
         let cv = m.placaCv;
         if (!cv) { cv = document.createElement('canvas'); cv.className = 'mx-txt mx-placa-px'; cv.setAttribute('aria-hidden', 'true'); m.rec.appendChild(cv); m.placaCv = cv; }
-        const PL = { ...PLACA0 }, FP = PL.alt === 10 ? F10 : F8, lp = t_ => largB(t_, FP, PL.esp);
-        const t = (m.auto.textContent || '').trim().toUpperCase(), ls = PL.linhas === 2 ? t.split(/\s+/) : [t];
+        const PL = PLACA0, FP = F8, lp = t_ => largB(t_, FP, PL.esp);
+        const t = (m.auto.textContent || '').trim().toUpperCase(), ls = [t];
         // (r09) 1 fileira vazia em cima (h0 + 1, o canvas 1 pixel acima): o top cai em 1/64 de px do layout, fora da
         // tela, e o Chrome estica a fileira 0 em 1 px de tela; com ela vazia, o acento do A e do til deixa de engordar
         const g_ = PL.grav ? 1 : 0, LH = FP.h + 5, w = Math.max(...ls.map(lp)) + g_, h0 = 3 + (ls.length - 1) * LH + FP.h + 3 + g_, h = h0 + 1;
@@ -496,7 +472,7 @@ import { glyphs, cor, esc, O, O2, SOMBRA, SOMBRA_F, M, TINTA, CREME_L, F57, ACEN
         if (PL.grav) ls.forEach((l, j) => textoB(im, l, Math.floor((w - g_ - lp(l)) / 2), 4 + j * LH, [176, 164, 142], FP, PL.esp));
         ls.forEach((l, j) => textoB(im, l, Math.floor((w - g_ - lp(l)) / 2) + g_, 4 + j * LH + g_, [15, 8, 5], FP, PL.esp));
         c.putImageData(im, 0, 0);
-        A.tw = Math.ceil(w * LS / 2); A.thp = h0 * LS; A.el = cv; A.PL = PL; A.yMax = H - 5;
+        A.tw = Math.ceil(w * LS / 2); A.thp = h0 * LS; A.el = cv; A.yMax = H - 5;
       }
       const calmos = [];
       for (const f of fs) {
@@ -538,7 +514,7 @@ import { glyphs, cor, esc, O, O2, SOMBRA, SOMBRA_F, M, TINTA, CREME_L, F57, ACEN
       m.vg = m.metros.map((e, i) => ({ k: e.dataset.k, apag: apag[i], g: vuFace(P, vx0(i), J.y0, vx0(i) + mw, J.y1, e.dataset.nome || '', apag[i]) }));
       for (const f of fs) faderEst(P, f);
       if (X) crossEst(P, X);
-      if (A) { placaEst(P, A, A.PL); A.el.style.left = gx(2 * A.tcx - A.el.width * LS / 2) + 'px'; A.el.style.top = gy(A.ttop) - LS + 'px'; }
+      if (A) { placaEst(P, A); A.el.style.left = gx(2 * A.tcx - A.el.width * LS / 2) + 'px'; A.el.style.top = gy(A.ttop) - LS + 'px'; }
       m.est = P; m.fs = fs; m.ts = ts; m.X = X; m.A = A; m.chaveE = geo; m.chaveD = '';
       m.dyn = pincel(W + M_, H + M_); m.img = m.ctx.createImageData(W + M_, H + M_); m.imgU = new Uint32Array(m.img.data.buffer);
     }
@@ -804,9 +780,7 @@ import { glyphs, cor, esc, O, O2, SOMBRA, SOMBRA_F, M, TINTA, CREME_L, F57, ACEN
       return { b, F: F_, N: N_, nome: n ? n.textContent.trim() : '', cor: b.style.getPropertyValue('--pad').trim(),
                aceso: b.classList.contains('tocando'), aperta: b.matches(':active') || b.classList.contains('apertado'), vazio: b.classList.contains('sem-som') };
     });
-    const dT = (devicePixelRatio || 1) * PALCO.k, LS = Math.max(Math.round(dT), Math.ceil((devicePixelRatio || 1) - 1e-6)) / dT;
     const tit = ((p.sec.querySelector('h2') || {}).textContent || I18N.t('pads.title')).trim();
-    p.sec.classList.add('nomes-vetor');
     // (r05) o nome que nao cabe corta na palavra, sem reticencia ("Buzina", nao "Buzina ..."): o texto do elemento fica
     // inteiro (leitor de tela e o title do botao), o curto vai no data-curto e o CSS mostra so ele
     for (const n of p.sec.querySelectorAll('.pad-nome')) {
@@ -821,7 +795,7 @@ import { glyphs, cor, esc, O, O2, SOMBRA, SOMBRA_F, M, TINTA, CREME_L, F57, ACEN
       n.dataset.curto = pal.slice(0, Math.max(1, k)).join(' ');
     }
     const altN = Math.round(((faces.find(f => f.N) || {}).N || { h: 20 }).h / 2);
-    const chave = [altN, W, H, LS, tit, fontesMx, faces.map(f => [f.F.x0, f.F.y0, f.F.x1, f.N ? f.N.y0 : '', f.nome, f.cor, f.aceso, f.aperta, f.vazio].join(',')).join(';')].join('|');
+    const chave = [altN, W, H, tit, fontesMx, faces.map(f => [f.F.x0, f.F.y0, f.F.x1, f.N ? f.N.y0 : '', f.nome, f.cor, f.aceso, f.aperta, f.vazio].join(',')).join(';')].join('|');
     if (chave === p.chave) return;
     p.chave = chave;
     const P = pincel(W + M_, H + M_);

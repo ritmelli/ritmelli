@@ -1175,8 +1175,20 @@ def a_built_page_reads_only_its_own_modules(folder):
                                          ("module", "\nexport const second = '</script> <!-- # %';\n")],
             f"a built page gives the text of each module of its import map, in order ({error or read.texts})")
     confere(theme_page.strict(built)[1] is not None, "the import map the build writes is not read in a template")
+    (folder / "mid.js").write_text("const mid = 1;\n", encoding="utf-8")
+    between = theme_page.inline_files('<head>\n<script type="module" src="first.js"></script>\n<script src="mid.js">'
+                                      '</script>\n<script type="module" src="second.js"></script>\n', folder)
+    kinds = [(kind, text.split()[1]) for kind, text in (theme_page.strict(between, True)[0] or read).texts]
+    confere(kinds == [("module", "first"), ("script", "mid"), ("module", "const")],
+            f"a built page gives each module's text where its import runs, around a classic script ({kinds})")
     imports, first = built.index('{"imports"'), '<script type="module">import "first.js";</script>'
+    second = '<script type="module">import "second.js";</script>'
     altered = {
+        "a map without imports": '<script type="importmap">{}</script>',
+        "an empty map": '<script type="importmap">{"imports":{}}</script>',
+        "a module of the map never imported": built.replace(second, "", 1),
+        "a module imported twice": built.replace(second, second + second, 1),
+        "the imports in another order than the map": built.replace(f"{first}\n{second}", f"{second}\n{first}", 1),
         "another key in the map": built.replace('{"imports":', '{"scopes":{},"imports":', 1),
         "a module at an address": built.replace("data:text/javascript,%0Aconst", "https://example.com/a.js#", 1),
         "a module encoded otherwise": built.replace("%3C/script", "%3c/script", 1),

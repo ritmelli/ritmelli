@@ -88,12 +88,12 @@ def import_map(modules):
 
 
 def read_import_map(body):
-    with contextlib.suppress(ValueError, TypeError, AttributeError):
+    with contextlib.suppress(ValueError, TypeError, AttributeError, KeyError):
         imports = json.loads(body)["imports"]
         modules = {name: urllib.parse.unquote(url.removeprefix(MODULE_SOURCE), errors="strict")
                    for name, url in imports.items()
                    if re.fullmatch(MODULE_NAME, name) and url.startswith(MODULE_SOURCE)}
-        if len(modules) == len(imports) and import_map(modules) == body:
+        if modules and len(modules) == len(imports) and import_map(modules) == body:
             return modules
     return None
 
@@ -101,10 +101,13 @@ def read_import_map(body):
 class Template:
     def __init__(self, html, built=False):
         self.html, self.found, self.elements, self.texts, self.svg, self.select = html, [], [], [], False, False
-        self.marks, self.built, self.modules = set(), built, None
+        self.marks, self.built, self.modules, self.unimported, self.map_at = set(), built, None, [], 0
         i = 0
         while i < len(html):
             i = self.token(i)
+        if self.unimported:
+            self.refuse(self.map_at, f"the module {self.unimported[0]} of the import map has no import after the map: "
+                                     f"the browser would not run it")
         stray = [m.start() for m in re.finditer(re.escape(i18n.MARCA), html) if m.start() not in self.marks]
         if stray and not built:
             self.refuse(stray[0], f"the {i18n.MARCA} mark is read only as a comment of its own, where the server puts "
@@ -189,11 +192,12 @@ class Template:
             if self.modules is not None or (modules := read_import_map(inside)) is None:
                 self.refuse(i, "the import map is not the one the build writes: one map, before the modules, with each "
                                "module of the page as a data: address")
-            self.modules = modules
-            self.texts += [("module", text) for text in modules.values()]
-        elif not (m := MODULE_IMPORT.fullmatch(inside)) or m.group(1) not in (self.modules or {}):
-            self.refuse(i, f"the module script {inside[:60]!r} is not the import of a module of the page's import map "
-                           f"that the build writes")
+            self.modules, self.unimported, self.map_at = modules, list(modules), i
+        elif not (m := MODULE_IMPORT.fullmatch(inside)) or not self.unimported or m.group(1) != self.unimported[0]:
+            self.refuse(i, f"the module script {inside[:60]!r} is not the import of the next module of the page's "
+                           f"import map, in the order the build writes")
+        else:
+            self.texts.append(("module", self.modules[self.unimported.pop(0)]))
 
     def listed(self, i, written, tag):
         if tag not in (SVG_ELEMENTS if self.svg else HTML_ELEMENTS):
@@ -300,6 +304,9 @@ def inline_files(html, folder, places=None):
         except ThemePageError as ex:
             raise ThemePageError(str(ex), places[n] if places else place(html, start)) from ex
         parts.append(html[done:start])
+        if tag == "module" and (twin := next((other for other, seen in modules.items() if seen == text), None)):
+            raise ThemePageError(f"{name} has the same text as {twin}, and the browser runs one module per address: "
+                                 f"keep one of them", places[n] if places else place(html, start))
         if tag == "module":
             slot = len(parts) if slot is None else slot
             modules[name] = text
