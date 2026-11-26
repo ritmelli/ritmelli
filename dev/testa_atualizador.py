@@ -234,9 +234,10 @@ if sys.platform == "win32":
     exe, marca_ps = (str(c).replace("'", "''") for c in (atualizador.pastas.APP / "ritmelli.exe", marca))
     trocado = args[-1].replace(f"Start-Process -FilePath '{exe}'", f"Set-Content -LiteralPath '{marca_ps}' -Value ok")
     caso("no fim, abre o Ritmelli da pasta do app", trocado != args[-1])
-    ouvido = trocado.replace("catch{}}while(", "catch{};Write-Output \"estado=$($s.estado)\"}while(").replace(
-        "(Get-Date) -lt $fim){Start-Sleep 1}", "(Get-Date) -lt $fim){Write-Output esperando;Start-Sleep 1}")
-    ouve = ouvido.count("Write-Output") == 2 and "Start-Process" not in ouvido
+    leu = trocado.replace("catch{}}while(", "catch{};Write-Output \"estado=$($s.estado)\"}while(")
+    ouvido = leu.replace("(Get-Date) -lt $fim){Start-Sleep 1}",
+                         "(Get-Date) -lt $fim){Write-Output esperando;Start-Sleep 1}")
+    ouve = args[-1] != trocado != leu != ouvido
     caso("the test hears each state the reopen reads and each wait for the installer", ouve)
     if ouve:
         atualizador._grava(estado="pronta")
