@@ -626,7 +626,7 @@ class App:
         self.engine.porta = port  # a mina chama a API daqui pelas ferramentas dela
         self.engine.religar_stream = self.religar_stream
         self.engine.on_silent_stream(lambda tr: self._stream_refused(
-            tr, i18n.msg("server.player.noAudio", "the stream gave no audio"), waiting=True))
+            tr, i18n.msg("server.player.noAudio", "the stream stopped sending audio"), waiting=True))
         self.engine.sonoridade_de, self.engine.mediu = self.sonoridade_de, self.mediu
         self.engine.volume_auto = bool(self.cfg.get("volume_auto", True))
         self.cfg.pop("mic_vol", None)  # o nivel da voz e o do Windows, que guarda sozinho (18/10)
@@ -1137,9 +1137,7 @@ class App:
                     thumb=tr["thumb"] or thumb(yid), duration=tr["duration"] or info.get("duration"))
         if self.engine.trocar_fonte(tr, novo):
             self.canal_depois(novo, no_prato=True)
-            j = self.jobs.get(tr["job"]) if tr["job"] else None
-            if j is not None and j["status"] == "done" and (it := self.lib.get(j["item_id"])) is not None:
-                self.engine.trocar_fonte(novo, dict(it, path=str(LIB / it["file"])))
+            cmd.play_finished_file(self, novo)
 
     def _stream_refused(self, tr, reason, waiting=False):
         e, j = self.engine, self.jobs.get(tr["job"])
@@ -1563,6 +1561,7 @@ class App:
         if v is not None:
             try:
                 cmd.avanca(self, virada=v)  # tira a virada do motor junto com a entrada dela da fila
+                cmd.play_finished_file(self, v[1])
             except Exception as ex:
                 print(f"transition: the switch didn't close the queue: {ex}", file=sys.stderr, flush=True)
         cap = e.captura()

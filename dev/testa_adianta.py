@@ -118,6 +118,33 @@ class Adianta(unittest.TestCase):
         self.assertEqual(self.pedidos, [YID], "pediu na hora, o da fila nao rodou")
         self.assertEqual(self.trocas[0]["path"], f"https://audio/{YID}")
 
+    def asks(self, answers):
+        formats = []
+
+        def stream_info(target, formato=None, canal=False):
+            formats.append(formato)
+            answer = answers[len(formats) - 1]
+            if isinstance(answer, Exception):
+                raise answer
+            return answer
+        self.app.stream_info = stream_info
+        return formats
+
+    def test_three_tries_the_last_with_any_audio_format(self):
+        ok = ({"url": f"https://audio/{YID}", "id": YID, "title": "x"}, "h")
+        formats = self.asks([RuntimeError("HTTP Error 403"), RuntimeError("HTTP Error 403"), ok])
+        self.abre()
+        self.assertEqual(formats, [None, None, "bestaudio/best"])
+        self.assertEqual(self.trocas[0]["path"], f"https://audio/{YID}")
+
+    def test_a_video_error_is_not_asked_again(self):
+        refused = []
+        formats = self.asks([RuntimeError("ERROR: Video unavailable")] * 3)
+        self.tr["job"] = "j1"
+        self.app._stream_refused = lambda tr, reason: refused.append(reason)
+        self.abre()
+        self.assertEqual((formats, len(refused)), ([None], 1))
+
     def test_canal_depois(self):
         self.abre()
         self.assertEqual(self.canais, [YID], "entrou sem canal: pede depois")

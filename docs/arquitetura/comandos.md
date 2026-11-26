@@ -148,15 +148,16 @@ posição do disco viram escolha não determinística, e os `qid` são simétric
 
 - `Races211`: o download, o stream, a troca, o mixer, a preparação da passagem, a troca pela versão de áudio, o vigia da
   passagem, o tocar de outro disco, o esquecer da prateleira, uma reserva de avanço em curso, duas trocas de lugar na
-  fila (a entrada sai da frente e volta), o stream que abre sem dar áudio (o leitor dele é um processo à parte, que
-  corre junto de quem abriu o stream), o que abre com áudio depois de o download ler o prato, e um pulo na barra (sobe a
-  linha e tira a passagem preparada), com uma ou duas entradas e um job. Confere a ordem das travas; que nenhum prato
-  fica carregando com o job já terminado (em erro, ou baixado com ou sem o disco na prateleira) e o stream recusado ou
-  sem áudio; que o stream recusado só para ou troca o disco daquela tentativa; que a entrega do stream sem áudio só para
-  ou avisa enquanto a espera do arquivo é a da leitura do prato (depois de um pulo na barra, o leitor novo toca); que o
-  download que terminou chega ao prato também quando o stream abriu no meio; que a passagem lida antes de um pulo na
-  barra não é publicada depois dele; que a entrada que uma reserva em curso vai tocar segue na versão que ela leu; e que
-  a entrada da virada pendente tem a mesma versão que o prato toca (as duas corridas da #211).
+  fila (a entrada sai da frente e volta), o stream que abre sem dar áudio ou que para antes do fim (o leitor dele é um
+  processo à parte, que corre junto de quem abriu o stream), o que abre com áudio depois de o download ler o prato, a
+  virada para o stream de um disco com download e um pulo na barra (sobe a linha e tira a passagem preparada), com uma
+  ou duas entradas e um job. Confere a ordem das travas; que nenhum prato fica carregando com o job já terminado (em
+  erro, ou baixado com ou sem o disco na prateleira) e o stream recusado ou sem áudio; que o stream recusado só para ou
+  troca o disco daquela tentativa; que a entrega do stream sem áudio só para ou avisa enquanto a espera do arquivo é a
+  da leitura do prato (depois de um pulo na barra, o leitor novo toca); que o download que terminou chega ao prato
+  também quando o stream abriu no meio; que a passagem lida antes de um pulo na barra não é publicada depois dele; que a
+  entrada que uma reserva em curso vai tocar segue na versão que ela leu; e que a entrada da virada pendente tem a mesma
+  versão que o prato toca (as duas corridas da #211).
 - `LocksAndSwitch`: dois Próximos (o tocar de cada um pode falhar antes de publicar), o mixer, o Parar ou uma mudança da
   fila, o vigia da passagem, uma segunda preparação da passagem e a reabertura do áudio segurando o `_lock` (o
   `with_engine` como tentativa com recuo), com duas entradas. Confere a ordem das travas, que das travas do modelo o

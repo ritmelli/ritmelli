@@ -2299,6 +2299,7 @@ class Engine:
                         continue
                     b = blocos.pop(0) if blocos else ff.stdout.read(BLOCK * 8)
                     if not b:
+                        ff.wait()
                         break
                     arr = np.frombuffer(b[: len(b) // 8 * 8], np.float32).reshape(-1, 2)
                     rms = float(np.sqrt(np.mean(arr * arr))) if len(arr) else 0.0  # fora do lock do callback
@@ -2329,7 +2330,9 @@ class Engine:
                 elif estima and n:  # o disco curto que acabou antes da estimativa
                     self.sonoridade(track, med.lufs(), inteira=False)
                 med = None  # a volta do Repetir nao mede de novo
-            if n == 0 and stream and track.get("job") and deck is self._deck:
+            fim, dur = t + n / SR, track.get("duration") or 0
+            caiu = fim < dur - STREAM_CAIU_S if dur else n == 0
+            if (n == 0 or caiu) and stream and track.get("job") and deck is self._deck:
                 with self._qlock:
                     waits = deck is self._deck and deck.gen == gen
                     if waits:
@@ -2340,13 +2343,11 @@ class Engine:
             if n == 0 and deck is not self._deck:  # a proxima que nao decodifica so nao entra
                 self._fim_do_leitor(deck, gen)
                 return
-            fim, dur = t + n / SR, track.get("duration") or 0
-            caiu = fim < dur - STREAM_CAIU_S if dur else n == 0
             religar = self.religar_stream
             if stream and caiu and not track.get("job") and deck is self._deck and religar is not None:
                 religar(track, fim, lambda: self._stream_desistiu(deck, gen, track, fim))
                 return
-            if n == 0 and (stream or not t or not dur or t < dur - FILE_TAIL_S):
+            if n == 0 and (stream or not t or not dur or t < dur - FILE_TAIL_S or ff.returncode):
                 self._fim_do_leitor(deck, gen, erro=(track, t))
                 return
             if not self._repete(deck, gen):
@@ -2438,9 +2439,8 @@ class Engine:
         para o stream, sem audio ainda, fica na mesma), a posicao, o fim, o ganho do disco que entra sem rampa (alvo), a
         pausa (paused), o Repetir (loop; sem ele, um disco entrando no lugar de outro o desliga) e a passagem desfeita,
         com o pedido de pausa da linha que acabou substituido. O leitor recebe a faixa, o deck e o gen dessa mudanca e
-        comeca fora das travas. start pode ser uma funcao, chamada ali mesmo (o seek limita pela duracao da faixa
-        daquele instante). Volta (a Captura do que estava no prato logo antes, a posicao que o servidor grava, ou None;
-        e quem comeca o leitor, ou None): quem chama o comeca depois de soltar o _lock."""
+        comeca fora das travas. Volta (a Captura do que estava no prato logo antes, a posicao que o servidor grava, ou
+        None; e quem comeca o leitor, ou None): quem chama o comeca depois de soltar o _lock."""
         with self._qlock:
             if pode is not None and not pode():
                 return None, None

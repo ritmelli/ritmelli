@@ -130,7 +130,7 @@ class Entries:
                 and not node.args):
             return self.is_container(node.func.value, scope)
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in ("list", "sorted",
-                                                                                              "reversed", "tuple"):
+                                                                                              "reversed", "tuple", "iter"):
             return bool(node.args) and self.is_container(node.args[0], scope)
         if isinstance(node, (ast.ListComp, ast.GeneratorExp)):
             return self.is_entry(node.elt, self.comp_scope(node, scope))
@@ -456,7 +456,8 @@ ENTRY_FORMS = {
     "an entry of the queue a helper returns": (
         {"case.py": "def entries(A):\n    return A.fila\ndef f(A):\n    entries(A)[0].update(audio=True)\n"}, 1),
     "the head of the queue by index": ({"case.py": "def f(A):\n    A.fila[0]['fixa'] = True\n"}, 1),
-    "an entry found by next()": ({"case.py": "def f(A, q):\n    x = next((y for y in A.fila if y['qid'] == q), None)"
+    "an entry taken by next(iter())": ({"case.py": "def f(A):\n    x = next(iter(A.fila))\n    x.update(title='New')\n"}, 1),
+    "an entry found by next()":({"case.py": "def f(A, q):\n    x = next((y for y in A.fila if y['qid'] == q), None)"
                                              "\n    x['fixa'] = True\n"}, 1),
     "an entry of a copy of the Mix": ({"case.py": "def f(A):\n    for m in sorted(A.mix):\n"
                                                   "        m.setdefault('ordem', 0)\n"}, 1),

@@ -70,11 +70,28 @@ def lock_bindings(trees):
                 values = [n.value]
             elif isinstance(n, ast.withitem) and n.optional_vars is not None:
                 roots, values = [n.optional_vars], [n.context_expr]
+            elif isinstance(n, (ast.For, ast.AsyncFor, ast.comprehension)):
+                roots, values = [n.target], [n.iter]
+            elif isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+                roots = [ast.Name(a.arg) for a in n.args.posonlyargs + n.args.args + n.args.kwonlyargs]
+                values = n.args.defaults + [d for d in n.args.kw_defaults if d is not None]
+            elif isinstance(n, (ast.Return, ast.Yield)):
+                if n.value is not None and lock_of(n.value, owner.get(id(n))):
+                    out.append(f"{module}:{n.lineno}: a lock returned by a function")
+                continue
+            elif isinstance(n, ast.Call):
+                args = [*(n.args[1:] if called_attr(n) == "with_lock" else n.args), *(k.value for k in n.keywords)]
+                flat = [e.value if isinstance(e, ast.Starred) else e for a in args
+                        for e in (a.elts if isinstance(a, (ast.Tuple, ast.List, ast.Set)) else [a])]
+                if any(lock_of(e, owner.get(id(n))) for e in flat):
+                    out.append(f"{module}:{n.lineno}: a lock passed as an argument to {ast.unparse(n.func)}")
+                continue
             else:
                 continue
             names = [t.id for root in roots for t in ast.walk(root) if isinstance(t, ast.Name)]
             if names and any(lock_of(v, owner.get(id(n))) for value in values for v in ast.walk(value)):
-                out.append(f"{module}:{getattr(n, 'lineno', None) or n.context_expr.lineno}: a lock bound to a name "
+                at = n if hasattr(n, 'lineno') else values[0]
+                out.append(f"{module}:{at.lineno}: a lock bound to a name "
                            f"({', '.join(names)})")
     return out
 
@@ -607,6 +624,13 @@ def self_test(order, before):
         "a binding in a with (q := ...)": "def f(E):\n    with (q := E._qlock):\n        pass\n",
         "a lock unpacked from a tuple": "def f(A, E):\n    a, q = A, E._qlock\n",
         "a lock kept on an attribute": "class Engine:\n    def f(self, E):\n        self.q = E._qlock\n",
+        "a lock as a for target": "def f(A):\n    for lk in (A.fila_lock,):\n        with lk:\n            pass\n",
+        "a lock as a comprehension target": "def f(A):\n    [x.acquire() for x in [A.fila_lock]]\n",
+        "a lock passed as an argument": "def f(A, h):\n    h(A.fila_lock)\n",
+        "a lock as a parameter's default": "def f(A, lk=None):\n    def g(lk=A.fila_lock):\n        pass\n",
+        "a lock handed to a lambda": "def f(A):\n    with (lambda lk: lk)(A.fila_lock):\n        pass\n",
+        "a lock returned by a getter": "class Engine:\n    def _mix_lock(self):\n        return self._lock\n",
+        "a _qlock section returned by a getter": "def f(E):\n    return E.state_section()\n",
     }
     for what, code in bindings.items():
         bad = lock_bindings({"case.py": ast.parse(code)})
@@ -811,6 +835,14 @@ def main():
         bound = lock_bindings(dict(trees, **{"engine.py": ast.parse(aliased)}))
         check(aliased != sources["engine.py"] and len(bound) == 1,
               f"with the _mixa taking a lock through {what}, the binding check fails ({bound})")
+    getter = sources["engine.py"].replace(
+        head, "        buf = np.zeros((frames, 2), np.float32)\n        with self._mix_lock():\n            pass\n"
+        "        b = self._captura(frames)\n").replace(
+        "    def on_silent_stream(self, f):\n", "    def _mix_lock(self):\n        return self._lock\n\n"
+        "    def on_silent_stream(self, f):\n")
+    bound = lock_bindings(dict(trees, **{"engine.py": ast.parse(getter)}))
+    check(getter.count("_mix_lock") == 2 and len(bound) == 1,
+          f"with the _mixa taking the _lock from a getter, the binding check fails ({bound})")
     if failures:
         print(f"\n{len(failures)} failure(s)")
         sys.exit(1)
