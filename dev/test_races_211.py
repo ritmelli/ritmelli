@@ -805,15 +805,15 @@ def downloading_job_played_after_a_rename(A, E, readers):
     stream = StreamThread(A)
     with (contextlib.redirect_stderr(io.StringIO()),
           mock.patch.object(A, "tocar_remoto", shelved_and_renamed_after_the_miss)):
-        played = cmd.tocar_da_fila(A, x["qid"])
+        played = cmd.pular(A)
         check(played is x and stream.ended.wait(WAIT_S),
-              "the queue's play missed the shelf, the record was shelved and renamed while the job ran, and the job's "
+              "the Next's play missed the shelf, the record was shelved and renamed while the job ran, and the job's "
               "record went on the platter")
     del A._abre_stream
     check((E.track or {}).get("id") == target and j["status"] == "running",
           "the job's waiting record is on the platter")
     check(shown_title(A) == "the old name",
-          f"known failure #303: a play of a downloading job whose record was renamed on the shelf after the play "
+          f"known failure #303: a Next to a downloading job whose record was renamed on the shelf after the Next "
           f"missed it puts the entry's name on the platter ({shown_title(A)})")
 
 

@@ -1113,6 +1113,11 @@ def main():
     check(fallback != locked and any("lib_lock" in b for b in bad),
           f"and so it does with the builder reached through a fallback, fonte_de(seen) or None "
           f"({[b for b in bad if 'lib_lock' in b][:1]})")
+    ternary = locked.replace("novo = self.fonte_de(seen)\n", "novo = self.fonte_de(seen) if seen else None\n", 1)
+    bad, *_ = scan(dict(sources, **{"server.py": ternary}), order, before)
+    check(ternary != locked and any("lib_lock" in b for b in bad),
+          f"and through either branch of a conditional, fonte_de(seen) if seen else None "
+          f"({[b for b in bad if 'lib_lock' in b][:1]})")
     guarded = pode_guarantees(trees["engine.py"])
     check(len(guarded) >= 5 and not pode_failures(trees["engine.py"]),
           f"every Engine method that takes a pode runs it under the _lock and the _qlock, also through the methods it "
