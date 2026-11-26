@@ -2,7 +2,6 @@ import ast
 import io
 import re
 import tokenize
-from collections import deque
 from dataclasses import dataclass, field
 
 from . import ir
@@ -303,10 +302,19 @@ def end_position(node):
     return node.end_lineno, node.end_col_offset
 
 
+def comprehension_scope(c):
+    first, *rest = c.generators
+    return [*([c.elt] if hasattr(c, "elt") else [c.key, c.value]), first.target, *first.ifs,
+            *(part for g in rest for part in (g.target, g.iter, *g.ifs))]
+
+
 class Assignments:
     def __init__(self, tree):
         self.tree, self.scope_of, self.blocks_of, self.bindings, self.nodes = tree, {}, {}, {}, {}
+        self.nonlocals = set()
         self.visit(tree, tree, ())
+        self.comprehended = {id(n) for c in ast.walk(tree) if isinstance(c, ir.PYTHON_COMPREHENSIONS)
+                             for part in comprehension_scope(c) for n in ast.walk(part) if isinstance(n, ast.Name)}
 
     def bind(self, scope, name, at, value, block):
         self.bindings.setdefault((id(scope), name), []).append((at, value, block))
@@ -323,6 +331,8 @@ class Assignments:
                         isinstance(node, ast.arg):
                     here = self.scope_of.get(id(scope), scope)
                 self.scope_of[id(child)], self.blocks_of[id(child)], self.nodes[id(child)] = here, inner, child
+                if isinstance(child, ast.Nonlocal):
+                    self.nonlocals |= {(id(here), n) for n in child.names}
                 declared = isinstance(node, ast.AnnAssign) and node.value is None and \
                     not isinstance(here, FUNCTION_SCOPES)
                 if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Store) and not declared:
@@ -338,6 +348,8 @@ class Assignments:
 
     def reaching(self, name):
         scope, outer = self.scope_of.get(id(name)), False
+        if isinstance(scope, ast.ClassDef) and id(name) in self.comprehended:
+            scope, outer = self.scope_of.get(id(scope)), True
         chain = self.blocks_of.get(id(name), ())
         while scope is not None:
             bound = None if outer and isinstance(scope, ast.ClassDef) else self.bindings.get((id(scope), name.id))
@@ -345,7 +357,8 @@ class Assignments:
                 bound = [b for b in bound if not self.other_branch(b[2], chain)]
                 earlier = sorted((b for b in bound if b[0] <= position(name)), key=lambda b: b[0], reverse=True)
                 if not outer and not earlier and isinstance(scope, ast.ClassDef):
-                    scope, outer = self.tree, True
+                    nonlocal_ = (id(scope), name.id) in self.nonlocals
+                    scope, outer = self.scope_of.get(id(scope)) if nonlocal_ else self.tree, True
                     continue
                 if outer and len(bound) > 1 and any(b[0] > position(name) for b in bound):
                     return []
@@ -415,24 +428,8 @@ def joined_script(tokens, source_text, expression, names):
     return (text, lines) if text else None
 
 
-def evaluated(tree):
-    postponed = ir.postponed_annotations(tree)
-    queue = deque([(tree, False)])
-    while queue:
-        node, in_function = queue.popleft()
-        yield node
-        for name, value in ast.iter_fields(node):
-            if name == "annotation" and (postponed or (in_function and isinstance(node, ast.AnnAssign))) or \
-                    name == "returns" and postponed:
-                continue
-            inside = (in_function or name == "body" and isinstance(node, FUNCTION_SCOPES)) and \
-                not (name == "body" and isinstance(node, ast.ClassDef))
-            queue.extend((child, inside) for child in (value if isinstance(value, list) else [value])
-                         if isinstance(child, ast.AST))
-
-
 def command_lists(tree):
-    for node in evaluated(tree):
+    for node in ir.evaluated([tree], ir.postponed_annotations(tree), False):
         if isinstance(node, (ast.List, ast.Tuple)):
             elements = node.elts
             for k, e in enumerate(elements):
@@ -447,27 +444,27 @@ def embedded_powershell(path, tree, text, file_line=None):
         return []
     file_line = file_line or (lambda n: n)
     tokens = list(tokenize.generate_tokens(io.StringIO(text).readline))
+    pieces, seen = [], set()
     try:
         names = Assignments(tree)
+        for _, script_node in found:
+            targets = list(dict.fromkeys(names.values(script_node)))
+            built = [joined_script(tokens, text, t, names) if joined(t) else powershell_script(tokens, text, t)
+                     for t in targets if t is not None and id(t) not in seen]
+            if None in targets or None in built:
+                line = file_line(script_node.lineno)
+                pieces.append(Piece(path, "powershell", "", lambda _, line=line: line, problem=f"{path}:{line}: the "
+                                    f"PowerShell reader can't follow the script that Python passes after -Command"))
+                continue
+            seen |= {id(t) for t in targets}
+            for script, lines in built:
+                def line_of(offset, lines=lines):
+                    return file_line(lines[min(max(offset, 0), len(lines) - 1)])
+                pieces.append(powershell_piece(path, script, line_of, shell="powershell"))
     except RecursionError:
         piece = Piece(path, "python", text, file_line)
         piece.problem = too_deep(piece)
         return [piece]
-    pieces, seen = [], set()
-    for _, script_node in found:
-        targets = list(dict.fromkeys(names.values(script_node)))
-        built = [joined_script(tokens, text, t, names) if joined(t) else powershell_script(tokens, text, t)
-                 for t in targets if t is not None and id(t) not in seen]
-        if None in targets or None in built:
-            line = file_line(script_node.lineno)
-            pieces.append(Piece(path, "powershell", "", lambda _, line=line: line, problem=f"{path}:{line}: the "
-                                f"PowerShell reader can't follow the script that Python passes after -Command"))
-            continue
-        seen |= {id(t) for t in targets}
-        for script, lines in built:
-            def line_of(offset, lines=lines):
-                return file_line(lines[min(max(offset, 0), len(lines) - 1)])
-            pieces.append(powershell_piece(path, script, line_of, shell="powershell"))
     return pieces
 
 

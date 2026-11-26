@@ -1,5 +1,6 @@
 import ast
 import re
+from collections import deque
 from dataclasses import dataclass, field
 
 from . import powershell as ps
@@ -279,6 +280,25 @@ def retries(unit):
     return found
 
 
+PYTHON_COMPREHENSIONS = (ast.ListComp, ast.SetComp, ast.GeneratorExp, ast.DictComp)
+PYTHON_FUNCTIONS = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)
+
+
+def evaluated(nodes, postponed, in_function):
+    queue = deque((node, in_function) for node in nodes)
+    while queue:
+        node, in_function = queue.popleft()
+        yield node
+        for name, value in ast.iter_fields(node):
+            if name == "annotation" and (postponed or (in_function and isinstance(node, ast.AnnAssign))) or \
+                    name == "returns" and postponed:
+                continue
+            inside = (in_function or name == "body" and isinstance(node, PYTHON_FUNCTIONS)) and \
+                not (name == "body" and isinstance(node, ast.ClassDef))
+            queue.extend((child, inside) for child in (value if isinstance(value, list) else [value])
+                         if isinstance(child, ast.AST))
+
+
 def postponed_annotations(tree):
     return any(isinstance(s, ast.ImportFrom) and s.module == "__future__" and
                any(a.name == "annotations" for a in s.names) for s in getattr(tree, "body", []))
@@ -482,7 +502,8 @@ class PythonLowering:
             return True
         targets = {n.id for n in ast.walk(loop.target) if isinstance(n, ast.Name)}
         used = {n.id for s in loop.body for n in ast.walk(s) if isinstance(n, ast.Name) and n.id != "_"}
-        return not targets & used and not ("_" in targets and reads_underscore(loop.body))
+        return not targets & used and not ("_" in targets and reads_underscore(
+            list(evaluated(loop.body, self.postponed, self.in_function))))
 
     def exits(self, call):
         f = call.func
@@ -499,8 +520,7 @@ class PythonLowering:
         return isinstance(node, ast.Attribute) and node.attr in PYTHON_BROAD
 
 
-def reads_underscore(body):
-    nodes = [n for s in body for n in ast.walk(s)]
+def reads_underscore(nodes):
     augmented = {id(n.target) for n in nodes if isinstance(n, ast.AugAssign)}
     names = [n for n in nodes if isinstance(n, ast.Name) and n.id == "_"]
     rebinds = any(isinstance(n.ctx, ast.Store) and id(n) not in augmented for n in names) or \

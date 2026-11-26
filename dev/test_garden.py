@@ -303,6 +303,16 @@ CASES = {
                   "        x = subprocess.run(['powershell', '-Command', ps])\n        ps = 'Get-Item x'\n"},
          {"a.py": "import subprocess\nps = 'Start-Sleep 1'\ndef g():\n    ps = 'Get-Date'\n    class C:\n"
                   "        x = subprocess.run(['powershell', '-Command', ps])\n        ps = 'Get-Item x'\n"}),
+        ("a class in a function that declares the name nonlocal reads it from the function",
+         {"a.py": "import subprocess\nps = 'Start-Sleep 1'\ndef f():\n    ps = 'Get-Date'\n    class C:\n        nonlocal ps\n"
+                  "        subprocess.run(['powershell', '-Command', ps])\n        ps = 'Get-Item x'\n"},
+         {"a.py": "import subprocess\nps = 'Get-Date'\ndef f():\n    ps = 'Start-Sleep 1'\n    class C:\n        nonlocal ps\n"
+                  "        subprocess.run(['powershell', '-Command', ps])\n        ps = 'Get-Item x'\n"}),
+        ("a comprehension in a class reads the name from around the class",
+         {"a.py": "import subprocess\nps = 'Start-Sleep 1'\ndef f():\n    ps = 'Get-Date'\n    class C:\n"
+                  "        x = [subprocess.run(['powershell', '-Command', ps]) for i in (0,)]\n        ps = 'Get-Item x'\n"},
+         {"a.py": "import subprocess\nps = 'Get-Date'\ndef f():\n    ps = 'Start-Sleep 1'\n    class C:\n"
+                  "        x = [subprocess.run(['powershell', '-Command', ps]) for i in (0,)]\n        ps = 'Get-Item x'\n"}),
         ("a name the class body uses before setting it is read from around the class",
          {"a.py": "import subprocess\nps = 'Get-Date'\nclass C:\n    x = subprocess.run(['powershell', '-Command', ps])\n"
                   "    ps = 'Start-Sleep 1'\n"},
@@ -446,6 +456,13 @@ CASES = {
          {"a.py": "import time\ndef attempt():\n    try:\n        return action()\n    except OSError:\n"
                   "        return None\nfor _ in items:\n"
                   "    print(x)\n    del x\n    if attempt():\n        break\n    time.sleep(1)\n"}),
+        ("a for over items whose only _ is in the annotation of a local variable",
+         {"a.py": "import time\ndef attempt():\n    try:\n        return action()\n    except OSError:\n"
+                  "        return None\ndef poll():\n    for _ in items:\n"
+                  "        print(_)\n        if attempt():\n            break\n        time.sleep(1)\n"},
+         {"a.py": "import time\ndef attempt():\n    try:\n        return action()\n    except OSError:\n"
+                  "        return None\ndef poll():\n    for _ in items:\n"
+                  "        x: _\n        if attempt():\n            break\n        time.sleep(1)\n"}),
         ("a redirection of the errors keeps the test of an expression",
          {"a.ps1": "function attempt { try { Get-Date } catch { $null } }\nwhile ($true) {\n    $done = attempt\n"
                    "    if (($done) >$null) { break }\n    Start-Sleep 1\n}\n"},
@@ -1320,6 +1337,10 @@ def test_unreadable():
             ("Python too deep to follow its names",
              {"a.py": "from __future__ import annotations\nimport subprocess\n"
                       "subprocess.run(['powershell', '-Command', 'Get-Date'])\nx: " + "a." * 1500 + "b = 1\n"},
+             "a.py:1: the Python reader stops here"),
+            ("Python too deep to follow its joins",
+             {"a.py": "s0 = 'Get-Date'\n" + "".join(f"s{i} = '\\n'.join([s{i - 1}])\n" for i in range(1, 1101))
+                      + "run(['powershell', '-Command', s1100])\n"},
              "a.py:1: the Python reader stops here"),
             ("Python step of a composite action",
              {"action.yml": "runs:\n  steps:\n    - shell: python\n      run: this is not Python!\n"},
