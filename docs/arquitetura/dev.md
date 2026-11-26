@@ -65,13 +65,13 @@ jobs de que depende, em toda montagem que a esteira espera (com e sem parcial, s
 `anterior` e `parcial` do job `monta`, que o `if:` do `testa-migracao` e o do `testa-parcial` leem, cada uma
 vinda de um passo que a grava no `GITHUB_OUTPUT` (a `parcial`, pelo `Test-Path` do
 `Ritmelli-$env:VERSAO-parcial.exe` na pasta do artefato, entre aspas duplas e com o `VERSAO` do `congela`,
-atribuído uma vez a uma variável que a única linha do `GITHUB_OUTPUT` com essa chave grava depois como
-`parcial=`; toda chave das saídas tem uma gravação só); e os artefatos `Ritmelli-<versão>` (a pasta que o
-passo do `publica.py` recebe no `--saida`) e `ritmelli-exe-<versão>` (um caminho só, sem curinga, que termina
-no `ritmelli.exe`), cada um uma vez na execução inteira, contados como o server conta (sem o job ou o passo
-desligado), e nenhum outro artefato que a esteira tomaria pela versão (`Ritmelli-1.2.3`). Os dois artefatos
-(que também não podem sair de um job que deixe de rodar numa dessas montagens), o `congela`, o passo do
-`publica.py` e os passos das saídas `anterior` e `parcial` não podem ter `if:`, nenhum passo antes do
+atribuído uma vez a uma variável que o único comando `Add-Content` do `GITHUB_OUTPUT` com essa chave grava
+depois como `parcial=`; toda chave das saídas tem uma gravação só); e os artefatos `Ritmelli-<versão>` (a
+pasta que o passo do `publica.py` recebe no `--saida`) e `ritmelli-exe-<versão>` (um caminho só, sem curinga,
+que termina no `ritmelli.exe`), cada um uma vez na execução inteira, contados como o server conta (sem o job
+ou o passo desligado), e nenhum outro artefato que a esteira tomaria pela versão (`Ritmelli-1.2.3`). Os dois
+artefatos (que também não podem sair de um job que deixe de rodar numa dessas montagens), o `congela`, o passo
+do `publica.py` e os passos das saídas `anterior` e `parcial` não podem ter `if:`, nenhum passo antes do
 `publica.py` o cita, e o que está em comentário do PowerShell não conta (no `--saida`, um comentário também
 reprova, porque o server o lê cru). O `--tela` junta o `fitcheck` e o `compara` do jeito do PR (no `testa.yml`
 o `compara` roda num job à parte, pelo `--compara`, com a referência da base no cache do Actions), e o
