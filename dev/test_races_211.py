@@ -423,20 +423,25 @@ def audio_version_entries(A, E):
         A.change_queue(lambda: A.fila.extend([head, tail]))
     mixed = {"youtube_id": "ggggggggggg", "title": "mixed", "ordem": 1}
     plain = {"youtube_id": "hhhhhhhhhhh", "title": "plain", "ordem": 2}
-    mix0, A.mix = A.mix, [mixed, plain, head]
+    au = A.automatico
+    mix0, au._mix = au._mix, [mixed, plain, head]
     v = {"youtube_id": "iiiiiiiiiii", "duration": 200, "title": "the audio", "channel": "c"}
     audio = {"youtube_id": "iiiiiiiiiii", "duration": 200, "title": "the audio", "channel": "c", "audio": True,
              "video": "ggggggggggg", "thumb": music.thumb("iiiiiiiiiii"), "tipo": "ATV"}
     try:
-        with A.fila_lock, mock.patch.object(A.automatico, "head_held", return_value=True):
-            A.apply_audio_version("ggggggggggg", v)
+        with A.fila_lock, mock.patch.object(au, "head_held", return_value=True):
+            au._troca_audio("ggggggggggg", v)
         check(head == dict(entry, qid="head1"), f"the held head keeps its version ({head})")
         check(tail == dict(entry, qid="tail1", **audio), f"the entry after it takes the audio version ({tail})")
-        check(mixed == {"ordem": 1, **audio}, f"the Mix entry takes the audio version ({mixed})")
-        with A.fila_lock, mock.patch.object(A.automatico, "head_held", return_value=False):
-            A.apply_audio_version("hhhhhhhhhhh", None)
-        check(plain == {"youtube_id": "hhhhhhhhhhh", "title": "plain", "ordem": 2, "audio": True},
-              f"with no audio version, the Mix entry only gets the mark that it was looked up ({plain})")
+        check(au._mix[0] == {"ordem": 1, **audio} and mixed == {"youtube_id": "ggggggggggg", "title": "mixed",
+                                                              "ordem": 1},
+              f"the Mix entry takes the audio version as a new entry ({au._mix[0]}, {mixed})")
+        check(au._mix[2] is not head and au._mix[2]["audio"],
+              f"the Mix's copy of the head takes it too, and the queue's head stays ({au._mix[2]})")
+        with A.fila_lock, mock.patch.object(au, "head_held", return_value=False):
+            au._troca_audio("hhhhhhhhhhh", None)
+        check(au._mix[1] == {"youtube_id": "hhhhhhhhhhh", "title": "plain", "ordem": 2, "audio": True},
+              f"with no audio version, the Mix entry only gets the mark that it was looked up ({au._mix[1]})")
         reserved = dict(entry, qid="reserved1", youtube_id="jjjjjjjjjjj")
         with A.fila_lock:
             A.change_queue(lambda: A.fila.append(reserved))
@@ -448,7 +453,7 @@ def audio_version_entries(A, E):
               f"the entry a reservation in flight is playing, away from the head, keeps its version ({reserved})")
     finally:
         A.reserva = None
-        A.mix = mix0
+        au._mix = mix0
         cmd.limpar_fila(A)
 
 

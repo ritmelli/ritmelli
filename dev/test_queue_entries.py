@@ -4,7 +4,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 OWNER = ("server.py", "App")
-CONTAINERS = {"fila", "fila_ordem", "mix"}
+CONTAINERS = {"fila", "fila_ordem", "mix", "_mix"}
 QUEUE = {"fila", "fila_ordem"}
 ENTRY_ATTRS = {"x", "entrada"}
 MUTATORS = {"update", "setdefault", "pop", "popitem", "clear", "__setitem__", "__delitem__"}
@@ -445,7 +445,9 @@ ENTRY_FORMS = {
     "an entry passed to a function of another module": ({"comandos.py": "def marca(x):\n    x['audio'] = True\n",
                                                          "case.py": "def f(A):\n    cmd.marca(A.fila[0])\n"}, 1),
     "a tuple assignment to an entry": ({"case.py": "def f(A):\n    A.fila[0]['audio'], y = True, 1\n"}, 1),
-    "dict.update called on an entry of the Mix": ({"case.py": "def f(A):\n    dict.update(A.mix[0], audio=True)\n"}, 1),
+    "the Automatico writing an entry of its own Mix in place": (
+        {"automatico.py": "class Automatico:\n    def f(self):\n        for m in self._mix:\n            m['ordem'] = 1\n"}, 1),
+    "dict.update called on an entry of the Mix":({"case.py": "def f(A):\n    dict.update(A.mix[0], audio=True)\n"}, 1),
     "an entry of a shallow copy of the queue": ({"case.py": "def f(A):\n    for x in A.fila.copy():\n"
                                                             "        x['fixa'] = True\n"}, 1),
     "a new dict made from an entry, then changed": ({"case.py": "def f(A):\n    y = dict(A.fila[0])\n"

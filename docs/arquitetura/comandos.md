@@ -177,8 +177,9 @@ pega o `_qlock`, muda e confere a preparada no mesmo trecho: fora do `App`, nenh
 ou do Mix (atribuição, `update`, subscript ou `del`), e o `dev/test_queue_entries.py` falha se escrever. Dentro do
 `App`, as entradas da fila só mudam numa função passada ao `change_queue`, e a própria fila (atribuição, fatia,
 `append`, `remove` e afins, também por um apelido dela ou por quem a recebe como argumento) só muda ali, em qualquer
-módulo. A versão de áudio das parecidas entra pelo `App.apply_audio_version`, que muda a fila pelo `change_queue` e, no
-mesmo trecho do `_qlock`, deixa como estão a entrada da virada pendente (pelo `qid`, a mesma versão que o prato toca), a
+módulo. A versão de áudio das parecidas entra no Mix do Automático como entradas novas (o `_troca_audio`, que não
+escreve nas que já existem) e na fila pelo `App.apply_audio_version`, que muda a fila pelo `change_queue` e, no mesmo
+trecho do `_qlock`, deixa como estão a entrada da virada pendente (pelo `qid`, a mesma versão que o prato toca), a
 primeira da fila presa e a que uma reserva em curso vai tocar (`App.reserva`). Os trechos do servidor e dos comandos que
 precisam do `_qlock` (os do Próximo, da reserva, do `concilia`, da troca, do `remember_pos`, do `release_reservation` e
 do `change_queue`) o pegam pelo `Engine.state_section()`, e o `_lock` só pelo `Engine.with_lock`. A falha de preparar a
@@ -186,10 +187,10 @@ próxima sai do motor pelo `take_prepare_failure`, sob o `_qlock`, e o erro da t
 motor só se lê).
 
 Os comandos e o Automático chamam o `App` só pela interface pública dele: `change_queue`, `remove_from_queue`,
-`remove_if_queued`, `save_history`, `release_reservation`, `close_switches`, `with_engine`, `tempo_of`,
+`remove_if_queued`, `save_history`, `release_reservation`, `close_switches`, `with_engine`,
 `search_songs`, `run_helper` e os outros; o que eles ainda escrevem direto no estado do `App` é contado
 abaixo. O servidor chama o Automático pela dele (`ligar_auto`,
-`run_auto_watcher` e `run_tempo_watcher`); o `auto_round` e o `fetch_mix` são a volta do vigia das parecidas e a busca
+`run_auto_watcher`, `run_tempo_watcher`, `refuse`, chamado com o `fila_lock` na mão, e lê o `auto` e o `tempo_of`), e o estado do Automático mora nele; o `auto_round` e o `fetch_mix` são a volta do vigia das parecidas e a busca
 que ela pede, que os testes chamam pelo `A.automatico`. A prateleira grava pelo `Library.save`.
 
 O `dev/testa_ganchos.py` conta, cada número contra o seu teto, que só desce: os acessos aos nomes privados do motor
