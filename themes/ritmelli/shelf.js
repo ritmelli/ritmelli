@@ -247,7 +247,7 @@ function marcarPrateleira() {
   });
 }
 let seguradaEm = 0;
-function bindShelf() {
+function bindShelfClick() {
   $('#estante').addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
     const li = b.closest('li');
@@ -263,6 +263,8 @@ function bindShelf() {
     else if (b.dataset.role === 'mais' && id) { if (menuBotao === b) fecharMenu(true); else { fecharMenu(false); abrirMenu(b, { tipo: 'disco', id }); } }
     else if (b.dataset.role === 'retentar') { const c = S.jobCorpo[b.dataset.job]; if (c) baixar(c, S.jobAlvo[b.dataset.job]); }
   });
+}
+function bindShelf() {
   $('#chips').addEventListener('click', e => {
     const b = e.target.closest('.compacto');
     if (b && Date.now() - seguradaEm > 900) tocar(b.dataset.id, { por_cima: true });   // soltar depois de segurar nao toca

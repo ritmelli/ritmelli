@@ -58,15 +58,19 @@ function abrirPalcoComHistoria() {
   abrirPalco(true);
   if (S.palco && !palcoNaHistoria) { history.pushState({ palco: true, vida: VIDA }, ''); palcoNaHistoria = true; }
 }
-function bindStage() {
+function bindMiniBar() {
   $('#mini-tocar').addEventListener('click', alternar);
   $('#mini-cortar').addEventListener('click', mutarComAviso);
+}
+function bindStageButtons() {
   $('#palco-cortar').addEventListener('click', mutarComAviso);
   $('#mini-abrir').addEventListener('click', () => celular() ? abrirPalcoComHistoria() : abrirDisco(!S.disco));
   $('#mini-seta').addEventListener('click', () => abrirDisco(!S.disco));
   $('#mini-ant').addEventListener('click', () => cmd('/api/prev'));
   $('#mini-prox').addEventListener('click', () => cmd('/api/next'));
   $('#b-fechar-palco').addEventListener('click', fecharPalco);
+}
+function bindStageGestures() {
   /* gestos do Spotify, com o palco preso ao dedo: a barra e a beirada do palco recolhido;
      puxar a barra para cima sobe o palco inteiro, e a barra se apaga no primeiro terco da
      subida (a madeira do palco aparece por baixo); puxar o palco aberto para baixo (com ele no
