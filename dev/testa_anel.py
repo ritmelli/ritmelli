@@ -1057,8 +1057,8 @@ class TestVoicePedalDryOut(unittest.TestCase):
         self.assertTrue(espera(lambda: time.perf_counter() - since > 0.3))
         self.drain_next = True
         self.gate.set()
-        self.assertTrue(espera(lambda: self.inj.estado()["volta_max_ms"] > 300), "the long return was never published")
-        self.wait_filled()
+        self.assertTrue(espera(lambda: self.inj.volta_max > 0.3 and self.inj.estado()["volta_max_ms"] > 300),
+                        "the pass with the long return never ended")
         self.held.clear()
         self.gate.clear()
         self.assertTrue(self.held.wait(3), "the injector never got back to the ring")
