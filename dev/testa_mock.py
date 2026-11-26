@@ -1252,9 +1252,9 @@ def the_theme_page_build():
             "a prefetch with no as": ('<link rel="prefetch" href="first.js">', {}, "preloads or prefetches"),
             "a page in a srcdoc": ('<iframe srcdoc="&lt;script src=first.js&gt;&lt;/script&gt;"></iframe>', {},
                                    "writes a page in an attribute"),
-            "a script ended by />": ('<script/>/*<a title="*/</script><script src="first.js"></script>">', {},
+            "a script ended by />": ("<script/><a title='</script><script src=\"first.js\"></script>'>", {},
                                      "ends in />"),
-            "a style ended by />": ('<style/>/*<a title="*/</style><link rel="stylesheet" href="a.css">">', {},
+            "a style ended by />": ("<style/><a title='</style><link rel=\"stylesheet\" href=\"a.css\">'>", {},
                                     "ends in />"),
             "an end tag with a space before the name": (
                 '<script>/*</ script><a title="*/</script><script src="first.js"></script>">', {}, "is not an end tag"),
