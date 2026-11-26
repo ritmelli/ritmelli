@@ -1201,6 +1201,17 @@ def the_theme_page_build():
                                                                            "has '&', which is not a whole"),
             "a script name with an unknown named reference": ('<script src="a&ampx;b.js"></script>', {},
                                                               "'&ampx;', which is not a whole"),
+            "a file tag in a textarea": ('<textarea><script src="first.js"></script></textarea>', {}, "holds a <"),
+            "a file tag in the title": ('<title><script src="first.js"></script></title>', {}, "holds a <"),
+            "a file tag in a noscript": ('<noscript><script src="first.js"></script></noscript>', {}, "holds a <"),
+            "a title the browser ends at </title x>": (
+                '<title>a</title x><script src="first.js"></script><title></title>', {}, "holds a <"),
+            "a noscript the browser ends at </noscript data-x>": (
+                '<noscript>b</noscript data-x><script src="first.js"></script></noscript>', {}, "holds a <"),
+            "a file tag in an svg title": ('<svg><title><script src="first.js"></script></title></svg>', {}, "holds a <"),
+            "an svg script with an href": ('<svg><script href="first.js"/></svg>', {}, "attributes but no src"),
+            "a script name with a numeric reference": ('<script src="a&#xFDD0;b.js"></script>', {"ab.js": "1;\n"},
+                                                       "has '&', which is not a whole"),
             "a sheet in a subfolder with an http: url() without a host": (
                 '<link rel="stylesheet" href="sub/b.css">', {"sub/b.css": "a { b: url(http:cover.png); }\n"},
                 "relative url()"),
@@ -1227,9 +1238,7 @@ def the_theme_page_build():
         sheet.write_text("a { b: url(fonts/x.woff2); c: image-set(url('y.webp') 2x, 'z.webp' 1x); d: '\\00B7'; }\n",
                          encoding="utf-8")
         kept = {"a tag written inside an attribute": ("<div title='<script src=\"first.js\"></script>'></div>", None),
-                "a tag written as the text of a textarea": ('<textarea><script src="example.js"></script></textarea>', None),
-                "a tag written as the text of the title": ('<title><script src="example.js"></script></title>', None),
-                "a tag written in a noscript": ('<noscript><script src="example.js"></script></noscript>', None),
+                "a title of plain text": ("<title>Ritmelli &amp; co</title>", None),
                 "a sheet that starts with a byte order mark": ('<link rel="stylesheet" href="bom.css">',
                                                                "<style>\na { b: c; }\n</style>"),
                 "a script name with a character reference": ('<script src="a&amp;b.js"></script>',

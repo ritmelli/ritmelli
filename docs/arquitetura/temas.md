@@ -34,19 +34,22 @@ folha, sem outros atributos. O servidor (o `build` do `theme_page.py`, que o `se
 `<script>` ou um `<style>` com o texto do arquivo, e a página não pede ao servidor nenhum script nem nenhuma folha: não
 existe página com um arquivo faltando. O arquivo que falta ou que sai da pasta, o que traz o que fecharia o elemento em
 volta dele (`</script` ou `<!--` num script, `</style` ou `@import` numa folha), a tag de arquivo escrita de outro
-jeito, o nome de arquivo com um `&` que não é uma referência inteira (o `&amp;` vale) e o comentário que o navegador
-fecha antes do HTMLParser do Python (`<!-->`, `<!--->`, `--!>` e o `<![`) param a montagem no servidor, que responde 500
-e põe no log o nome do arquivo. O arquivo entra sem a marca de ordem de bytes (BOM) do começo. A folha se lê com os
-escapes de CSS decodificados, também nos comentários e nas strings, e o `@import` que aparece em qualquer lugar dela,
-mesmo só num comentário ou numa string, para a montagem. A folha de outra pasta só leva `url()` simples, com `https://`,
-`http://`, outro esquema, `data:`, `/` ou `#`, porque a página lê os endereços a partir da pasta dela: um `url()`
-relativo, uma `\` ou um `image-set(` nela também param a montagem. O que a montagem não distingue com certeza de uma
-busca, ela recusa; o `dev/testa_mock.py` confere cada um desses casos. O `dev/missing_script.py`, que o `--tela` do
-`dev/testa_tudo.py` roda, lê a página e a galeria como o servidor as manda, nas duas línguas, de um `--mock` como o PC e
-de outro como o celular, e reprova com um `<script src>` ou um `<link rel="stylesheet">` nelas ou com um pedido de
-script ou de folha que o Chrome faça ao servidor. O `dev/garden.py` conta as linhas de CSS e JS escritas no próprio
-`index.html` e guarda o teto delas (o `theme_inline_lines` do `dev/garden.json`), que é 0: código novo do tema vai num
-arquivo da pasta, e a contagem vai para o resumo do PR.
+jeito, o nome de arquivo com um `&` que não abre uma referência nomeada inteira (o `&amp;` vale; a numérica, não), o
+comentário que o navegador fecha antes do HTMLParser do Python (`<!-->`, `<!--->`, `--!>`), o `<![`, que o navegador lê
+como comentário falso até o primeiro `>`, o elemento de texto (`<title>`, `<textarea>`, `<noscript>`, `<iframe>`,
+`<xmp>`, `<noembed>`, `<noframes>`) com um `<` dentro ou fechado de outro jeito que `</nome>`, e o `<script>` com
+atributo e sem `src` param a montagem no servidor, que responde 500 e põe no log o nome do arquivo. O arquivo entra sem
+a marca de ordem de bytes (BOM) do começo. A folha se lê com os escapes de CSS decodificados, também nos comentários e
+nas strings, e o `@import` que aparece em qualquer lugar dela, mesmo só num comentário ou numa string, para a montagem.
+A folha de outra pasta só leva `url()` simples, com `https://`, `http://`, outro esquema, `data:`, `/` ou `#`, porque a
+página lê os endereços a partir da pasta dela: um `url()` relativo, uma `\` ou um `image-set(` nela também param a
+montagem. O que a montagem não distingue com certeza de uma busca, ela recusa; o `dev/testa_mock.py` confere cada um
+desses casos. O `dev/missing_script.py`, que o `--tela` do `dev/testa_tudo.py` roda, lê a página e a galeria como o
+servidor as manda, nas duas línguas, de um `--mock` como o PC e de outro como o celular, e reprova com um `<script src>`
+ou um `<link rel="stylesheet">` nelas ou com um pedido de script ou de folha que o Chrome faça ao servidor. O
+`dev/garden.py` conta as linhas de CSS e JS escritas no próprio `index.html` e guarda o teto delas (o
+`theme_inline_lines` do `dev/garden.json`), que é 0: código novo do tema vai num arquivo da pasta, e a contagem vai para
+o resumo do PR.
 
 Os scripts são clássicos, sem `defer`: rodam na ordem da lista, e o que um declara no alto fica à vista dos de depois.
 No `<head>`, logo depois dos textos que o servidor põe no `<!-- i18n -->`, vêm o `i18n.js` (o `I18N`, ver o

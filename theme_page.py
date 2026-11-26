@@ -13,13 +13,14 @@ import i18n
 THEMES = Path(__file__).resolve().parent / "themes"
 SCRIPT_TAG = re.compile(r'<script src="([^"]+)">')
 SHEET_TAG = re.compile(r'<link rel="stylesheet" href="([^"]+)">')
-REFERENCE = re.compile(r"&(?:#[0-9]+;|#[xX][0-9a-fA-F]+;|[A-Za-z][A-Za-z0-9]*;)?")
+REFERENCE = re.compile(r"&(?:[A-Za-z][A-Za-z0-9]*;)?")
 CLOSES_ELEMENT = {"script": re.compile(r"</script|<!--", re.IGNORECASE), "style": re.compile(r"</style", re.IGNORECASE)}
 CSS_ESCAPE = re.compile(r"\\(?:([0-9a-fA-F]{1,6})(?:\r\n|[ \t\r\n\f])?|(.))", re.DOTALL)
 URL_START = re.compile(r"url\([ \t\r\n\f]*['\"]?", re.IGNORECASE)
 NOT_PLAIN_OUTSIDE = re.compile(r"\\|image-set\(", re.IGNORECASE)
 NOT_RELATIVE = re.compile(r"[ \t\r\n\f]*(?:https?://|(?!https?:)[a-z][a-z0-9+.-]*:|/|#)", re.IGNORECASE | re.ASCII)
 TEXT_ONLY = ("textarea", "title", "xmp", "iframe", "noembed", "noframes", "noscript")
+PLAIN_TEXT = {tag: re.compile(rf"[^<]*</{tag}>", re.IGNORECASE) for tag in TEXT_ONLY}
 
 
 def css_unescape(text):
@@ -54,20 +55,26 @@ class FileTags(HTMLParser):
         self.close()
 
     def handle_starttag(self, tag, attrs):
+        raw = self.get_starttag_text()
+        line, column = self.getpos()
+        at = self.lines[line - 1] + column
         if tag in TEXT_ONLY:
+            if not PLAIN_TEXT[tag].match(self.html, at + len(raw)):
+                raise ThemePageError(f"the <{tag}> on line {line} holds a < or does not end in </{tag}>, which the "
+                                     f"browser can read as markup")
             self.set_cdata_mode(tag)
+            return
         first = {}
         for name, value in attrs:
             first.setdefault(name, value)
+        if tag == "script" and attrs and "src" not in first:
+            raise ThemePageError(f"the tag {raw!r} has attributes but no src, which the browser can fetch a file from")
         if tag == "script" and "src" in first:
             canonical, kind, end = SCRIPT_TAG, "script", "</script>"
         elif tag == "link" and "stylesheet" in (first.get("rel") or "").lower().split():
             canonical, kind, end = SHEET_TAG, "style", ""
         else:
             return
-        raw = self.get_starttag_text()
-        line, column = self.getpos()
-        at = self.lines[line - 1] + column
         written = canonical.fullmatch(raw)
         if not written or not self.html.startswith(end, at + len(raw)):
             raise ThemePageError(f"the tag {raw!r} is not <script src=\"...\"></script> or "
