@@ -77,7 +77,7 @@ def canal_do(yid):
         return None
     try:
         return ((ytm().get_song(yid) or {}).get("videoDetails") or {}).get("author") or None
-    except Exception:  # fica sem o canal rapido
+    except Exception:  # a consulta falhou: o disco fica sem o nome do canal
         return None
 
 
