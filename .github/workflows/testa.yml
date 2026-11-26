@@ -171,7 +171,9 @@ jobs:
           python-version: '3.12.10'
       - name: O PR mexe no filtro?
         id: areas
-        run: python dev/testa_tudo.py --areas $env:BASE
+        env:
+          BUILD_BASE: ${{ github.event_name == 'merge_group' && format('{0}^1', github.event.merge_group.head_sha) || github.event.pull_request.base.sha }}
+        run: python dev/testa_tudo.py --areas $env:BASE --build-base $env:BUILD_BASE
       - uses: ./.github/actions/python
         if: steps.areas.outputs.microfone == 'true'
         with:

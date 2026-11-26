@@ -1,6 +1,8 @@
+import argparse
 import contextlib
 import copy
 import importlib.util
+import io
 import os
 import re
 import subprocess
@@ -8,6 +10,7 @@ import sys
 import tempfile
 import threading
 from pathlib import Path
+from unittest import mock
 
 from fake_gh import bash, run_step
 from workflow_yaml import YamlError, find_step, job_steps, load, loads, workflows
@@ -309,6 +312,67 @@ def test_build_gate(block):
     check(code == 0 and not builds(calls), f"the push to main does not ask for monta.yml (exit {code})")
 
 
+def test_build_base_in_queue():
+    with tempfile.TemporaryDirectory(prefix="ritmelli-queue-") as tmp:
+        repo = Path(tmp)
+
+        def git(*args):
+            return subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", *args], cwd=repo,
+                                  capture_output=True, text=True, check=True).stdout.strip()
+
+        def commit(path, text):
+            (repo / path).parent.mkdir(parents=True, exist_ok=True)
+            (repo / path).write_text(text, encoding="utf-8")
+            git("add", "-A")
+            git("commit", "-q", "-m", path)
+            return git("rev-parse", "HEAD")
+
+        git("init", "-q")
+        main = commit("README.md", "main\n")
+        ahead = commit("instalador/ritmelli.iss", "the PR ahead in the queue\n")
+        commit("dev/notes.txt", "this PR\n")
+        only_ahead = testa_tudo.touches_build(testa_tudo.changed_files(main, cwd=repo))
+        mine = testa_tudo.touches_build(testa_tudo.changed_files(ahead, cwd=repo))
+        check(only_ahead and not mine, "in a queue entry, only the base before its own PR keeps a build change of the "
+                                       "PR ahead out of its monta answer")
+        git("reset", "-q", "--hard", ahead)
+        git("rm", "-q", "instalador/ritmelli.iss")
+        git("commit", "-q", "-m", "this PR undoes the PR ahead")
+        cumulative = testa_tudo.touches_build(testa_tudo.changed_files(main, cwd=repo))
+        mine = testa_tudo.touches_build(testa_tudo.changed_files(ahead, cwd=repo))
+        check(mine and not cumulative, "in a queue entry, a PR that undoes the build change of the PR ahead counts as "
+                                       "a build change against the base before its own PR")
+
+
+def areas_output(changes, build_base=None):
+    calls = []
+
+    def fake_executa(cmd, **kw):
+        calls.append(cmd)
+        return 0, "".join(f"{f}\0" for f in changes[cmd[-2]])
+
+    with tempfile.TemporaryDirectory() as d, mock.patch.object(testa_tudo, "executa", fake_executa), \
+            mock.patch.dict(os.environ, {"GITHUB_OUTPUT": str(Path(d) / "out"), "ETIQUETAS": "[]"}), \
+            contextlib.redirect_stdout(io.StringIO()):
+        code = testa_tudo.diz_areas(argparse.Namespace(areas="base", build_base=build_base))
+        written = (Path(d) / "out").read_text(encoding="utf-8").splitlines() if code == 0 else []
+    return code, written, calls
+
+
+def test_areas_output():
+    code, written, calls = areas_output({"base": ["instalador/ritmelli.iss", "server.py"]})
+    check(code == 0 and "monta=true" in written and "tela=true" in written,
+          f"the --areas writes monta=true for a build change, with the other areas ({written})")
+    check(bool(calls) and all("--no-renames" in c for c in calls),
+          "the --areas diffs without renames: a build file renamed out of the build paths still counts")
+    code, written, calls = areas_output({"base": ["server.py"]})
+    check(code == 0 and "monta=false" in written, f"the --areas writes monta=false otherwise ({written})")
+    code, written, calls = areas_output({"base": ["instalador/ritmelli.iss", "server.py"], "before": ["server.py"]},
+                                        build_base="before")
+    check(code == 0 and "monta=false" in written and "tela=true" in written and [c[-2] for c in calls] == ["base", "before"],
+          f"with --build-base, the monta answer comes from its own diff and the other areas from the base ({written})")
+
+
 def test_build_wiring(flows):
     def problems(f):
         jobs = f[TESTA]["jobs"]
@@ -321,7 +385,8 @@ def test_build_wiring(flows):
             found.append("the Verdict does not read monta from the filter job")
         if (verdict.get("env") or {}).get("PR_HEAD") != "${{ github.event.pull_request.head.sha }}":
             found.append("the Verdict does not read the PR head")
-        if areas.get("id") != "areas" or "if" in areas or areas.get("run") != testa_tudo.AREAS_RUN:
+        if (areas.get("id") != "areas" or "if" in areas or areas.get("run") != testa_tudo.BUILD_AREAS_RUN
+                or areas.get("env") != testa_tudo.BUILD_BASE_ENV):
             found.append("the areas step of the filter job does not run the --areas unconditionally")
         return found
 
@@ -333,7 +398,10 @@ def test_build_wiring(flows):
                 MONTA="${{ needs.testes.outputs.monta }}")),
             ("the PR head", lambda f: find_step(f[TESTA]["jobs"]["testa-o-pr"], "Verdict")["env"].pop("PR_HEAD")),
             ("the areas step under an if", lambda f: find_step(f[TESTA]["jobs"]["microfone"],
-                                                               "O PR mexe no filtro?").update({"if": "false"}))):
+                                                               "O PR mexe no filtro?").update({"if": "false"})),
+            ("the build base of the queue", lambda f: find_step(f[TESTA]["jobs"]["microfone"],
+                                                                "O PR mexe no filtro?")["env"].update(
+                BUILD_BASE="${{ github.event.merge_group.base_sha || github.event.pull_request.base.sha }}"))):
         check(problems(mutated(flows, change)) != [], f"the wiring check catches {name} changed")
     for path in ("instalador/ritmelli.iss", "atualizador.py", "atualizacao.py", "migra.py", "pastas.py",
                  "microfone/microfone.py", "microfone/apo/version.rc", "ritmelli.spec", ".github/workflows/monta.yml",
@@ -524,6 +592,8 @@ def main():
     test_without_destination(flows)
     test_summary_block(flows)
     test_build_wiring(flows)
+    test_build_base_in_queue()
+    test_areas_output()
     print(f"{'all passed' if not failures else f'{len(failures)} failed'}")
     return 1 if failures else 0
 

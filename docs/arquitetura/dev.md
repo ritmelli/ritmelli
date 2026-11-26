@@ -73,7 +73,8 @@ veredito. A prova de um gatilho do `testa.yml` ou do nome do check exigido se fa
 O PR que mexe na montagem (o `BUILD_PATHS` do `dev/testa_tudo.py`: `instalador/`, os `atualiza*.py`,
 o `migra.py`, o `pastas.py`, o `microfone/microfone.py`, o `microfone/apo/`, o `ritmelli.spec`, a
 `monta.yml` e a ação do Inno Setup) só passa no "Testa o PR" com uma execução aprovada do "Monta o
-instalador" no commit do head do PR: o `--areas` do job do filtro diz `monta=true`, e o "Verdict"
+instalador" no commit do head do PR: o `--areas` do job do filtro diz `monta=true` (na fila, contra
+o commit de antes do PR na entrada, o `--build-base`, como o `compara`), e o "Verdict"
 procura a execução pela API (na fila, no head do PR da entrada). Sem ela, o veredito diz o comando
 (`gh workflow run monta.yml --ref <branch>`); quando a execução passa, roda-se o job de novo. O
 `dev/test_ci_workflow.py` roda esse trecho com o `gh` falso e confere o caminho da resposta, do
