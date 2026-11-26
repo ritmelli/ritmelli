@@ -122,19 +122,20 @@ def position(speed, rng):
 def start_drop(x, z, what, speed):
     w, n = int(LEVEL_WINDOW_MS / 1000 * SR), int(LEVEL_CHECKED_S * SR)
     ref = np.sqrt(np.mean(x[:n] ** 2, axis=0))
-    drops = [float(np.min(20 * np.log10(np.maximum(np.sqrt(np.mean(z[i:i + w] ** 2, axis=0)), 1e-9) / ref)))
-             for i in range(0, n, w)]
+    channels = np.array([20 * np.log10(np.maximum(np.sqrt(np.mean(z[i:i + w] ** 2, axis=0)), 1e-9) / ref)
+                         for i in range(0, n, w)])
+    drops = [float(np.min(c)) for c in channels]
     worst = int(np.argmin(drops))
     msg = (f"{what} at speed {speed:.4f}: the quietest {LEVEL_WINDOW_MS:.0f} ms window of the first "
            f"{LEVEL_CHECKED_S * 1000:.0f} ms, at {worst * LEVEL_WINDOW_MS:.0f} ms, is {drops[worst]:+.1f} dB from the "
            f"input (at least -{LEVEL_DROP_DB} dB)")
-    return drops, drops[worst] >= -LEVEL_DROP_DB, msg
+    return channels, drops, drops[worst] >= -LEVEL_DROP_DB, msg
 
 
 def level(speed, rng):
     x = stereo(0.1 * rng.standard_normal(int(DURATION_S * SR)))
     z, _ = engine.esticar_saida(x, speed, ramp_samples(speed))
-    drops, ok, msg = start_drop(x, z, "level", speed)
+    _, drops, ok, msg = start_drop(x, z, "level", speed)
     check(ok, msg)
     return min(drops)
 
@@ -147,9 +148,8 @@ def incoming_level(speed, rng):
         check(False, f"incoming level at speed {speed:.4f}: output {z.shape} and positions {phi.shape}, where "
                      f"{n_overlap + n_ramp} frames were expected")
         return float("nan")
-    drops, ok, msg = start_drop(x, z, "incoming level", speed)
+    d, drops, ok, msg = start_drop(x, z, "incoming level", speed)
     muted, cut = int(INCOMING_MUTED_MS / LEVEL_WINDOW_MS), int(INCOMING_SILENT_MS / LEVEL_WINDOW_MS)
-    d = np.array(drops)
     symptom = (bool(np.isfinite(d).all()) and d[:muted].max() < -INCOMING_GAP_DB
                and d[cut:].min() >= -INCOMING_GAP_DB)
     if ok:
