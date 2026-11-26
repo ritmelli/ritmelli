@@ -41,9 +41,10 @@ nova), o `caps.js` (o que a página pode, pelo caps do servidor), o `connection.
 o `pairing.js` (o pareamento do celular) e o `welcome.js` (as boas-vindas). Depois do `ui-events.js` vêm o
 `desk-buttons.js` (os botões da mesa de DJ) e o `start.js` (a partida: monta a página e, no `DOMContentLoaded`,
 carrega e conecta), que o servidor põe inline na página (o `inline-script`): eles rodam logo depois do `ui-events.js`,
-sem esperar a rede, como o script em que moravam, e o pareamento aceito no meio da carga já acha o `carregar()`. Inline ficam só o `I18N` do `<head>` e a
+sem esperar a rede, como o script em que moravam, e o pareamento aceito no meio da carga já acha o `carregar()`. Os únicos scripts escritos no próprio `index.html` são o `I18N` do `<head>` e a
 linha que aplica os textos e mostra a página (o `i18n-ok`): num arquivo que não carregasse, a página, com o aviso de
-fora do ar, ficaria escondida.
+fora do ar, ficaria escondida. Na página servida entram também, pelo `inline-script`, o `script-failed.js`, o
+`desk-buttons.js` e o `start.js`.
 
 Cada ouvinte mora no arquivo da parte que ele serve: os da busca (o campo, o formulário, os botões dela, o toque fora
 da gaveta da busca na mesa e os resultados) no `search.js`, os dos efeitos de voz (a gaveta, o Ouvir e o botão de
