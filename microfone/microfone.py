@@ -539,11 +539,11 @@ class MissingEndpointProperties(FileNotFoundError):
     pass
 
 
-class LockedInactiveEndpoint(PermissionError):
+class LockedEndpointNotPresent(PermissionError):
     pass
 
 
-INACTIVE_STATES = (2, 4, 8)
+DEVICE_STATE_NOTPRESENT = 4
 
 
 def _key_exists(path):
@@ -554,27 +554,27 @@ def _key_exists(path):
         return False
 
 
-def _inactive(base):
+def _not_present(base):
     try:
         with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, base) as k:
             state, kind = winreg.QueryValueEx(k, "DeviceState")
     except OSError:
         return False
-    return kind == winreg.REG_DWORD and (state & 0xF) in INACTIVE_STATES
+    return kind == winreg.REG_DWORD and state & 0xF == DEVICE_STATE_NOTPRESENT
 
 
 def _open_fx_properties(base):
-    """The FxProperties key of the endpoint, created when missing. An endpoint that isn't active, has no FxProperties
-    and where Windows denies creating it even to an administrator raises LockedInactiveEndpoint: a device that left the
-    PC, which the filter can't reach. On an active endpoint, one whose state can't be read, or with the key there, the
-    denial stays an error."""
+    """The FxProperties key of the endpoint, created when missing. An endpoint whose device isn't present (DeviceState
+    NOTPRESENT), has no FxProperties and where Windows denies creating it even to an administrator raises
+    LockedEndpointNotPresent: a device that left the PC, which the filter can't reach. In any other state, one that
+    can't be read, or with the key there, the denial stays an error."""
     path = base + r"\FxProperties"
     try:
         return winreg.CreateKeyEx(winreg.HKEY_LOCAL_MACHINE, path, 0, winreg.KEY_READ | winreg.KEY_SET_VALUE)
     except PermissionError as ex:
-        if not _inactive(base) or _key_exists(path):
+        if not _not_present(base) or _key_exists(path):
             raise
-        raise LockedInactiveEndpoint(*ex.args) from ex
+        raise LockedEndpointNotPresent(*ex.args) from ex
 
 
 def _pendura(ep):
@@ -753,15 +753,15 @@ def instala_todos(dll):
     new leaves the sound alone, and only a new DLL restarts only the audio service. Returns the device check if the
     audio restarted (confere_aparelhos), or None. A microphone that refuses the filter doesn't stop the others or
     restart the audio by itself, and an AudioEndpointBuilder that doesn't restart fails too: at the end,
-    FilterChangeFailed carries the check (or None). Only an endpoint without Properties and a LockedInactiveEndpoint
-    are left out without an error."""
+    FilterChangeFailed carries the check (or None). Only an endpoint without Properties and a
+    LockedEndpointNotPresent are left out without an error."""
     parou = _prepara_dll(dll)
     novos, failures = [], []
     for m in microfones(todos=True):
         try:
             if _pendura(m[0]):
                 novos.append(m)
-        except (MissingEndpointProperties, LockedInactiveEndpoint):
+        except (MissingEndpointProperties, LockedEndpointNotPresent):
             continue
         except OSError as ex:
             failures.append(f"the filter wasn't installed on {m[1]} ({m[2]}): {ex}")

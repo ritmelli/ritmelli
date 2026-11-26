@@ -340,11 +340,11 @@ class TestaReinicio(unittest.TestCase):
         with self.assertRaises(filtro.FilterChangeFailed):
             self._install_with([old], value_gone_later)
 
-    def test_instala_todos_skips_the_locked_inactive_endpoint_only(self):
+    def test_instala_todos_skips_the_locked_endpoint_not_present_only(self):
         gone = ("{gone}", "Microphone", "High Definition Audio Device")
 
         def locked(ep):
-            raise filtro.LockedInactiveEndpoint(13, "Access is denied")
+            raise filtro.LockedEndpointNotPresent(13, "Access is denied")
         self.assertIsNone(self._install_with([gone], locked))
         self.assertEqual(self.c.nomes(), [])
 
