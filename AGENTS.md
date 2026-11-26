@@ -35,9 +35,9 @@ até 80 linhas (o `dev/garden.py` confere as duas).
   `dev/garden.py`.
 - O PR que mexe na montagem (o `BUILD_PATHS` do `dev/testa_tudo.py`) só passa no "Testa o PR" com uma execução aprovada
   do "Monta o instalador" (`monta.yml`) no head: rode-o na branch (o "Verdict", provado pelo `dev/test_ci_workflow.py`).
-  Os nomes dos artefatos dele (`Ritmelli-<versão>` e `ritmelli-exe-<versão>`) e dos jobs `testa`, `testa-atualizador`,
-  `testa-migracao` e `testa-parcial` ficam como estão: o `dev/test_monta_contract.py` falha se um deles mudar
-  ([dev.md](docs/arquitetura/dev.md#a-montagem)).
+  O `dev/test_monta_contract.py` exige, em toda montagem, os artefatos `Ritmelli-<versão>` e `ritmelli-exe-<versão>` e
+  um job mostrado como `testa`, `testa-atualizador`, `testa-migracao` e `testa-parcial` (ou com o sufixo de matriz,
+  `nome (...)`), que são o que a publicação procura ([dev.md](docs/arquitetura/dev.md#a-montagem)).
 
 ## O mapa: área, arquivos e teste
 
@@ -58,7 +58,7 @@ até 80 linhas (o `dev/garden.py` confere as duas).
 | Textos | `i18n.py`, `themes/ritmelli/i18n/`, `gallery/i18n/` | `testa_i18n` |
 | Dados de uso | `metricas.py` e o aviso deles no tema | `testa_metricas`; o aviso, `fitcheck.py --metricas` (sobe os próprios `--mock --metricas-teste`, sem rede) |
 | Troca de nome | `migra.py` | `testa_migra` |
-| Interface | `themes/ritmelli/`, `gallery/` | `fitcheck.py`, `missing_script.py` e `theme_scripts.py` (o `--tela` do `testa_tudo` roda os três) contra o `--mock` |
+| Interface | `themes/ritmelli/` | `fitcheck.py`, `missing_script.py` e `theme_scripts.py` (o `--tela` do `testa_tudo` roda os três) contra o `--mock` |
 
 ## Antes do PR
 

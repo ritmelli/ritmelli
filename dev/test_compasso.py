@@ -84,10 +84,11 @@ class Picos(unittest.TestCase):
         lg[10], lg[13] = 2.0, 3.0
         np.testing.assert_allclose(compasso._picos(lg), [13.0])
 
-    def test_two_peaks_four_frames_apart_both_count(self):
-        lg = np.full(40, -5.0, np.float32)
-        lg[10], lg[14] = 2.0, 3.0
-        np.testing.assert_allclose(compasso._picos(lg), [10.0, 14.0])
+    def test_two_peaks_four_frames_apart_both_count_whichever_is_higher(self):
+        for left, right in ((2.0, 3.0), (3.0, 2.0)):
+            lg = np.full(40, -5.0, np.float32)
+            lg[10], lg[14] = left, right
+            np.testing.assert_allclose(compasso._picos(lg), [10.0, 14.0])
 
 
 if __name__ == "__main__":

@@ -1235,8 +1235,7 @@ def measured_module(t, name):
 
 def verification_names(t=None):
     tudo = load_dev_module("testa_tudo") if t is None else measured_module(t, "testa_tudo")
-    paths = [*tudo.STDLIB, *tudo.COMPLETO, *tudo.LONG_TESTS.values(), *tudo.MICROFONE, *tudo.TELA,
-             *(p for p, *_ in tudo.PASSOS.values())]
+    paths = [*tudo.STDLIB, *tudo.COMPLETO, *tudo.LONG_TESTS.values(), *tudo.MICROFONE, *tudo.TELA]
     names = set()
     for p in paths:
         names |= {p, Path(p).name, Path(p).stem}
