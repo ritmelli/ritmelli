@@ -117,13 +117,11 @@ def level(speed, rng):
 
 def short(ms, rng):
     x = stereo(0.1 * rng.standard_normal(int(ms / 1000 * SR)))
-    try:
-        z, phi = engine.esticar_saida(x, SHORT_SPEED, len(x) // 2)
-    except ValueError as ex:
-        check(False, f"short input of {ms:.0f} ms: {ex}")
-        return
-    check(z.shape == (len(phi), 2) and bool(np.isfinite(z).all()),
-          f"short input of {ms:.0f} ms: output {z.shape} for {len(phi)} positions")
+    z, phi = engine.esticar_saida(x, SHORT_SPEED, len(x) // 2)
+    whole = len(phi) > 0 and len(x) - 5 <= phi[-1] < len(x)
+    check(whole and z.shape == (len(phi), 2) and bool(np.isfinite(z).all()),
+          f"short input of {ms:.0f} ms ({len(x)} frames): output {z.shape} for {len(phi)} positions, the last at "
+          f"{phi[-1] if len(phi) else float('nan'):.1f}")
 
 
 def main():

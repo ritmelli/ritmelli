@@ -394,8 +394,6 @@ def esticar_saida(x, s, n_rampa):
     y = _catmull(x, phi)
     m = len(y)
     z = _rubber_band(y, vel)[:m]
-    if len(z) < m:
-        z = np.concatenate([z, y[len(z):]])
     a = min(m, RUBBER_BAND_WARMUP)
     b = min(m, a + RUBBER_BAND_CROSSFADE)
     g = np.linspace(0.0, 1.0, RUBBER_BAND_CROSSFADE, dtype=np.float32)[:b - a, None]
@@ -3000,8 +2998,9 @@ class Engine:
         """O fade-out no tempo com os andamentos a mais de TEMPO_MAX: a que sai vai devagar (RAMPA_TAXA) para a
         velocidade sa antes da sobreposicao, e a proxima entra esticada em TEMPO_MAX no andamento a que ela
         chegou. Os blocos deste a partir da rampa sao trocados pelos reamostrados, com a posicao do disco no
-        rotulo (a tela e a virada leem a posicao); a batida deste na sobreposicao sai do audio ja mudado (pega a
-        deriva da Rubber Band na rampa), e a virada e a troca de grave se contam em amostras da saida dele."""
+        rotulo (a tela e a virada leem a posicao). The outgoing beat during the overlap is measured on the stretched
+        audio, which captures the Rubber Band drift over the ramp. The switch and the bass swap use sample positions
+        in that output."""
         pa, pb = ga.periodo, gb.periodo
         sb = s * sa  # a velocidade da proxima: a grade dela cai na deste ja mudada
         # a rampa acaba antes do trecho onde a fase deste e medida: ali a velocidade ja e constante

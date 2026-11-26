@@ -33,7 +33,7 @@ negativo: o mesmo detector, com a mesma regua e a mesma amostra da virada, no si
 periodo da regua, tem de dar contratempo. In the intro pair, the beats judged are the first 4 of B's drop, and the
 first of them is on A's beat at the swap.
 
-Known failures: a pair with an issue shows a known engine defect (none today). It runs and its result is shown, but
+Known failures: a pair with an issue shows a known engine defect. It runs and its result is shown, but
 its failure does not count; passing does, so the PR that fixes the defect takes the pair off the list.
 A pair that could not be judged (a timeout, too few attacks to measure), or that fails in a way other than its defect
 (SINTOMAS), fails all the same.
@@ -105,10 +105,6 @@ INTRO_IN = 12      # A's beats before it
 INTRO_OUVE_DB = 6.0   # and from the switch on, B's band at least this above what leaks into it from A,
 INTRO_A_DB = 3.0      # with A at most this below where it was
 
-# o par: os andamentos, o fim de A ("seco": corta; "fade": cai 6 dB e some), o ramo esperado e o acento de B (o
-# estalo fraco no meio de cada batida, no par meio). Then the tones under A, whether B starts with a quiet intro, and
-# the issue of a known engine defect the pair shows: it is expected to fail, and passing makes the bench fail, so the
-# fix takes it off the list
 Par = namedtuple("Par", "nome bpm_a bpm_b fim ramo meio tons_a intro issue",
                  defaults=(TONS_A, False, None))
 PARES = [
