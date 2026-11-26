@@ -138,8 +138,8 @@ discos, as esferas, os ícones e as letras 5x7 e de bitmap, que o `glyphs()` mon
 glifos próprios dele), o `prateleira.js` (o título e a contagem da plaqueta da prateleira), o `maleta-tit.js` (o título
 da placa da maleta), o `mesa-topo.js` (a plaqueta e as teclas do topo em largura par), o `deck.js` (os toca-discos, que
 exporta a letra deles, o `deckGlyphs`), o `maleta-vazia.js` (o aviso de vazio do A seguir, na letra do `deck.js`), o
-`mix.js` (o mixer) e o `pedal.js` (os pedais). Os que esperavam o `DOMContentLoaded` só enquanto a página carregava
-esperam sempre, e rodam depois da partida, como antes.
+`mix.js` (o mixer) e o `pedal.js` (os pedais). O `deck.js`, o `mix.js` e o `prateleira.js` começam no
+`DOMContentLoaded`, depois do ouvinte do `start.js`, que se registrou antes deles.
 
 Cada ouvinte mora no arquivo da parte que ele serve: os da busca (o campo, o formulário, os botões dela, o toque fora
 da gaveta da busca na mesa e os resultados) no `search.js`, os dos efeitos de voz (a gaveta, o Ouvir e o botão de
