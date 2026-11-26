@@ -211,15 +211,15 @@ def voltas(A, E):
     A.tirar_da_fila(x["qid"])
 
     # the similar track that arrives with the platter stopped plays right away (auto_round)
-    A.auto, A.semente, A.mix_base = True, {"youtube_id": "bbbbbbbbbbb", "title": "semente"}, "bbbbbbbbbbb"
-    A.mix = [{"youtube_id": "aaaaaaaaaaa", "title": "Disco d3", "duration": 120.0, "ordem": 1}]
+    A.automatico._auto, A.automatico._semente, A.automatico._mix_base = True, {"youtube_id": "bbbbbbbbbbb", "title": "semente"}, "bbbbbbbbbbb"
+    A.automatico._mix = [{"youtube_id": "aaaaaaaaaaa", "title": "Disco d3", "duration": 120.0, "ordem": 1}]
     visto, sinal = A.automatico.auto_round(None, None)
     confere(no_prato(E) == "d3" and E.track.get("auto") and A.parado_sem_fila is None and fila(A) == [],
             f"auto_round: the similar track that arrived with the platter stopped plays right away ({no_prato(E)})")
     visto, sinal = A.automatico.auto_round(visto, sinal)
-    confere(visto == "aaaaaaaaaaa" and A.ponte == "aaaaaaaaaaa",
+    confere(visto == "aaaaaaaaaaa" and A.automatico._ponte == "aaaaaaaaaaa",
             "a volta seguinte ve a parecida no prato: o Automatico segue do Mix dela quando o da semente acabar")
-    A.auto = False
+    A.automatico._auto = False
 
     # a virada da passagem: o motor vira sozinho, e o _volta_passagem so acompanha a fila e o historico
     ate(lambda: E.status() == "playing")
@@ -546,15 +546,15 @@ def andamento(A, E):
                 raise Fim from None  # a segunda volta: o vigia sai
 
         def grava(caminho, dados):  # o que ja aparecia enquanto o disco grava: o dicionario, o contador e as trocas
-            gravados.append((caminho, dict(dados), A.fila_lock.locked(), dict(ativo()), A.andamentos_versao,
+            gravados.append((caminho, dict(dados), A.fila_lock.locked(), dict(ativo()), A.automatico._andamentos_versao,
                              list(trocas)))
             if falha:
                 raise disco_cheio
-        gravados, trocas, saiu, versao = [], [], [], A.andamentos_versao
+        gravados, trocas, saiu, versao = [], [], [], A.automatico._andamentos_versao
         disco_cheio = OSError("disco cheio")
         v = {"youtube_id": "fffffffffff", "duration": 200, "title": "parecida", "channel": "c"}
-        caminho, ativo = ((A.versoes_path, lambda: A.versoes) if o_que == "audio"
-                          else (A.andamentos_path, lambda: A.andamentos))
+        caminho, ativo = ((A.automatico._versoes_path, lambda: A.automatico._versoes) if o_que == "audio"
+                          else (A.automatico._andamentos_path, lambda: A.automatico._andamentos))
         antes = dict(ativo())
         medida = v if o_que == "audio" else {"ini": 100.0, "fim": 101.0}
         with (contextlib.redirect_stderr(io.StringIO()), mock.patch.object(automatico, "ANDAMENTO_APOS_S", -1),
@@ -563,31 +563,31 @@ def andamento(A, E):
               mock.patch.object(A.automatico, "_mede_andamento", return_value={"ini": 100.0, "fim": 101.0}),
               mock.patch.object(A.automatico, "_troca_audio", side_effect=lambda *a: trocas.append(a)),
               mock.patch.object(threading, "excepthook", lambda a: saiu.append(a.exc_value))):
-            A.auto = True
+            A.automatico._auto = True
             t = threading.Thread(target=A.automatico.run_tempo_watcher, daemon=True)
             t.start()
             t.join(10)
-            A.auto = False
+            A.automatico._auto = False
         confere(not t.is_alive() and len(saiu) == 1 and (saiu[0] is disco_cheio if falha else isinstance(saiu[0], Fim)),
                 f"run_tempo_watcher left on its own, through {'the failed write' if falha else 'the next round'} "
                 f"({o_que}, {saiu})")
         confere(gravados == [(caminho, {**antes, yid: medida}, False, antes, versao, [])],
                 f"uma gravacao so, no arquivo certo, com o que havia mais a medida, sem a fila_lock, e com nada da "
                 f"medida aparecendo ainda ({o_que})")
-        return [g[2] for g in gravados], trocas, A.andamentos_versao - versao, v
+        return [g[2] for g in gravados], trocas, A.automatico._andamentos_versao - versao, v
 
     travado, trocas, subiu, v = roda("audio", "aaaaaaaaaa1", falha=False)
-    confere(travado == [False] and trocas == [("aaaaaaaaaa1", v)] and subiu == 1 and A.versoes["aaaaaaaaaa1"] == v,
+    confere(travado == [False] and trocas == [("aaaaaaaaaa1", v)] and subiu == 1 and A.automatico._versoes["aaaaaaaaaa1"] == v,
             f"a versao de audio: gravada fora da fila_lock e so entao vale na fila ({travado}, {len(trocas)}, {subiu})")
     travado, trocas, subiu, v = roda("audio", "aaaaaaaaaa2", falha=True)
-    confere(travado == [False] and trocas == [] and subiu == 0 and A.versoes.get("aaaaaaaaaa2") == v,
+    confere(travado == [False] and trocas == [] and subiu == 0 and A.automatico._versoes.get("aaaaaaaaaa2") == v,
             f"a gravacao da versao falha: ela fica na memoria, mas nao vale na fila "
             f"({travado}, {len(trocas)}, {subiu})")
     travado, _, subiu, _ = roda("medir", "aaaaaaaaaa3", falha=False)
-    confere(travado == [False] and subiu == 1 and A.andamentos.get("aaaaaaaaaa3") == {"ini": 100.0, "fim": 101.0},
+    confere(travado == [False] and subiu == 1 and A.automatico._andamentos.get("aaaaaaaaaa3") == {"ini": 100.0, "fim": 101.0},
             f"o andamento: gravado fora da fila_lock e so entao reordena o Automatico ({travado}, {subiu})")
     travado, _, subiu, _ = roda("medir", "aaaaaaaaaa4", falha=True)
-    confere(travado == [False] and subiu == 0 and A.andamentos.get("aaaaaaaaaa4") == {"ini": 100.0, "fim": 101.0},
+    confere(travado == [False] and subiu == 0 and A.automatico._andamentos.get("aaaaaaaaaa4") == {"ini": 100.0, "fim": 101.0},
             f"a gravacao do andamento falha: ele fica na memoria, mas nao reordena ({travado}, {subiu})")
 
 
@@ -1741,11 +1741,11 @@ def avanco(A, E):
     with A.fila_lock:
         A.fila.append({"id": "d3", "youtube_id": None, "url": None, "title": "Disco d3", "duration": 120.0,
                        "job": None, "qid": "pz", "auto": True, "fixa": True, "auto_de": "semente"})
-    A.auto, A.semente, A.mix, A.ponte = True, {"youtube_id": "bbbbbbbbbbb", "title": "semente"}, [], None
+    A.automatico._auto, A.automatico._semente, A.automatico._mix, A.automatico._ponte = True, {"youtube_id": "bbbbbbbbbbb", "title": "semente"}, [], None
     try:
         A.automatico.auto_round((E.track or {}).get("youtube_id"), None)
     finally:
-        A.auto = False
+        A.automatico._auto = False
     confere(marcado and no_prato(E) == "d3" and fila(A) == [] and A.parado_sem_fila is None,
             f"o Automatico com o prato parado e a parecida ja na fila: ela toca ({no_prato(E)}, {fila(A)})")
 
@@ -2241,7 +2241,7 @@ def avanco(A, E):
     with A.fila_lock:
         A.fila.append({"id": "d3", "youtube_id": None, "url": None, "title": "Disco d3", "duration": 120.0,
                        "job": None, "qid": "pw", "auto": True, "fixa": True, "auto_de": "semente"})
-    A.auto, A.semente, A.mix, A.ponte = True, {"youtube_id": "bbbbbbbbbbb", "title": "semente"}, [], None
+    A.automatico._auto, A.automatico._semente, A.automatico._mix, A.automatico._ponte = True, {"youtube_id": "bbbbbbbbbbb", "title": "semente"}, [], None
     real_av = cmd.avanca
 
     def esvazia_e_avanca(*a, **kw):
@@ -2251,7 +2251,7 @@ def avanco(A, E):
         with mock.patch.object(cmd, "avanca", side_effect=esvazia_e_avanca):
             A.automatico.auto_round((E.track or {}).get("youtube_id"), None)
     finally:
-        A.auto = False
+        A.automatico._auto = False
     confere(A.parado_sem_fila is marcado and marcado is not None,
             "o Automatico que nao tocou nada (a fila esvaziou) deixa a marca do prato parado")
 
