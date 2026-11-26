@@ -21,6 +21,7 @@ CALLBACKS = {
 ENGINE_GUARD = ["_lock", "_qlock"]
 WRITERS = {"save_json", "_save", "write_text", "write_bytes"}
 WRITES = "a file write"
+NO_WRITES = {"fila_lock", "_lock", "_qlock"}
 
 failures = []
 
@@ -153,9 +154,9 @@ class Walker(ast.NodeVisitor):
     def against_held(self, locks, node, label):
         for lock in sorted(locks):
             if lock == WRITES:
-                if "fila_lock" in self.held:
+                if NO_WRITES & set(self.held):
                     self.bad.append(f"{self.name}:{node.lineno}: calls {label}, which writes a file, while holding "
-                                    f"the fila_lock")
+                                    f"{sorted(NO_WRITES & set(self.held))}")
                 continue
             if lock == "_lock" and lock in self.held and "_qlock" not in self.held:
                 continue
@@ -265,8 +266,9 @@ class Walker(ast.NodeVisitor):
         if lock:
             self.take(lock, node.lineno, waits=not nonblocking(node))
         elif self.held:
-            if writer(node) and "fila_lock" in self.held:
-                self.bad.append(f"{self.name}:{node.lineno}: a file written while holding the fila_lock")
+            if writer(node) and NO_WRITES & set(self.held):
+                self.bad.append(f"{self.name}:{node.lineno}: a file written while holding "
+                                f"{sorted(NO_WRITES & set(self.held))}")
             self.follow(node)
         self.generic_visit(node)
 
@@ -394,6 +396,10 @@ def self_test(order, before):
             "def f(A, p, d):\n    with A.fila_lock:\n        save_json(p, d)\n", 1),
         "a with_engine body that saves the settings": (
             "def f(A):\n    def body(depois):\n        A.save_cfg()\n    A.with_engine(body)\n", 1),
+        "an engine pode that saves the settings": (
+            "def f(A, E):\n    E.stop(pode=lambda: A.save_cfg())\n", 1),
+        "a file written with only the engine's _qlock held": (
+            "def f(E, p, d):\n    with E._qlock:\n        save_json(p, d)\n", 1),
         "a copy under the fila_lock, written after it": (
             "def f(A, p):\n    with A.fila_lock:\n        d = dict(A.cfg)\n    save_json(p, d)\n", 0),
     }

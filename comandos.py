@@ -11,6 +11,7 @@ parado (_volta_auto) e o enfileirar com o prato parado passam por ela, com uma r
 The platter's line is read and checked through the engine's interface (Engine.line, Engine.on_line, with the deck
 and line a Captura already carries), and the switch the engine made on its own is reconciled in one loop
 (concilia)."""
+import copy
 import sys
 import threading
 
@@ -90,7 +91,7 @@ class Proximo(Reserva):
     def espera(self, prazo=None):
         x = super().espera(prazo)
         if self.error is not None:
-            raise self.error
+            raise copy.copy(self.error).with_traceback(None) from self.error
         return x
 
     def liga(self, r):
@@ -346,13 +347,11 @@ def avanca(A, virada=None, historico=True, na_tela=False, visto=None, entrada=No
             if outra is None or outra is r or outra.x is not r.x:  # a entrada de outra reserva em curso fica
                 A.remove_if_queued(r.x)
             A.release_reservation(r, None, None if na_tela else ex)
-        if not na_tela:
-            if grupo is not None and r.error is not ex:
-                return r.entrada
+        if not na_tela and (grupo is None or r.error is ex):
             raise
         E.error = i18n.msg("server.queue.playFailed", "Couldn't play \"{title}\" from the queue ({reason}).",
                            title=r.x.get("title") or "?", reason=i18n.motivo(ex, 120))
-        return r.x
+        return r.x if na_tela else r.entrada
     if not tocou:  # a reserva foi invalidada no meio (o prato trocou, ou a entrada saiu da fila)
         with A.fila_lock:
             A.release_reservation(r, None)

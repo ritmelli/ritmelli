@@ -1371,7 +1371,8 @@ def avanco(A, E):
             and no_prato(E) == "d2" and fila(A) == ["d3"],
             f"e os dois Proximos devolvem a mesma entrada: so uma sai da fila ({segundo[0]}, {fila(A)})")
     x, y, livre, segundo, res = dois_proximos(quebra=True)
-    confere(res and isinstance(res[0], ValueError) and segundo is res[0] and fila(A) == ["d3"],
+    confere(res and isinstance(res[0], ValueError) and type(segundo) is type(res[0]) and segundo.__cause__ is res[0]
+            and fila(A) == ["d3"],
             f"the broken entry: the Next that waited gets the same error as the first, and it leaves the queue "
             f"({segundo!r}, {res}, {fila(A)})")
     x, y, livre, segundo, res = dois_proximos(invalida=lambda: E.load(arquivo(A, "d3")))
@@ -1410,6 +1411,7 @@ def avanco(A, E):
     def joined_next_and_a_play_that_raises(stops):
         limpa()
         toca("d1")
+        E.error = None
         cmd.enfileirar(A, {"id": "d2"})
         cmd.enfileirar(A, {"id": "d3"})
         playing, joined, refused = threading.Event(), threading.Event(), RuntimeError("the entry would not play")
@@ -1431,14 +1433,17 @@ def avanco(A, E):
             t2, r2 = em_thread(cmd.pular, A)
             t1.join(5)
             t2.join(5)
-        return joined.is_set() and r1 == r2 == [None if stops else refused], (r1, r2, no_prato(E), fila(A))
+        same = (r1 == r2 == [None] and E.error is not None) if stops else (
+            r1 == [refused] and len(r2) == 1 and type(r2[0]) is RuntimeError and r2[0].__cause__ is refused)
+        return joined.is_set() and same, (r1, r2, no_prato(E), fila(A), E.error)
     same, seen = joined_next_and_a_play_that_raises(stops=False)
-    confere(same and seen[2:] == ("d1", ["d3"]),
+    confere(same and seen[2:4] == ("d1", ["d3"]),
             f"a Next joins one whose play raises: both get the same error, and only the entry that failed leaves the "
             f"queue {seen}")
     same, seen = joined_next_and_a_play_that_raises(stops=True)
-    confere(same and seen[2] is None,
-            f"a Next joins one whose play raises after a Stop resolved the advance: both get the Stop's result {seen}")
+    confere(same and seen[2] is None and seen[3] == ["d3"],
+            f"a Next joins one whose play raises after a Stop resolved the advance: both get the Stop's result, and "
+            f"the error goes to the screen {seen}")
 
     # a fila muda no mesmo trecho do _qlock em que a passagem preparada sai: o motor, no bloco que chega bem nessa hora,
     # nao vira para a entrada que acabou de sair

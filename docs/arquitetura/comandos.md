@@ -56,17 +56,17 @@ confere a reserva e a entrada antes de fechar a virada e tirar a passagem prepar
 preparada de quem vale. Os Próximos sobrepostos (o segundo chega antes de o primeiro voltar, mesmo com o primeiro já
 trocando o disco) dividem o mesmo avanço (`App.proximo`), se o prato ainda é a linha dele ou a que a reserva dele
 publicou: um só toca, e todos respondem a entrada dele. Se tocar falha antes de publicar, o erro vai para todos eles
-(`Proximo.espera`); com a reserva já resolvida antes por outro (o Parar), o primeiro responde o mesmo que os outros. O
-Próximo depois de um Parar segue sozinho. O avanço já em curso
-que o Próximo encontra ao chegar (o do fim do disco) e a virada pendente que ele vê são o avanço dele, mesmo se
-terminarem antes de ele reservar, e também o que outro começa na linha dele antes de ele reservar; o prato que muda de
-linha antes disso fica como está se trocou de disco (o Parar), e com o mesmo disco (um seek) o Próximo segue, com o
-grupo passando para a linha do seek. O grupo já resolvido, com o primeiro Próximo ainda gravando a posição, aceita quem
-chega se tocou e o prato segue na linha que ele publicou. O Próxima com a virada pendente devolve a entrada dela; se ela
-já saiu da fila, segue para a primeira. O Próximo que concilia a virada passa o grupo para a linha dela, e quem chega
-nesse meio se junta a ele; o grupo só fica com a virada se a entrada dela ainda está na fila. No `_volta_fila` e no
-`_volta_auto`, se tocar falhar, o erro vai para a tela (`engine.error`); em todos, a entrada quebrada sai da fila, menos
-quando outra reserva em curso vai tocá-la. A gravação da posição que falha depois da troca não desfaz o avanço.
+(`Proximo.espera`); com a reserva já resolvida antes por outro (o Parar), o primeiro responde o mesmo que os outros, e o
+erro vai para a tela (`engine.error`). O Próximo depois de um Parar segue sozinho. O avanço já em curso que o Próximo
+encontra ao chegar (o do fim do disco) e a virada pendente que ele vê são o avanço dele, mesmo se terminarem antes de
+ele reservar, e também o que outro começa na linha dele antes de ele reservar; o prato que muda de linha antes disso
+fica como está se trocou de disco (o Parar), e com o mesmo disco (um seek) o Próximo segue, com o grupo passando para a
+linha do seek. O grupo já resolvido, com o primeiro Próximo ainda gravando a posição, aceita quem chega se tocou e o
+prato segue na linha que ele publicou. O Próxima com a virada pendente devolve a entrada dela; se ela já saiu da fila,
+segue para a primeira. O Próximo que concilia a virada passa o grupo para a linha dela, e quem chega nesse meio se junta
+a ele; o grupo só fica com a virada se a entrada dela ainda está na fila. No `_volta_fila` e no `_volta_auto`, se tocar
+falhar, o erro vai para a tela (`engine.error`); em todos, a entrada quebrada sai da fila, menos quando outra reserva em
+curso vai tocá-la. A gravação da posição que falha depois da troca não desfaz o avanço.
 
 Três avanços tentam de novo, cada um pela sua regra; os dois primeiros até `ADVANCE_TRIES` vezes:
 
@@ -99,13 +99,13 @@ antes, e o leitor que começa, a onda e a medida rodam depois de soltar as duas 
 A volta do `_volta_passagem` guarda o deck e a linha do prato que viu. A fonte da primeira da fila e o ganho dela saem
 fora das travas (o endereço do stream leva 1 a 3 s), de uma cópia da entrada tirada sob a `fila_lock`, e a publicação
 (`preparar`) é sob a `fila_lock`: ela confere que a entrada ainda é a primeira e igual à cópia (a que saiu da frente,
-trocou de versão e voltou não publica a fonte de antes) e, no `pode` sob o `_qlock`, que não há virada pendente nem avanço reservado em curso
-nesta linha e que o prato ainda é o mesmo deck, a mesma linha e o mesmo disco, sem o Repetir, sem ter acabado e sem
-nada preparado. Quem fecha a virada e troca o disco sob a `fila_lock` não vê uma preparação entrar no meio. Toda
-mudança da fila (pôr, tirar, mover, limpar, a ordem do Automático, o Aleatório e o esquecer) acontece no mesmo trecho
-do `_qlock` em que a passagem preparada é conferida (`_confere_preparo_sob`): a preparada para quem não é mais a
-primeira sai ali, e o motor não vira para ela no meio. O Automático não reordena a primeira que um avanço reservado
-vai tocar.
+trocou de versão e voltou não publica a fonte de antes) e, no `pode` sob o `_qlock`, que não há virada pendente nem
+avanço reservado em curso nesta linha e que o prato ainda é o mesmo deck, a mesma linha e o mesmo disco, sem o Repetir,
+sem ter acabado e sem nada preparado. Quem fecha a virada e troca o disco sob a `fila_lock` não vê uma preparação entrar
+no meio. Toda mudança da fila (pôr, tirar, mover, limpar, a ordem do Automático, o Aleatório e o esquecer) acontece no
+mesmo trecho do `_qlock` em que a passagem preparada é conferida (`_confere_preparo_sob`): a preparada para quem não é
+mais a primeira sai ali, e o motor não vira para ela no meio. O Automático não reordena a primeira que um avanço
+reservado vai tocar.
 
 ## As travas
 
@@ -135,20 +135,21 @@ Confere também que o `_mixa` e os métodos e as funções do `engine.py` que el
 O modelo TLA+ descreve as travas e o estado que elas guardam, e o TLC confere todos os caminhos dele. O tempo e a
 posição do disco viram escolha não determinística, e os `qid` são simétricos (`SYMMETRY`). São duas configurações:
 
-- `Races211`: o download, o stream, a troca, o mixer, a preparação da passagem, a troca pela versão de áudio, o vigia
-  da passagem, o tocar de outro disco, o esquecer da prateleira e duas trocas de lugar na fila (a entrada sai da frente e
-  volta), com uma ou duas entradas e um job. Confere a ordem das
-  travas; que nenhum prato fica carregando com o job já terminado (em erro, ou baixado com ou sem o disco na prateleira)
-  e o stream recusado; que o stream recusado só para ou troca o disco daquela tentativa; e que a entrada da virada
-  pendente tem a mesma versão que o prato toca (as duas corridas da #211).
-- `LocksAndSwitch`: dois Próximos (o tocar de cada um pode falhar antes de publicar), o mixer, o Parar ou uma mudança
-  da fila, o vigia da passagem, uma segunda preparação da passagem e a reabertura do áudio segurando o `_lock` (o
+- `Races211`: o download, o stream, a troca, o mixer, a preparação da passagem, a troca pela versão de áudio, o vigia da
+  passagem, o tocar de outro disco, o esquecer da prateleira e duas trocas de lugar na fila (a entrada sai da frente e
+  volta), com uma ou duas entradas e um job. Confere a ordem das travas; que nenhum prato fica carregando com o job já
+  terminado (em erro, ou baixado com ou sem o disco na prateleira) e o stream recusado; que o stream recusado só para ou
+  troca o disco daquela tentativa; e que a entrada da virada pendente tem a mesma versão que o prato toca (as duas
+  corridas da #211).
+- `LocksAndSwitch`: dois Próximos (o tocar de cada um pode falhar antes de publicar), o mixer, o Parar ou uma mudança da
+  fila, o vigia da passagem, uma segunda preparação da passagem e a reabertura do áudio segurando o `_lock` (o
   `with_engine` como tentativa com recuo), com duas entradas. Confere a ordem das travas, que das travas do modelo o
   mixer só pega as do `AudioLocks` (o `_qlock`, as mesmas que o `dev/test_lock_order.py` acha no `_mixa` e nos métodos e
-  funções do `engine.py` que ele chama), e a falta de impasse; que a virada só vai para a cabeça da fila e que cada uma fecha uma vez, e todas fecham; que dois Próximos sobrepostos (o
-  segundo chega com o prato ainda na linha do primeiro, ou na linha que o avanço dele publicou) dão um avanço só e o
-  mesmo resultado, também quando o tocar falha; que o Anterior recebe cada disco que saiu do prato uma vez, na ordem em que saiu,
-  e nenhum fica de fora; e que toda reserva resolve, com justiça fraca.
+  funções do `engine.py` que ele chama), e a falta de impasse; que a virada só vai para a cabeça da fila e que cada uma
+  fecha uma vez, e todas fecham; que dois Próximos sobrepostos (o segundo chega com o prato ainda na linha do primeiro,
+  ou na linha que o avanço dele publicou) dão um avanço só e o mesmo resultado, também quando o tocar falha; que o
+  Anterior recebe cada disco que saiu do prato uma vez, na ordem em que saiu, e nenhum fica de fora; e que toda reserva
+  resolve, com justiça fraca.
 
 O `dev/test_tla.py` roda o TLC (o `tla2tools.jar` da versão fixada, conferido pelo sha256) nas duas, cada execução em
 menos de 60 s, e roda também os mutantes: cada propriedade tem um que desfaz o que ela protege, e o mutante tem de ser
