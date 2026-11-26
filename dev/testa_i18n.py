@@ -150,6 +150,22 @@ def check_block_pairs(tema, arquivos):
                   f"that order, in the same file")
 
 
+def check_one_block(tema, arquivos):
+    for nome, texto in arquivos.items():
+        if nome.endswith((".js", ".css")) and not nome.startswith("gerado/"):
+            opened = [m for m in MARCA_BLOCO.finditer(texto) if (m.group(2) or m.group(4).upper()) == "INICIO"]
+            if len(opened) != 1:
+                falha(f"{tema.name}: {nome} has {len(opened)} INICIO/FIM blocks: every .js and .css of the theme "
+                      f"outside gerado/ has exactly one")
+            for m in MARCA_BLOCO.finditer(texto):
+                start, end = texto.rfind("\n", 0, m.start()) + 1, texto.find("\n", m.end())
+                mark = m.group(0)[2:].strip()
+                if not re.fullmatch(rf"[ \t]*/\*[ \t]*{re.escape(mark)}[ \t]*\*/[ \t]*\r?",
+                                    texto[start:end if end >= 0 else len(texto)]):
+                    falha(f"{tema.name}: {nome}:{texto.count(chr(10), 0, m.start()) + 1}: the mark {m.group(0)[2:].strip()} "
+                          f"is not alone on its line: put the text that explains it in a comment of its own below")
+
+
 def inline_lines(html):
     total = 0
     for attrs, _, _, body in script_elements(html, ("script", "style")):
@@ -245,6 +261,25 @@ def check_tag_and_block_guards():
               f"{falhas[antes:]}")
     else:
         del falhas[antes:]
+    with contextlib.redirect_stdout(io.StringIO()):
+        check_one_block(Path("ritmelli"), {"index.html": "", "a.css": "a { }\n",
+                                           "b.js": "/* B-INICIO */\n/* B-FIM */\n/* C-INICIO */\n/* C-FIM */\n",
+                                           "c.css": "/* C-INICIO */\n/* C-FIM */\n", "gerado/d.css": "d { }\n",
+                                           "e.js": "/* e:inicio */\n/* e:fim */\n",
+                                           "f.css": "  /* PRATELEIRA-CARTAO-INICIO (07/11, pedido do dono): o cartao\n"
+                                                    "     da prateleira */\n  /* PRATELEIRA-CARTAO-FIM */\n",
+                                           "g.css": "/* G-INICIO */ /* o g */\n/* G-FIM */\n",
+                                           "h.css": "/* H-INICIO:o h */\n/* H-FIM */\n",
+                                           "i.css": "/*I-INICIO*//**/\n/*I-FIM*/\n"})
+    if len(falhas) != antes + 6 or not ("a.css has 0" in falhas[-6] and "b.js has 2" in falhas[-5]
+                                        and "f.css:1: the mark PRATELEIRA-CARTAO-INICIO is not alone" in falhas[-4]
+                                        and "g.css:1: the mark G-INICIO is not alone" in falhas[-3]
+                                        and "h.css:1: the mark H-INICIO is not alone" in falhas[-2]
+                                        and "i.css:1: the mark I-INICIO is not alone" in falhas[-1]):
+        falha(f"check_one_block should fail on a file with no block, one with two, a mark with text in its comment "
+              f"and a mark with a comment after it, and pass gerado/: {falhas[antes:]}")
+    else:
+        del falhas[antes:]
     counted = inline_lines('<SCRIPT>\na\nb\n</SCRIPT>\n<script data-src="a.js">\nc\n</script>\n'
                            '<script src="x.js"></script>\n<style>\nd\n</style>\n')
     if counted != 4:
@@ -262,30 +297,30 @@ def check_theme_rebuild():
     if removed or added != [(4, "new")] or sorted(len(r) for r, _, _ in moved) != [1, 2]:
         falha(f"split_moves: moved {moved}, removed {removed}, added {added}; expected B1 B2 and y moved apart and "
               f"only 'new' added")
-    files = {"index.html": '<script src="a.js" title="x > y" defer></script>\n<link rel="stylesheet" href="b.css">\n',
+    files = {"index.html": "<script title=\"x > y\" defer>\n'use strict';\nconst a = 1;\n</script>\n"
+                           "<link rel=\"stylesheet\" href=\"b.css\">\n<script src=\"a.js\"></script>\n",
              "a.js": "/* A-JS-INICIO */\n'use strict';\nconst a = 1;\n/* A-JS-FIM */\n", "b.css": "b { }\n"}
     lines = theme_rebuild.rebuild(files.__getitem__)
-    if lines != ["[script a.js: [('title', 'x > y'), ('defer', None)]]", "'use strict';", "const a = 1;", "[/script]",
-                 "[link b.css]", "b { }", "[/style]"]:
+    if lines != ["[script: [('title', 'x > y'), ('defer', None)]]", "'use strict';", "const a = 1;", "[/script]",
+                 "[link b.css]", "b { }", "[/style]", "[script a.js]", "'use strict';", "const a = 1;", "[/script]"]:
         falha(f"theme_rebuild.rebuild: {lines}")
     files["a.js"] = "/* A-JS-INICIO */\nconst a = 1;\n/* A-JS-FIM */\n"
     if theme_rebuild.rebuild(files.__getitem__) == lines:
         falha("theme_rebuild.rebuild: a file that loses its 'use strict' rebuilds the same")
-    quoted = theme_rebuild.rebuild({"index.html": '<script src="a.js" title="x&quot; type=&quot;text/javascript"></script>',
-                                    "a.js": "const a = 1;\n"}.__getitem__)
-    split = theme_rebuild.rebuild({"index.html": '<script src="a.js" title="x" type="text/javascript"></script>',
-                                   "a.js": "const a = 1;\n"}.__getitem__)
+    quoted = theme_rebuild.rebuild({"index.html": '<script title="x&quot; type=&quot;text/javascript">\nconst a = 1;\n'
+                                                  '</script>'}.__getitem__)
+    split = theme_rebuild.rebuild({"index.html": '<script title="x" type="text/javascript">\nconst a = 1;\n'
+                                                 '</script>'}.__getitem__)
     if quoted == split:
         falha(f"theme_rebuild.rebuild: one attribute with &quot; inside rebuilds like two attributes ({quoted})")
-    files = {"index.html": '<!-- inline-script: c.js -->\n<script onerror="f(this)" src="a.js"></script>\n',
+    files = {"index.html": '<!-- inline-script: c.js -->\n<script src="a.js"></script>\n',
              "a.js": "const a = 1;\n", "c.js": "const c = 3;\n"}
     lines = theme_rebuild.rebuild(files.__getitem__)
     files["a.js"] = "const a = 2;\n"
     changed = theme_rebuild.rebuild(files.__getitem__)
-    if lines != ["[inline-script c.js]", "const c = 3;", "[/script]", "[script a.js: [('onerror', 'f(this)')]]",
-                 "const a = 1;", "[/script]"] or changed == lines:
-        falha(f"theme_rebuild.rebuild with src after onerror and an inline-script: {lines}, "
-              f"then {changed}")
+    if lines != ["[inline-script c.js]", "const c = 3;", "[/script]", "[script a.js]", "const a = 1;", "[/script]"] \
+            or changed == lines:
+        falha(f"theme_rebuild.rebuild with an inline-script and a file tag: {lines}, then {changed}")
     plain = theme_rebuild.rebuild({"index.html": "<script>\nconst d = 4;\n</script>\n"}.__getitem__)
     typed = theme_rebuild.rebuild({"index.html": '<script type="application/json">\nconst d = 4;\n</script>\n'}.__getitem__)
     if plain != ["[script]", "const d = 4;", "[/script]"] or typed == plain:
@@ -332,6 +367,7 @@ def confere_tema(tema, servidor, efeitos):
     arquivos = arquivos_do_tema(tema)
     confere_blocos(tema, arquivos)
     check_block_pairs(tema, arquivos)
+    check_one_block(tema, arquivos)
     html = "\n".join(arquivos.values())
     pedidas, plurais, sem_marcacao = requested_keys(html)
     for k in sorted(sem_marcacao):

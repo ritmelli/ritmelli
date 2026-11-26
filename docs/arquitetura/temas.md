@@ -8,10 +8,12 @@ leva todo endereço em `/t/vitrola/` para o mesmo caminho em `/t/ritmelli/`, com
 do `server.py`), porque o celular pareado, o atalho na tela inicial e os favoritos abrem o de antes.
 
 Todo arquivo de `/t/` sai com `Cache-Control: no-cache`, como a página (o `tema_sem_guardar` do `server.py`): o
-navegador confere cada um com o servidor antes de usar o que guardou, e não usa uma letra ou uma textura de antes sem
-conferir (o `dev/testa_mock.py` confere a página, o 304 dela e um `.js`). O `dev/testa_i18n.py` lê o `index.html` e
-todos os `.js` e `.css` da pasta do tema, e cada bloco marcado (`/* NOME-INICIO */` ... `/* NOME-FIM */`, ou o
-`/* nome:inicio */` de um gerador de `dev/`) mora num arquivo só, aberto e fechado nele, nessa ordem.
+navegador confere cada um com o servidor antes de usar o que guardou, e não usa um `.js` ou um `.css` de antes sem
+conferir (o `dev/testa_mock.py` confere a página, o 304 dela, um `.js`, um `.css`, uma fonte e uma imagem). O
+`dev/testa_i18n.py` lê o `index.html` e todos os `.js` e `.css` da pasta do tema: cada bloco marcado
+(`/* NOME-INICIO */` ... `/* NOME-FIM */`, ou o `/* nome:inicio */` de um gerador de `dev/`) mora num arquivo só,
+aberto e fechado nele, nessa ordem, e cada `.js` e `.css` fora do `gerado/` tem exatamente um bloco, com a marca
+sozinha na linha dela (o texto que explica o bloco vai num comentário logo abaixo).
 
 Código novo do tema vai num arquivo da pasta `themes/ritmelli/` (um `.js` ou `.css`), não no `index.html`.
 Texto novo da interface entra por uma chave nas duas línguas (`i18n/` do tema, `gallery/i18n/` da galeria),
@@ -146,19 +148,19 @@ da partida), e que o `queue.js` vê o toque que fecha a busca na mesa.
 Para provar que um PR só mudou código de lugar, o `dev/theme_rebuild.py <base>` monta a página de novo nos dois commits,
 com cada `<!-- inline-script: -->` virando um `<script>` com o texto do arquivo, e cada `<script src>` e `<link>`
 trocado pelo texto do arquivo. A ferramenta recusa o que a montagem recusa (o `index.html` passa antes pelo `strict` do
-`theme_page.py`), e a forma própria dela é mais estreita ainda: as duas listas de elementos do `theme_page.py`,
-descritas acima, e atributos só `nome="valor"` ou só o nome, sem espaço em volta do `=`, cada um uma vez e em minúsculas
-fora do `<svg>`. O `src` de um script e o `href` de uma folha são, além disso, um caminho simples dentro do tema, como
-`gerado/molduras.css`, ou `/t/<tema>/` seguido de um caminho simples, lido da pasta daquele tema, sem `..`, busca, `#`,
-`%`, `&` nem `\`. Como o servidor põe todo arquivo ligado na página, um script ligado não tem `</script`, `<!--` nem
-`#!` no começo, e uma folha ligada não tem `</style` e passa pela conferência de folha da montagem (o `sheet_problem` do
-`theme_page.py`). Fora disso ela recusa, com o arquivo (e, no `index.html`, a linha e o trecho), e sai 3 (não sei
-julgar): um `@namespace` ou um `@scope` numa folha, mesmo escapado ou num comentário (o prefixo do primeiro só vale na
-folha dele e o escopo do segundo depende do elemento que guarda a folha), um arquivo ligado pela página que não está no
-tema (o navegador recebe um 404) e um arquivo que o servidor põe inline e não está no tema (ele não monta a página). Um
-`\r` sozinho conta como fim de linha, como no navegador (lido do git ou da pasta). Numa folha, entre as regras e nas
-pontas, só cabem os espaços do CSS e comentários: outro caractere ali (um tab vertical antes de um seletor) é uma folha
-que não se lê.
+`theme_page.py`), e, além disso, só julga a página numa forma estrita própria dela: as duas listas de elementos do
+`theme_page.py`, descritas acima, e atributos só `nome="valor"` ou só o nome, sem espaço em volta do `=`, cada um uma
+vez e em minúsculas fora do `<svg>`. O `src` de um script e o `href` de uma folha são, além disso, um caminho simples
+dentro do tema, como `gerado/molduras.css`, ou `/t/<tema>/` seguido de um caminho simples, lido da pasta daquele tema,
+sem `..`, busca, `#`, `%`, `&` nem `\`. Como o servidor põe todo arquivo ligado na página, um script ligado não tem
+`</script`, `<!--` nem `#!` no começo, e uma folha ligada não tem `</style` e passa pela conferência de folha da
+montagem (o `sheet_problem` do `theme_page.py`). Fora disso ela recusa, com o arquivo (e, no `index.html`, a linha e o
+trecho), e sai 3 (não sei julgar): um `@namespace` ou um `@scope` numa folha, mesmo escapado ou num comentário (o
+prefixo do primeiro só vale na folha dele e o escopo do segundo depende do elemento que guarda a folha), um arquivo
+ligado pela página que não está no tema (o navegador recebe um 404) e um arquivo que o servidor põe inline e não está no
+tema (ele não monta a página). Um `\r` sozinho conta como fim de linha, como no navegador (lido do git ou da pasta).
+Numa folha, entre as regras e nas pontas, só cabem os espaços do CSS e comentários: outro caractere ali (um tab vertical
+antes de um seletor) é uma folha que não se lê.
 Ela sai 0 quando o head só muda código de lugar:
 - todo arquivo do tema que a página não lê (as imagens e as fontes) tem o mesmo conteúdo nos dois commits;
 - a marcação é a mesma, na mesma ordem (sem os cinco espaços do HTML nas pontas de cada linha), com cada script e cada
@@ -207,6 +209,11 @@ essas `MediaQueryList` na ordem em que nasceram, entre consultas, que é a ordem
 mudança. Sai 0 só com as tabelas iguais. O
 arquivo em que um ouvinte mora não entra na comparação: mudar um ouvinte de arquivo, ou para dentro de uma função,
 mantém as tabelas. O `dev/test_theme_listeners.py`, que o `--tela` roda, confere a leitura numa página própria.
+
+Num PR com a etiqueta `extracao-tema`, o job Tela roda as duas provas da base contra o head, nos passos "Only moves
+code" (`dev/testa_tudo.py --passo theme-rebuild --base`) e "Same listeners" (`--passo theme-listeners`), e reprova se
+uma delas não sai 0. A base é a do PR, e na fila o commit logo antes da entrada (a mesma do Compara). O
+`dev/test_ci_workflow.py` confere os dois passos, a condição deles, a base e o comando.
 
 Toda conversa do tema com o servidor passa pelo `transporte.js` (os pedidos da API, que o `api()` do `api.js` chama,
 e o fluxo de eventos do SSE): o resto do tema não sabe como ela chega, e o `fetch`, o `EventSource` e o

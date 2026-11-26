@@ -1,4 +1,5 @@
-/* PEDAL-JS-INICIO: os pedais da mesa em pixel art, tudo em celulas de 2 px (o canvas tem 1 px por celula e o
+/* PEDAL-JS-INICIO */
+/* os pedais da mesa em pixel art, tudo em celulas de 2 px (o canvas tem 1 px por celula e o
    CSS o mostra a 2x; com a celula fora de um numero inteiro de px da tela, como no palco de 1440, o canvas vai na
    resolucao da tela, ver o pintaTela), um canvas por pedal dentro do botao dele: o esmalte na cor do mock de 20/11 com
    o contorno, o bisel e a parede embaixo, os quatro parafusos, o icone (desenhado a mao, celula por celula, na rampa de

@@ -24,13 +24,13 @@ line that opens it ([script NAME], [inline-script NAME], [script], [link NAME] o
 attributes when it has any) and a [/script] or [/style] line. <base> and <head> are git commits (the head defaults to
 the working tree).
 
-The tool refuses what the build refuses (index.html goes through theme_page.strict first), and judges only a page in a
-strict form of its own, narrower still, that the browser reads one way: text with no < between tags, start tags with
-name="value" attributes (or a bare name), each once and in lower case outside <svg>, separated by ASCII spaces, end tags
-</name>, comments <!-- ... --> with no -- inside, and <!doctype html>. The elements are the ones the theme and the
-gallery use, one list for HTML and one inside <svg>. A <script> or <style> ends at its first </script> or </style>, with
-no <!-- in a script and no text in a <script src>; the server puts every linked file inline, so a script file holds no
-</script or <!-- and starts with no #!, and a sheet file holds no </style and passes the build's sheet check
+The tool refuses what the build refuses (index.html goes through theme_page.strict first), and then judges only a page
+in a strict form of its own that the browser reads one way: text with no < between tags, start tags with name="value"
+attributes (or a bare name), each once and in lower case outside <svg>, separated by ASCII spaces, end tags </name>,
+comments <!-- ... --> with no -- inside, and <!doctype html>. The elements are the ones the theme and the gallery use,
+one list for HTML and one inside <svg>. A <script> or <style> ends at its first </script> or </style>, with no <!-- in a
+script and no text in a <script src>; the server puts every linked file inline, so a script file holds no </script or
+<!-- and starts with no #!, and a sheet file holds no </style and passes the build's sheet check
 (theme_page.sheet_problem: no @import, and outside the page's folder only plain url() values that are not relative). A
 <title>, <iframe> or <select> holds no <. A script src and a stylesheet href (with rel="stylesheet" alone) are plain
 paths inside the theme, like gerado/base.css, or /t/<theme>/ and a plain path, read from that theme's folder. Anything

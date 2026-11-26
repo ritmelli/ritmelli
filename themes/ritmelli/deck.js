@@ -1,4 +1,5 @@
-/* DECK-JS-INICIO: os dois toca-discos da mesa inteiros em pixel art (1 celula = 2 px), num canvas por deck por cima
+/* DECK-JS-INICIO */
+/* os dois toca-discos da mesa inteiros em pixel art (1 celula = 2 px), num canvas por deck por cima
    dele: a caixa de madeira e a chapa creme com os parafusos, a letra do lado, o prato (anel do estroboscopio em marcas
    fixas de 2x3, o vinil com os sulcos e o brilho, o rotulo com o aro), a base do pivo, o descanso em garfo, o braco
    (contrapeso, tubo de largura constante, bola, cabeca em 3 tons e o levantador), o botao redondo do canto, a etiqueta

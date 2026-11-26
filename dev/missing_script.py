@@ -166,30 +166,63 @@ def devtools_address(chrome, seconds):
             return found.group(1)
 
 
-async def with_tab(srv, run):
+def start_chrome():
     profile = tempfile.mkdtemp(prefix="ritmelli-missing-")
     chrome = subprocess.Popen([fitcheck.CHROME, "--headless=new", "--remote-debugging-port=0",
                                f"--user-data-dir={profile}", "--no-first-run", "--no-default-browser-check",
                                "--window-size=1440,900", "about:blank"],
                               stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, encoding="utf-8",
                               errors="replace")
+    return chrome, profile
+
+
+async def run_in_tab(ws, srv, run):
+    tab = Tab(ws, srv.base)
+    tab.srv = srv
+    reader = asyncio.create_task(fitcheck.le_cdp(ws, tab.pending, tab.on_event))
+    await tab.cmd("Page.enable")
+    await tab.cmd("Runtime.enable")
+    await tab.cmd("Network.enable")
+    await tab.cmd("Fetch.enable", patterns=[{"urlPattern": "*"}])
+    result = await run(tab)
+    for task in [*tab.tasks, reader]:
+        task.cancel()
+    return result
+
+
+async def with_tab(srv, run):
+    chrome, profile = start_chrome()
     try:
         browser = urllib.parse.urlsplit(devtools_address(chrome, CHROME_UP_S))
         with urllib.request.urlopen(f"http://{browser.netloc}/json") as r:
             ws_url = next(t["webSocketDebuggerUrl"] for t in json.load(r) if t["type"] == "page")
         async with fitcheck.conecta_cdp(ws_url) as ws:
-            tab = Tab(ws, srv.base)
-            tab.srv = srv
-            reader = asyncio.create_task(fitcheck.le_cdp(ws, tab.pending, tab.on_event))
-            await tab.cmd("Page.enable")
-            await tab.cmd("Runtime.enable")
-            await tab.cmd("Fetch.enable", patterns=[{"urlPattern": "*"}])
-            result = await run(tab)
-            for task in [*tab.tasks, reader]:
-                task.cancel()
-            return result
+            return await run_in_tab(ws, srv, run)
     finally:
         fitcheck.fecha_chrome(chrome, profile)
+
+
+async def with_tabs(srv, runs):
+    chrome, profile = start_chrome()
+    results = []
+    try:
+        address = devtools_address(chrome, CHROME_UP_S)
+        netloc = urllib.parse.urlsplit(address).netloc
+        async with fitcheck.conecta_cdp(address) as ws:
+            browser = Tab(ws, srv.base)
+            reader = asyncio.create_task(fitcheck.le_cdp(ws, browser.pending, browser.on_event))
+            for run in runs:
+                context = (await browser.cmd("Target.createBrowserContext"))["browserContextId"]
+                target = (await browser.cmd("Target.createTarget", url="about:blank",
+                                            browserContextId=context))["targetId"]
+                async with fitcheck.conecta_cdp(f"ws://{netloc}/devtools/page/{target}") as page:
+                    results.append(await run_in_tab(page, srv, run))
+                await browser.cmd("Target.closeTarget", targetId=target)
+                await browser.cmd("Target.disposeBrowserContext", browserContextId=context)
+            reader.cancel()
+    finally:
+        fitcheck.fecha_chrome(chrome, profile)
+    return results
 
 
 async def open_page(tab, query=""):

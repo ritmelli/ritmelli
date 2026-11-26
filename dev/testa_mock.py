@@ -1301,9 +1301,12 @@ def ao_vivo(srv):
         conn.request("GET", "/t/ritmelli/", headers={"If-None-Match": etag or ""})
         again = conn.getresponse()
         again.read()
-        conn.request("GET", "/t/ritmelli/shared.js")
-        script = conn.getresponse()
-        script.read()
+        files = {}
+        for name in ("shared.js", "base.css", "fonts/Archivo-latin.woff2", "texturas/veio.webp"):
+            conn.request("GET", f"/t/ritmelli/{name}")
+            answer = conn.getresponse()
+            answer.read()
+            files[name] = (answer.status, answer.getheader("Cache-Control"))
         index = []
         for path in index_names():
             conn.request("GET", f"{path}?lang=pt_BR&parear=123456")
@@ -1312,10 +1315,10 @@ def ao_vivo(srv):
             index.append((answer.status, answer.getheader("Location")))
     finally:
         conn.close()
-    confere((page_cache, again.status, again.getheader("Cache-Control"), script.status,
-             script.getheader("Cache-Control")) == ("no-cache", 304, "no-cache", 200, "no-cache"),
+    confere((page_cache, again.status, again.getheader("Cache-Control")) == ("no-cache", 304, "no-cache")
+            and all(x == (200, "no-cache") for x in files.values()),
             f"/t/ answers with Cache-Control: no-cache: the page ({page_cache}), its 304 ({again.status}, "
-            f"{again.getheader('Cache-Control')}) and a .js ({script.status}, {script.getheader('Cache-Control')})")
+            f"{again.getheader('Cache-Control')}) and a .js, a .css, a font and an image ({files})")
     confere(index == [(302, "/t/ritmelli/?lang=pt_BR&parear=123456")] * len(index_names()),
             f"every name of the theme's index.html takes to the built page with its query ({index_names()}: {index})")
     confere(srv.api("GET", "/api/state").get("caps") == perm.caps("pc"), "o PC: o /api/state traz o caps do PC")

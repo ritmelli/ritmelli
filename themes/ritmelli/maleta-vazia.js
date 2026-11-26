@@ -1,4 +1,5 @@
-/* MALETA-VAZIA-INICIO: (r09) o aviso de vazio do A seguir na letra das telas dos toca-discos (a 5x7 do deck, 1 pixel
+/* MALETA-VAZIA-INICIO */
+/* (r09) o aviso de vazio do A seguir na letra das telas dos toca-discos (a 5x7 do deck, 1 pixel
    da letra = 1 celula), num canvas de 1 px por celula mostrado a 2x, sem suavizar; o texto do DOM segue por cima, transparente.
    Cada linha centrada no eixo da maleta; o titulo na negrita (a do "Nada no prato"), a dica na regular, a sombra de 1 celula */
 (() => {
