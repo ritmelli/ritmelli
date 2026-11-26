@@ -6,7 +6,7 @@ CONSTANTS Qids, NoQid, StreamFailureChecksJob, AudioSwapThroughChangeQueue, Stre
           SilentStreamGoesToTheApp, WithTheJob, WithTheMoves, AudioVersionKeepsTheReservation,
           FileSwapStartsItsReader, TwoMoves, WithThePlay, WithTheSeek, StreamRefusalChecksItsWait,
           OpenedStreamLooksForTheFile, SeekStartsANewLine, WaitKeyedByGen, WithTheForget,
-          DroppedStreamWaitsForTheFile, PassageLooksForTheFile
+          WithTheDrop, WithTheJobSwitch
 
 VARIABLES pc, track, nextId, line, pronto, nearEnd, noReader, gen,
           jobStatus, shelf, stream, swTr, dlSaw, wrongTrack, fileWait, stGen, refusedPlaying,
@@ -24,7 +24,7 @@ Workers == {"Download", "Swap", "Stream", "Prepare", "AudioVersion", "Play", "Fo
 Procs == Workers \cup {"Mixer", "PassageWatcher"}
 
 NoTrack == [id |-> 0, job |-> FALSE, qid |-> NoQid, ver |-> "-", path |-> "none"]
-NoSwitch == [tag |-> NoQid, sai |-> 0, entra |-> 0, ver |-> "-"]
+NoSwitch == [tag |-> NoQid, sai |-> 0, ver |-> "-"]
 NoPronto == [qid |-> NoQid, ver |-> "-"]
 
 Range(s) == {s[i] : i \in 1..Len(s)}
@@ -261,7 +261,7 @@ StreamReaderStarts ==
     /\ At("StreamReader", "sr_idle")
     /\ \/ stream = "refused" /\ Goto("StreamReader", "st_refused")
        \/ /\ stream = "ok"
-          /\ \E l \in {"done", "st_reading", IF DroppedStreamWaitsForTheFile THEN "st_reading" ELSE "sr_dropped"} :
+          /\ \E l \in {"done", "st_reading"} \cup (IF WithTheDrop THEN {"sr_dropped"} ELSE {}) :
                 Goto("StreamReader", l)
        \/ stream = "gone" /\ Goto("StreamReader", "done")
     /\ UNCHANGED <<lockVars, platVars, jobVars, queueVars, localVars>>
@@ -357,8 +357,8 @@ MixerSwitches ==
     /\ pronto.qid /= NoQid
     /\ Playing
     /\ Section("Mixer", "_qlock")
-    /\ virou' = [tag |-> pronto.qid, sai |-> track.id, entra |-> nextId, ver |-> pronto.ver]
-    /\ \E j \in IF WithTheJob THEN BOOLEAN ELSE {FALSE} :
+    /\ virou' = [tag |-> pronto.qid, sai |-> track.id, ver |-> pronto.ver]
+    /\ \E j \in IF WithTheJobSwitch THEN BOOLEAN ELSE {FALSE} :
           Publish([id |-> nextId, job |-> j, qid |-> pronto.qid, ver |-> pronto.ver, path |-> "stream"])
     /\ UNCHANGED <<pc, jobVars, fila, ver, closing, preparando, localVars>>
 
@@ -507,7 +507,7 @@ PassageWatcherTakes ==
     \/ /\ At("PassageWatcher", "pw_take")
        /\ virou /= pwSeen
        /\ SectionThenRelease("PassageWatcher", "_qlock", {"fila_lock"})
-       /\ Goto("PassageWatcher", IF PassageLooksForTheFile THEN "pw_file_lock" ELSE "pw_idle")
+       /\ Goto("PassageWatcher", "pw_idle")
        /\ UNCHANGED <<platVars, jobVars, queueVars, localVars>>
 
 PassageWatcherCloses ==
@@ -515,20 +515,8 @@ PassageWatcherCloses ==
     /\ SectionThenRelease("PassageWatcher", "_qlock", {"fila_lock"})
     /\ fila' = Without(fila, closing.tag)
     /\ closing' = NoSwitch
-    /\ Goto("PassageWatcher", IF PassageLooksForTheFile THEN "pw_file_lock" ELSE "pw_idle")
+    /\ Goto("PassageWatcher", "pw_idle")
     /\ UNCHANGED <<platVars, jobVars, ver, virou, preparando, localVars>>
-
-PassageWatcherFile ==
-    \/ /\ At("PassageWatcher", "pw_file_lock")
-       /\ IF FileReady
-          THEN Acquire("PassageWatcher", "_lock") /\ Goto("PassageWatcher", "pw_file")
-          ELSE UNCHANGED lockVars /\ Goto("PassageWatcher", "pw_idle")
-       /\ UNCHANGED <<platVars, jobVars, queueVars, localVars>>
-    \/ /\ At("PassageWatcher", "pw_file")
-       /\ SectionThenRelease("PassageWatcher", "_qlock", {"_lock"})
-       /\ IF track.id = pwSeen.entra /\ track.job THEN FileHandover ELSE UNCHANGED platVars
-       /\ Goto("PassageWatcher", "pw_idle")
-       /\ UNCHANGED <<jobVars, queueVars, localVars>>
 
 Quiescent ==
     /\ \A p \in Workers : pc[p] = "done"
@@ -544,7 +532,7 @@ Step ==
     \/ MixerTime \/ MixerSwitches
     \/ PrepareReads \/ PrepareMarks \/ PrepareSource \/ PrepareLocks \/ PreparePublishes \/ PrepareReleases
     \/ AudioVersionLocks \/ AudioVersionToday \/ AudioVersionThroughChangeQueue
-    \/ PassageWatcherSees \/ PassageWatcherLocks \/ PassageWatcherTakes \/ PassageWatcherCloses \/ PassageWatcherFile
+    \/ PassageWatcherSees \/ PassageWatcherLocks \/ PassageWatcherTakes \/ PassageWatcherCloses
 
 Next == Step \/ (Quiescent /\ UNCHANGED vars)
 

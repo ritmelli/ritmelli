@@ -124,6 +124,8 @@ class Entries:
             return self.is_container(node.left, scope) or self.is_container(node.right, scope)
         if isinstance(node, ast.BoolOp):
             return any(self.is_container(v, scope) for v in node.values)
+        if isinstance(node, ast.IfExp):
+            return self.is_container(node.body, scope) or self.is_container(node.orelse, scope)
         if isinstance(node, ast.Call) and called(node) in self.creturns:
             return True
         if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "copy"
@@ -190,7 +192,7 @@ class Entries:
         scope.containers |= self.cparams.get(func.name, set())
         for _ in range(4):
             for node in self.walk(func):
-                if isinstance(node, (ast.Assign, ast.AnnAssign)) and node.value is not None:
+                if isinstance(node, (ast.Assign, ast.AnnAssign, ast.NamedExpr)) and node.value is not None:
                     for root in node.targets if isinstance(node, ast.Assign) else [node.target]:
                         pairs = list(zip(root.elts, node.value.elts)) if (
                             isinstance(root, (ast.Tuple, ast.List)) and isinstance(node.value, (ast.Tuple, ast.List))
@@ -457,6 +459,10 @@ ENTRY_FORMS = {
         {"case.py": "def entries(A):\n    return A.fila\ndef f(A):\n    entries(A)[0].update(audio=True)\n"}, 1),
     "the head of the queue by index": ({"case.py": "def f(A):\n    A.fila[0]['fixa'] = True\n"}, 1),
     "an entry taken by next(iter())": ({"case.py": "def f(A):\n    x = next(iter(A.fila))\n    x.update(title='New')\n"}, 1),
+    "an entry of a container chosen by a conditional": (
+        {"case.py": "def f(A, flag):\n    q = A.fila if flag else A.mix\n    q[0].update(title='New')\n"}, 1),
+    "an entry bound by an assignment expression": (
+        {"case.py": "def f(A):\n    if entry := next(iter(A.fila), None):\n        entry['audio'] = True\n"}, 1),
     "an entry found by next()":({"case.py": "def f(A, q):\n    x = next((y for y in A.fila if y['qid'] == q), None)"
                                              "\n    x['fixa'] = True\n"}, 1),
     "an entry of a copy of the Mix": ({"case.py": "def f(A):\n    for m in sorted(A.mix):\n"

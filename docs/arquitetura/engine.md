@@ -118,14 +118,15 @@ arquivo, sempre com o leitor novo do arquivo, salvo o disco que já acabou, e a 
 stream a mantém). A medida do ganho e o leitor ficam fora das travas, e o leitor que acaba só marca o fim, ou o erro, se
 ainda é o leitor do deck; o Repetir e o fim do leitor se decidem no mesmo trecho do `_qlock`. A leitura vazia de um
 arquivo que começou nos últimos `FILE_TAIL_S` dele é o fim do disco quando o ffmpeg sai sem erro, e não um erro de
-leitura (com o Repetir, o arquivo volta do 0). O stream de um disco com download que não dá áudio, ou que para antes do
-fim, marca a espera do arquivo no deck (`file_wait`, o gen daquele leitor; o `esperando_arquivo` confere que ainda é o
-do prato) e passa o disco ao servidor pelo gancho do `on_silent_stream`, sem marcar o fim. O `load`, o `espera` e o
-`stop` devolvem a `Captura` do que estava no prato logo antes: a posição que o servidor grava (`remember_pos`) é a desse
-instante. O `load`, o `espera`, o `stop`, o `seek` e o `preparar` aceitam um `pode()`, conferido sob o `_qlock` antes de
-mudar qualquer coisa: falso, nada muda (o servidor confere ali a reserva de avanço, a primeira da fila, o deck e a linha
-que viu; ver [comandos.md](comandos.md)). Quem chama com as travas dele na mão passa também o `ganho` já medido e uma
-lista `depois`, onde fica o resto do comando (o leitor que começa, a onda, a medida), que ele roda ao soltá-las.
+leitura (com o Repetir, o arquivo volta do 0). O stream de um disco com download que não dá áudio marca a espera do
+arquivo no deck (`file_wait`, o gen daquele leitor; o `esperando_arquivo` confere que ainda é o do prato) e passa o
+disco ao servidor pelo gancho do `on_silent_stream`, sem marcar o fim; o que para antes do fim ainda marca o fim ali, e
+o arquivo que chega depois fica sem leitor (#294). O `load`, o `espera` e o `stop` devolvem a `Captura` do que estava no
+prato logo antes: a posição que o servidor grava (`remember_pos`) é a desse instante. O `load`, o `espera`, o `stop`, o
+`seek` e o `preparar` aceitam um `pode()`, conferido sob o `_qlock` antes de mudar qualquer coisa: falso, nada muda (o
+servidor confere ali a reserva de avanço, a primeira da fila, o deck e a linha que viu; ver [comandos.md](comandos.md)).
+Quem chama com as travas dele na mão passa também o `ganho` já medido e uma lista `depois`, onde fica o resto do comando
+(o leitor que começa, a onda, a medida), que ele roda ao soltá-las.
 
 O servidor confere a linha pela interface do motor, e não pelos campos de dentro: o `line()` dá a `Line` (o deck e a
 linha do prato, os mesmos dois campos da `Captura`), e o `on_line(t)` diz, sob o `_qlock`, se o prato ainda é a linha de

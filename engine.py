@@ -2330,9 +2330,7 @@ class Engine:
                 elif estima and n:  # o disco curto que acabou antes da estimativa
                     self.sonoridade(track, med.lufs(), inteira=False)
                 med = None  # a volta do Repetir nao mede de novo
-            fim, dur = t + n / SR, track.get("duration") or 0
-            caiu = fim < dur - STREAM_CAIU_S if dur else n == 0
-            if (n == 0 or caiu) and stream and track.get("job") and deck is self._deck:
+            if n == 0 and stream and track.get("job") and deck is self._deck:
                 with self._qlock:
                     waits = deck is self._deck and deck.gen == gen
                     if waits:
@@ -2343,6 +2341,8 @@ class Engine:
             if n == 0 and deck is not self._deck:  # a proxima que nao decodifica so nao entra
                 self._fim_do_leitor(deck, gen)
                 return
+            fim, dur = t + n / SR, track.get("duration") or 0
+            caiu = fim < dur - STREAM_CAIU_S if dur else n == 0
             religar = self.religar_stream
             if stream and caiu and not track.get("job") and deck is self._deck and religar is not None:
                 religar(track, fim, lambda: self._stream_desistiu(deck, gen, track, fim))

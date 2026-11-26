@@ -60,30 +60,58 @@ def lock_of(node, cls):
     return None
 
 
+def has_lock(node, cls):
+    if lock_of(node, cls):
+        return True
+    if isinstance(node, (ast.Tuple, ast.List, ast.Set)):
+        return any(has_lock(e, cls) for e in node.elts)
+    if isinstance(node, ast.Dict):
+        return any(v is not None and has_lock(v, cls) for v in node.values)
+    if isinstance(node, ast.IfExp):
+        return has_lock(node.body, cls) or has_lock(node.orelse, cls)
+    if isinstance(node, ast.BoolOp):
+        return any(has_lock(v, cls) for v in node.values)
+    if isinstance(node, (ast.Starred, ast.NamedExpr)):
+        return has_lock(node.value, cls)
+    return False
+
+
 def lock_bindings(trees):
     out = []
     for module, tree in trees.items():
         owner = {id(n): c.name for c in ast.walk(tree) if isinstance(c, ast.ClassDef) for n in ast.walk(c)}
+        inside = {}
+        for f in ast.walk(tree):
+            if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                inside.update((id(m), f.name) for m in ast.walk(f))
         for n in ast.walk(tree):
             if isinstance(n, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.NamedExpr)) and n.value is not None:
                 roots = n.targets if isinstance(n, ast.Assign) else [n.target]
                 values = [n.value]
             elif isinstance(n, ast.withitem) and n.optional_vars is not None:
                 roots, values = [n.optional_vars], [n.context_expr]
+            elif isinstance(n, ast.withitem):
+                cls = owner.get(id(n))
+                if not lock_of(n.context_expr, cls) and any(lock_of(v, cls) for v in ast.walk(n.context_expr)):
+                    out.append(f"{module}:{n.context_expr.lineno}: a lock taken through an expression, not by its name")
+                continue
+            elif isinstance(n, ast.Call) and acquired(n, owner.get(id(n))) and not (
+                    nonblocking(n) and inside.get(id(n)) == "with_lock"):
+                out.append(f"{module}:{n.lineno}: {acquired(n, owner.get(id(n)))} acquired by hand, outside the "
+                           f"with_lock's try")
+                continue
             elif isinstance(n, (ast.For, ast.AsyncFor, ast.comprehension)):
                 roots, values = [n.target], [n.iter]
             elif isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
                 roots = [ast.Name(a.arg) for a in n.args.posonlyargs + n.args.args + n.args.kwonlyargs]
                 values = n.args.defaults + [d for d in n.args.kw_defaults if d is not None]
-            elif isinstance(n, (ast.Return, ast.Yield)):
-                if n.value is not None and lock_of(n.value, owner.get(id(n))):
+            elif isinstance(n, (ast.Return, ast.Yield, ast.YieldFrom)):
+                if n.value is not None and has_lock(n.value, owner.get(id(n))):
                     out.append(f"{module}:{n.lineno}: a lock returned by a function")
                 continue
             elif isinstance(n, ast.Call):
                 args = [*(n.args[1:] if called_attr(n) == "with_lock" else n.args), *(k.value for k in n.keywords)]
-                flat = [e.value if isinstance(e, ast.Starred) else e for a in args
-                        for e in (a.elts if isinstance(a, (ast.Tuple, ast.List, ast.Set)) else [a])]
-                if any(lock_of(e, owner.get(id(n))) for e in flat):
+                if any(has_lock(a, owner.get(id(n))) for a in args):
                     out.append(f"{module}:{n.lineno}: a lock passed as an argument to {ast.unparse(n.func)}")
                 continue
             else:
@@ -631,10 +659,20 @@ def self_test(order, before):
         "a lock handed to a lambda": "def f(A):\n    with (lambda lk: lk)(A.fila_lock):\n        pass\n",
         "a lock returned by a getter": "class Engine:\n    def _mix_lock(self):\n        return self._lock\n",
         "a _qlock section returned by a getter": "def f(E):\n    return E.state_section()\n",
+        "a lock returned by a conditional": "def f(A, E):\n    return E._lock if A else E._qlock\n",
+        "a lock returned in a tuple": "def f(E):\n    return (E._lock,)\n",
+        "a lock yielded from a getter": "def f(E):\n    yield from (E._qlock,)\n",
+        "a lock passed in a dict": "def f(A, h):\n    h({'lock': A.fila_lock})\n",
+        "a lock passed by a conditional": "def f(A, E, h):\n    h(E._lock if A else E._qlock)\n",
+        "a lock chosen by an expression in a with": (
+            "def f(A, E):\n    with (E._lock if A else E._qlock):\n        pass\n"),
+        "a lock acquired by hand around a with": (
+            "def f(E):\n    E._qlock.acquire()\n    try:\n        with E._lock:\n            pass\n"
+            "    finally:\n        E._qlock.release()\n"),
     }
     for what, code in bindings.items():
         bad = lock_bindings({"case.py": ast.parse(code)})
-        check(len(bad) == 1, f"the binding check flags {what} ({bad})")
+        check(bool(bad), f"the binding check flags {what} ({bad})")
     bad = lock_bindings({"case.py": ast.parse("def f(A, E):\n    d = E._deck\n    n = len(A.fila)\n")})
     check(not bad, f"the binding check accepts names bound to what is not a lock ({bad})")
     calls = {
@@ -843,6 +881,14 @@ def main():
     bound = lock_bindings(dict(trees, **{"engine.py": ast.parse(getter)}))
     check(getter.count("_mix_lock") == 2 and len(bound) == 1,
           f"with the _mixa taking the _lock from a getter, the binding check fails ({bound})")
+    for what, taken in (("a lock chosen by an expression", "        with (self._lock if self.paused else self._qlock):\n"
+                                                             "            pass\n"),
+                        ("a lock acquired by hand", "        self._lock.acquire()\n        self._lock.release()\n")):
+        mixed = sources["engine.py"].replace(head, "        buf = np.zeros((frames, 2), np.float32)\n" + taken
+                                             + "        b = self._captura(frames)\n")
+        bound = lock_bindings(dict(trees, **{"engine.py": ast.parse(mixed)}))
+        check(mixed != sources["engine.py"] and len(bound) == 1,
+              f"with the _mixa taking {what}, the binding check fails ({bound})")
     if failures:
         print(f"\n{len(failures)} failure(s)")
         sys.exit(1)

@@ -36,17 +36,17 @@ um texto que o UTF-8 não codifica não quebra a volta, que é montada uma vez p
   cortar, do ponto onde o áudio já decodificado termina. O stream tenta três vezes (a última aceitando qualquer formato
   de áudio) e cada falha vai para o `server.err` (nos logs, ver `pastas.py`) com o motivo; se não abrir, a tela avisa e
   o disco toca quando o download chegar. Se o download termina enquanto o stream abre, o stream que entrou no prato
-  confere o job e passa para o arquivo (`comandos.play_finished_file`), e o vigia da passagem faz o mesmo com o stream
-  de um disco com download que a virada pôs no prato. Se o endereço sai mas o ffmpeg não recebe nada dele (o YouTube às
-  vezes responde 403), o leitor marca a espera do arquivo e passa pelo mesmo caminho do stream recusado (o
-  `Engine.on_silent_stream`, que o App liga ao `_stream_refused`), enquanto essa espera ainda é a do prato, do deck e da
-  leitura dele (um pulo na barra depois dela começa um leitor novo, que fica, e o deck que entra numa passagem não herda
-  a espera do outro): o prato fica carregando com o aviso e toca o arquivo quando o download chega, com leitor novo
-  sempre que o arquivo entra no lugar do stream (mesmo perto do fim, e mesmo antes de o leitor do stream dizer que não
-  deu áudio; a leitura vazia no fim do arquivo, com o ffmpeg saindo sem erro, é o fim do disco, e com o Repetir ele toca
-  o arquivo de novo), e o aviso do stream sai com ele, venha o arquivo no lugar do stream ou do disco que esperava; o
-  aviso do stream mora à parte e só aparece quando a tela não tem outro, que fica, venha antes ou depois dele; se o
-  download falhou, antes ou depois, o prato para.
+  confere o job e passa para o arquivo (`comandos.play_finished_file`); o stream de um disco com download que a passagem
+  preparou continua no prato depois da virada, mesmo com o download pronto (#294). Se o endereço sai mas o ffmpeg não
+  recebe nada dele (o YouTube às vezes responde 403), o leitor marca a espera do arquivo e passa pelo mesmo caminho do
+  stream recusado (o `Engine.on_silent_stream`, que o App liga ao `_stream_refused`), enquanto essa espera ainda é a do
+  prato, do deck e da leitura dele (um pulo na barra depois dela começa um leitor novo, que fica, e o deck que entra
+  numa passagem não herda a espera do outro): o prato fica carregando com o aviso e toca o arquivo quando o download
+  chega, com leitor novo sempre que o arquivo entra no lugar do stream (mesmo perto do fim, e mesmo antes de o leitor do
+  stream dizer que não deu áudio; a leitura vazia no fim do arquivo, com o ffmpeg saindo sem erro, é o fim do disco, e
+  com o Repetir ele toca o arquivo de novo), e o aviso do stream sai com ele, venha o arquivo no lugar do stream ou do
+  disco que esperava; o aviso do stream mora à parte e só aparece quando a tela não tem outro, que fica, venha antes ou
+  depois dele; se o download falhou, antes ou depois, o prato para.
 - Fila (A seguir): quando o disco do prato acaba, o primeiro da fila entra, do arquivo
   ou pelo stream. O que entra na fila sem estar na prateleira já começa a baixar. O
   Repetir manda (ligado, o disco não acaba), mas vale só para o disco do prato: outro
