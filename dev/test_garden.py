@@ -53,6 +53,8 @@ CASES = {
         ("css", {"a.css": "a { content: '/* no */'; }\n"}, {"a.css": "a { color: red; } /* why */\n"}),
         ("css generated block", {"a.css": f"/* {MOLDURAS} */\na {{}}\n/* molduras:fim */\n"},
          {"a.css": f"/* {MOLDURAS} */\n/* hand */\na {{}}\n/* molduras:fim */\n"}),
+        ("a license header after a blank line", {"a.py": "\n# SPDX-License-Identifier: GPL-3.0-or-later\nx = 1\n"},
+         {"a.py": "\n# SPDX-License-Identifier: GPL-3.0-or-later\nx = 1  # why\n"}),
         ("a license header", {"a.py": "# SPDX-License-Identifier: GPL-3.0-or-later\nx = 1\n"},
          {"a.py": "# SPDX-License-Identifier: GPL-3.0-or-later\n# why\nx = 1\n"}),
         ("powershell", {"a.ps1": "$a = 'x # y'\n$b = \"#$a\"\n"}, {"a.ps1": "$a = 1 # why\n"}),
@@ -131,6 +133,8 @@ CASES = {
          {"themes/t/a.js": "setTimeout(f, 1);\n"}),
         ("setInterval in index.html", {"themes/t/index.html": "<script>\nf();\n</script>\n"},
          {"themes/t/index.html": "<script>\nsetInterval(f, 1);\n</script>\n"}),
+        ("a script commented out", {"themes/t/index.html": "<!--\n<script>\nsetTimeout(f, 1);\n</script>\n-->\n"},
+         {"themes/t/index.html": "<script>\nsetTimeout(f, 1);\n</script>\n"}),
         ("requestIdleCallback", {"gallery/a.js": "setTimeout(f, 1);\n"}, {"themes/t/a.js": "requestIdleCallback(f);\n"}),
     ],
     "theme_animation_frames": [
@@ -222,6 +226,11 @@ CASES = {
         ("the Python of a workflow", {".github/workflows/w.yml": WORKFLOW.replace("{handler}", "          except OSError:\n"
                                                                                        "              pass\n")},
          {".github/workflows/w.yml": WORKFLOW.replace("{handler}", "          except Exception:\n              pass\n")}),
+        ("the Python of a workflow with shell: python",
+         {".github/workflows/w.yml": WORKFLOW.replace("python3 {0}", "python").replace(
+             "{handler}", "          except OSError:\n              pass\n")},
+         {".github/workflows/w.yml": WORKFLOW.replace("python3 {0}", "python").replace(
+             "{handler}", "          except Exception:\n              pass\n")}),
         ("pascal", {"a.iss": "[Setup]\nA=except\n[Code]\nbegin end;\n"},
          {"a.iss": "[Code]\nbegin try f; except end; end;\n"}),
     ],
@@ -269,6 +278,7 @@ CASES = {
          {"a.py": "match x:\n    case [a, *ação]:\n        pass\n"}),
         ("a match as", {"a.py": "match x:\n    case int() as n:\n        pass\n"},
          {"a.py": "match x:\n    case int() as número:\n        pass\n"}),
+        ("a name the parser folds to ASCII", {"a.py": "K = 1\n"}, {"a.py": "K = 1\n"}),
         ("an imported module", {"a.py": "from modulo import x\n"}, {"a.py": "from módulo import x\n"}),
         ("the original name of an alias", {"a.py": "import modulo as m\n"}, {"a.py": "import módulo as m\n"}),
         ("an alias", {"a.py": "import modulo as m\n"}, {"a.py": "import modulo as ação\n"}),
@@ -420,6 +430,8 @@ def test_description():
                                                     "`--microfone` 4/4.\n",
     }
     passing["a phrase quoted as code"] = good + "\nThe check fails on `for now` with no issue link.\n"
+    passing["a phrase in a pasted log"] = ("## Proof\n\n```\n$ python dev/garden.py --pr-description\n"
+                                           "FAIL  PR #9 description: line 4: \"for now\" with no issue link\n```\n")
     for label, body in passing.items():
         check(garden.description_problems(body) == [], f"a proof section with {label} passes")
     failing = {

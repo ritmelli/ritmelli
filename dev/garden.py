@@ -310,16 +310,17 @@ def lex_iss(text):
 
 def lex_html(text):
     out = Lexed()
-    for m in re.finditer(r"<!--(.*?)-->", text, re.S):
-        start = text.count("\n", 0, m.start()) + 1
-        out.comments.append(Comment(start, start + m.group(0).count("\n"), m.group(1)))
-    for m in re.finditer(r"<(script|style)\b[^>]*>(.*?)</\1\s*>", text, re.S | re.I):
-        offset = text.count("\n", 0, m.start(2))
-        body = m.group(2)
-        lexed = lex_c(body, js=m.group(1).lower() == "script", css=m.group(1).lower() == "style")
-        shift(lexed, offset, out)
+    for m in re.finditer(r"<!--(.*?)-->|<(script|style)\b[^>]*>(.*?)</\2\s*>", text, re.S | re.I):
+        if m.group(2) is None:
+            start = text.count("\n", 0, m.start()) + 1
+            out.comments.append(Comment(start, start + m.group(0).count("\n"), m.group(1)))
+            continue
+        offset = text.count("\n", 0, m.start(3))
+        kind = m.group(2).lower()
+        shift(lex_c(m.group(3), js=kind == "script", css=kind == "style"), offset, out)
+    commented = {n for c in out.comments for n in range(c.start, c.end + 1)}
     for n, line in enumerate(text.splitlines(), 1):
-        out.code.setdefault(n, line)
+        out.code.setdefault(n, "" if n in commented else line)
     return out
 
 
@@ -438,9 +439,9 @@ def license_header(lexed):
     for c in lexed.comments:
         for k, text in enumerate(c.text.splitlines() or [""]):
             by_line.setdefault(c.start + k, text)
-    header, n = set(), 1
-    while n in by_line and not lexed.code.get(n, "").strip(" \t*/#;<!->"):
-        if LICENSE.search(by_line[n]):
+    header, n, last = set(), 1, max([*lexed.code, *by_line], default=0)
+    while n <= last and not lexed.code.get(n, "").strip(" \t*/#;<!->"):
+        if LICENSE.search(by_line.get(n, "")):
             header.add(n)
         n += 1
     return header
@@ -840,7 +841,7 @@ def workflow_python(t, path):
     if isinstance(doc, dict) and isinstance(doc.get("runs"), dict):
         steps += [s for s in doc["runs"].get("steps") or [] if isinstance(s, dict)]
     for s in steps:
-        if s.get("shell") == "python3 {0}" and isinstance(s.get("run"), str):
+        if (s.get("shell") or "").startswith("python") and isinstance(s.get("run"), str):
             out.append((s.get("name") or "", s["run"]))
     return out
 
@@ -969,8 +970,12 @@ def non_ascii_identifiers(t):
     items = []
     for p in t.paths(".py", ".spec"):
         tree = t.tree(p)
-        if tree is not None:
-            items += [(p, getattr(n, "lineno", 0)) for n, name in identifiers(tree) if not name.isascii()]
+        if tree is None:
+            continue
+        found = {(getattr(n, "lineno", 0), name) for n, name in identifiers(tree) if not name.isascii()}
+        tokens = tokenize.generate_tokens(io.StringIO(t.files[p]).readline)
+        found |= {(tok.start[0], tok.string) for tok in tokens if tok.type == tokenize.NAME and not tok.string.isascii()}
+        items += [(p, line) for line, _ in sorted(found)]
     return items
 
 
@@ -1362,7 +1367,7 @@ def description_problems(body):
     elif not any(has_proof(s) for s in sections):
         problems.append("the proof section has no run, test or screenshot (a command or a test file in `code`, a code "
                         "block, a link to a run or an image)")
-    prose = [(n, re.sub(r"(`+)(?!`).*?(?<!`)\1(?!`)", "", line)) for n, line in enumerate(lines, 1)]
+    prose = [(i + 1, re.sub(r"(`+)(?!`).*?(?<!`)\1(?!`)", "", line)) for i, line in outside_fences(lines)]
     problems += [f"line {n}: \"{PROSE.search(text).group(0)}\" with no issue link: fix it, or link the issue that "
                  f"tracks it" for n, text in prose if PROSE.search(text) and not ISSUE.search(text)]
     return problems
