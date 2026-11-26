@@ -14,8 +14,7 @@ SHEET_TAG = re.compile(r'<link rel="stylesheet" href="([^"]+)">')
 CLOSES_ELEMENT = {"script": re.compile(r"</script|<!--", re.IGNORECASE), "style": re.compile(r"</style", re.IGNORECASE)}
 CSS_ESCAPE = re.compile(r"\\(?:([0-9a-fA-F]{1,6})(?:\r\n|[ \t\r\n\f])?|(.))", re.DOTALL)
 URL_START = re.compile(r"url\(\s*['\"]?", re.IGNORECASE)
-IMAGE_SET = re.compile(r"(?:-webkit-)?image-set\(((?:[^()]|\([^()]*\))*)\)", re.IGNORECASE)
-IMAGE_SET_STRING = re.compile(r"(?:^|,)\s*['\"]")
+NOT_PLAIN_OUTSIDE = re.compile(r"\\|image-set\(", re.IGNORECASE)
 NOT_RELATIVE = re.compile(r"\s*(?:[a-z][a-z0-9+.-]*:|/|#)", re.IGNORECASE)
 
 
@@ -28,10 +27,13 @@ def sheet_problem(text, outside_page_folder):
     read = css_unescape(text)
     if "@import" in read.lower():
         return "@import, even escaped or in a comment or a string, which the browser could fetch outside the page"
-    starts = [m.end() for m in URL_START.finditer(read)]
-    starts += [m.start(1) + s.end() for m in IMAGE_SET.finditer(read) for s in IMAGE_SET_STRING.finditer(m.group(1))]
-    if outside_page_folder and any(not NOT_RELATIVE.match(read, at) for at in starts):
-        return "a relative url(), even escaped or in a comment or a string, which the page would resolve from its own folder"
+    if not outside_page_folder:
+        return None
+    if found := NOT_PLAIN_OUTSIDE.search(text):
+        return (f"{found.group(0)!r} outside the page's folder, where only a plain url() can be read for certain: the page "
+                f"resolves its addresses from its own folder")
+    if any(not NOT_RELATIVE.match(text, m.end()) for m in URL_START.finditer(text)):
+        return "a relative url(), even in a comment or a string, which the page would resolve from its own folder"
     return None
 
 
@@ -96,9 +98,12 @@ def inline_files(html, folder):
 
 
 def theme_of_template(rel):
+    path = THEMES / rel
+    if not path.is_relative_to(THEMES):
+        return None
     with contextlib.suppress(OSError, ValueError):
-        parts = (THEMES / rel).resolve().relative_to(THEMES.resolve()).parts
-        if len(parts) == 2 and os.path.samefile(THEMES / rel, THEMES / parts[0] / "index.html"):
+        parts = path.resolve().relative_to(THEMES.resolve()).parts
+        if len(parts) == 2 and os.path.samefile(path, THEMES / parts[0] / "index.html"):
             return parts[0]
     return None
 

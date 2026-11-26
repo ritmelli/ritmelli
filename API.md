@@ -44,12 +44,13 @@ interface é um tema em `themes/<slug>/` que fala só com esta API.
   `<script src="arquivo.js"></script>` ou um `<link rel="stylesheet" href="arquivo.css">`, exatamente assim, com o
   caminho na pasta da página ou começando por `/t/` (na pasta `themes/`), e a página chega com cada um trocado por um
   `<script>` ou um `<style>` com o texto do arquivo. O `ETag` dela muda quando um arquivo muda. O arquivo que falta ou
-  sai da pasta, o script com `</script` ou `<!--`, a folha com `</style` ou com `@import`, a folha de outra pasta com um
-  `url()` (ou uma string de `image-set()`) que não é absoluto, `data:`, `/` ou `#`, e a tag de arquivo escrita de outro
-  jeito não montam a página: a resposta é 500, com o nome do arquivo no log. A folha se lê com os escapes de CSS
-  decodificados, também nos comentários e nas strings: o `@import` ou o `url()` escrito só num comentário ou numa
-  string também para a montagem. O `dev/testa_mock.py` confere a troca, o `ETag`, cada recusa e o 500, e o `dev/missing_script.py`, a página
-  servida.
+  sai da pasta, o script com `</script` ou `<!--`, a folha com `</style` ou com `@import` e a tag de arquivo escrita de
+  outro jeito não montam a página: a resposta é 500, com o nome do arquivo no log. A folha se lê com os escapes de CSS
+  decodificados, também nos comentários e nas strings, e o `@import` escrito só num comentário ou numa string também
+  para a montagem. A folha de outra pasta só leva `url()` simples, com endereço absoluto, `data:`, `/` ou `#`: nela, um
+  `url()` relativo, uma `\` ou um `image-set(` também param a montagem, porque a página lê os endereços a partir da
+  pasta dela. O `dev/testa_mock.py` confere a troca, o `ETag`, cada recusa e o 500, e o `dev/missing_script.py`, a
+  página servida.
 - O tema abre também no celular, pela rede de casa (`http://<ip do PC>:8799/`): nada de
   endereço `127.0.0.1` escrito no tema e nada que dependa de mouse. Pela rede, a API só
   responde ao celular pareado (ver "Celular: pareamento"), e só no que a tabela de "Quem pode cada rota" abre para

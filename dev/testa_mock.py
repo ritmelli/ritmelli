@@ -1147,7 +1147,7 @@ def the_theme_page_build():
                                                 {"a.css": '@im\\70 ort "palette.css";\n'}, "a.css has @import"),
             "a sheet in a subfolder with an escaped relative url()": ('<link rel="stylesheet" href="sub/b.css">',
                                                                       {"sub/b.css": "a { b: \\75rl(x.png); }\n"},
-                                                                      "relative url()"),
+                                                                      "outside the page's folder"),
             "a sheet with an @import escaped across a CRLF": ('<link rel="stylesheet" href="a.css">',
                                                               {"a.css": '@im\\70\r\nort "p.css";\n'}, "a.css has @import"),
             "a sheet with an escaped quote before an @import": ('<link rel="stylesheet" href="a.css">',
@@ -1170,10 +1170,16 @@ def the_theme_page_build():
                                                                       "a.css has @import"),
             "a sheet in a subfolder with an escaped ) in a relative url()": ('<link rel="stylesheet" href="sub/b.css">',
                                                                              {"sub/b.css": "a { b: url(\\)x.png); }\n"},
-                                                                             "relative url()"),
-            "a sheet in a subfolder with a relative string in an image-set()": (
+                                                                             "outside the page's folder"),
+            "a sheet in a subfolder with an image-set()": (
                 '<link rel="stylesheet" href="sub/b.css">', {"sub/b.css": 'a { b: image-set("x.png" 1x); }\n'},
-                "relative url()"),
+                "'image-set(' outside the page's folder"),
+            "a sheet in a subfolder with a comment in an image-set()": (
+                '<link rel="stylesheet" href="sub/b.css">',
+                {"sub/b.css": 'a { b: image-set(/* candidate */ "x.png" 1x); }\n'}, "'image-set(' outside the page's folder"),
+            "a sheet in a subfolder with a backslashed quote in a url()": (
+                '<link rel="stylesheet" href="sub/b.css">', {"sub/b.css": 'a { b: url(\\"/x.png); }\n'},
+                "outside the page's folder"),
             "a sheet with @import only in a string": ('<link rel="stylesheet" href="a.css">',
                                                       {"a.css": 'a::after { content: "\\" @import \\""; }\n'},
                                                       "a.css has @import"),
@@ -1195,17 +1201,17 @@ def the_theme_page_build():
             except theme_page.ThemePageError as ex:
                 error = str(ex)
             confere(said in error, f"{what} stops the build of the page ({error})")
-        (folder / "sub" / "c.css").write_text("a { b: url(data:image/png;base64,AA); c: url(#d); e: url( 'data:x' ); "
-                                              "f: image-set(url('data:y') 2x, 'data:z' type('image/avif') 1x); }\n",
+        (folder / "sub" / "c.css").write_text("a { b: url(data:image/png;base64,AA); c: url(#d); e: url( 'data:x' ); }\n",
                                               encoding="utf-8")
-        sheet.write_text("a { b: url(fonts/x.woff2); }\n", encoding="utf-8")
+        sheet.write_text("a { b: url(fonts/x.woff2); c: image-set(url('y.webp') 2x, 'z.webp' 1x); d: '\\00B7'; }\n",
+                         encoding="utf-8")
         kept = {"a tag written inside an attribute": ("<div title='<script src=\"first.js\"></script>'></div>", None),
-                "a sheet of the page folder with a relative url()": ('<link rel="stylesheet" href="a.css">',
-                                                                     "<style>\na { b: url(fonts/x.woff2); }\n</style>"),
+                "a sheet of the page folder with a relative url(), an image-set() and an escape": (
+                    '<link rel="stylesheet" href="a.css">',
+                    "<style>\na { b: url(fonts/x.woff2); c: image-set(url('y.webp') 2x, 'z.webp' 1x); d: '\\00B7'; }\n</style>"),
                 "a sheet in a subfolder with data: and # urls": ('<link rel="stylesheet" href="sub/c.css">',
                                                                  "<style>\na { b: url(data:image/png;base64,AA); c: "
-                                                                 "url(#d); e: url( 'data:x' ); f: image-set(url('data:y') "
-                                                                 "2x, 'data:z' type('image/avif') 1x); }\n</style>")}
+                                                                 "url(#d); e: url( 'data:x' ); }\n</style>")}
         for what, (tag, expected) in kept.items():
             try:
                 out = theme_page.inline_files(tag, folder)
@@ -1227,6 +1233,7 @@ async def a_missing_file_answers_500(server, folder):
     import logging
     from unittest import mock
 
+    import yarl
     from aiohttp.test_utils import TestClient, TestServer
 
     broken = folder / "themes" / "broken"
@@ -1255,18 +1262,37 @@ async def a_missing_file_answers_500(server, folder):
             def recorded(a, b):
                 compared.append(threading.current_thread() is threading.main_thread())
                 return samefile(a, b)
+            network = []
+            stat, realpath = os.stat, os.path.realpath
+
+            def local_only(real):
+                def read(path, *args, **kwargs):
+                    if os.fspath(path).startswith(("\\\\", "//")):
+                        network.append(os.fspath(path))
+                        raise FileNotFoundError(path)
+                    return real(path, *args, **kwargs)
+                return read
             async with TestClient(TestServer(server.build(A), host="127.0.0.1", port=A.port)) as client:
                 resp = await client.get("/t/broken/", headers={"Host": f"localhost:{A.port}"})
                 status = resp.status
                 with mock.patch.object(server.theme_page.os.path, "samefile", recorded):
                     sent = await client.get("/t/broken/index.html", headers={"Host": f"localhost:{A.port}"},
                                             allow_redirects=False)
+                with mock.patch.object(os, "stat", local_only(stat)), \
+                        mock.patch.object(os.path, "realpath", local_only(realpath)):
+                    shares = {name: (await client.get(yarl.URL(name, encoded=True), allow_redirects=False,
+                                                      headers={"Host": f"localhost:{A.port}"})).status
+                              for name in ("/t///unreachable.invalid/share/index.html",
+                                           "/t/%5C%5Cunreachable.invalid%5Cshare/x.png",
+                                           "/t/%5C%5Cunreachable.invalid%5Cshare/")}
         finally:
             logger.removeHandler(handler)
     confere(status == 500 and "gone.js is missing" in log.getvalue(),
             f"through the route, a missing theme file answers 500 and the log names it ({status})")
     confere(sent.status == 302 and compared == [False],
             f"the index.html redirect compares the file off the server's loop ({sent.status}, on the loop: {compared})")
+    confere(not network and all(code in (403, 404) for code in shares.values()),
+            f"a theme address naming a network share is refused without the PC reading it ({shares}, read: {network})")
 
 
 def index_names():

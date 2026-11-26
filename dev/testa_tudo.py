@@ -220,7 +220,7 @@ LONG_TITLES = {"bench": "Banca", "capture": "Captura"}
 AREAS = {
     "microfone": ("microfone/", "fx.py", "engine.py", "versao.py", "dev/testa_filtro.py", "dev/testa_voz.py",
                   "dev/testa_microfone.py", "dev/testa_aparelho_mudo.py", "instalador/mudos.iss"),
-    "tela": ("themes/", "server.py", "theme_page.py", "i18n.py", "metricas.py", "dev/compara.py", "dev/fitcheck.py", "dev/so_mock.py",
+    "tela": ("themes/", "gallery/", "server.py", "theme_page.py", "i18n.py", "metricas.py", "dev/compara.py", "dev/fitcheck.py", "dev/so_mock.py",
              "dev/missing_script.py", "dev/theme_scripts.py", "dev/theme_listeners.py", "dev/test_theme_listeners.py"),
 }
 TODAS = (".github/workflows/testa.yml", ".github/actions/", "dev/testa_tudo.py", "instalador/travas.txt")

@@ -2530,7 +2530,7 @@ def build(app_state):
     @r.get("/t/{slug}/")
     async def theme_index(request):
         p = theme_page.THEMES / request.match_info["slug"] / "index.html"
-        if not p.exists() or theme_page.THEMES not in p.resolve().parents:
+        if p.parent.parent != theme_page.THEMES or not p.exists() or theme_page.THEMES not in p.resolve().parents:
             raise web.HTTPNotFound()
         return await pagina_com_textos(request, p)
 

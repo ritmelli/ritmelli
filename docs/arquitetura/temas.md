@@ -15,27 +15,28 @@ todos os `.js` e `.css` da pasta do tema, e cada bloco marcado (`/* NOME-INICIO 
 
 A página do tema chega inteira numa resposta só. O `index.html` lista os arquivos da pasta do tema, cada um no lugar em
 que roda: um `<script src="arquivo.js"></script>` por script e um `<link rel="stylesheet" href="arquivo.css">` por
-folha, sem outros atributos. O servidor (o `build` do `theme_page.py`, que o `server.py` chama) troca cada um por um `<script>` ou um `<style>`
-com o texto do arquivo, e a página não pede ao servidor nenhum script nem nenhuma folha: não existe página com um
-arquivo faltando. O arquivo que falta ou que sai da pasta, o que traz o que fecharia o elemento em volta dele (`</script`
-ou `<!--` num script, `</style` ou `@import` numa folha), a folha de outra pasta com um `url()` relativo (que a página
-leria a partir da pasta dela) e a tag de arquivo escrita de outro jeito param a montagem no servidor, que responde 500
-e põe no log o nome do arquivo. A folha se lê com os escapes de CSS decodificados, também nos comentários e nas
-strings, e o `@import` ou o `url()` relativo que aparece em qualquer lugar dela, mesmo só num comentário ou numa
-string, para a montagem: o que a montagem não distingue com certeza de uma busca, ela recusa; o `dev/testa_mock.py` confere cada um desses casos. O
-`dev/missing_script.py`, que o `--tela` do `dev/testa_tudo.py` roda, lê a página e a galeria como o servidor as manda,
-nas duas línguas, de um `--mock` como o PC e de outro como o celular, e reprova com um `<script src>` ou um
-`<link rel="stylesheet">` nelas. O `dev/garden.py` conta as linhas de CSS e JS escritas no próprio `index.html` e
-guarda o teto delas (o `theme_inline_lines` do `dev/garden.json`), que é 0: código novo do tema vai num arquivo da
-pasta, e a contagem vai para o resumo do PR.
+folha, sem outros atributos. O servidor (o `build` do `theme_page.py`, que o `server.py` chama) troca cada um por um
+`<script>` ou um `<style>` com o texto do arquivo, e a página não pede ao servidor nenhum script nem nenhuma folha: não
+existe página com um arquivo faltando. O arquivo que falta ou que sai da pasta, o que traz o que fecharia o elemento em
+volta dele (`</script` ou `<!--` num script, `</style` ou `@import` numa folha) e a tag de arquivo escrita de outro
+jeito param a montagem no servidor, que responde 500 e põe no log o nome do arquivo. A folha se lê com os escapes de
+CSS decodificados, também nos comentários e nas strings, e o `@import` que aparece em qualquer lugar dela, mesmo só num
+comentário ou numa string, para a montagem. A folha de outra pasta só leva `url()` simples, com endereço absoluto,
+`data:`, `/` ou `#`, porque a página lê os endereços a partir da pasta dela: um `url()` relativo, uma `\` ou um
+`image-set(` nela também param a montagem. O que a montagem não distingue com certeza de uma busca, ela recusa; o
+`dev/testa_mock.py` confere cada um desses casos. O `dev/missing_script.py`, que o `--tela` do `dev/testa_tudo.py` roda,
+lê a página e a galeria como o servidor as manda, nas duas línguas, de um `--mock` como o PC e de outro como o celular,
+e reprova com um `<script src>` ou um `<link rel="stylesheet">` nelas. O `dev/garden.py` conta as linhas de CSS e JS
+escritas no próprio `index.html` e guarda o teto delas (o `theme_inline_lines` do `dev/garden.json`), que é 0: código
+novo do tema vai num arquivo da pasta, e a contagem vai para o resumo do PR.
 
 Os scripts são clássicos, sem `defer`: rodam na ordem da lista, e o que um declara no alto fica à vista dos de depois.
 No `<head>`, logo depois dos textos que o servidor põe no `<!-- i18n -->`, vêm o `i18n.js` (o `I18N`, ver o
 [i18n.md](i18n.md)), o `shared.js` (o estado da página, `S`, o da mesa de DJ, `MESA`, e os ajudantes de todos: o `$`, o
 `el`, o `clamp`, o `reduz`, o `celular()`, o `toque()`, o `abrirMaleta()`, o `sombrear()`, o `dialogoAberto()`, o
 `fmt()`, o `mudar()` e o `ligarChave()`) e o `gerado/pecas.js` (as constantes das peças de pixel, do `dev/pecas.py`).
-No fim do `<body>`, com a marcação inteira já lida, vêm: o `transporte.js` (ver abaixo); o `page-texts.js`, que aplica os
-textos da marcação e mostra a página (a classe `i18n-ok`), antes de qualquer outro ler ou medir a tela; o
+No fim do `<body>`, com a marcação inteira já lida, vêm: o `transporte.js` (ver abaixo); o `page-texts.js`, que aplica
+os textos da marcação e mostra a página (a classe `i18n-ok`), antes de qualquer outro ler ou medir a tela; o
 `desk-scale.js` (a escala do palco da mesa: o `PALCO`, o `ajustarPalco()` e o `rectP()`); o `api.js` (o `api()` e o
 texto das mensagens do servidor); o `notice.js` (o aviso rápido); o `covers.js` (as capas); o `tonearm.js` (o braço do
 toca-discos); o `turntable.js` (o prato e a faixa, com os botões de tocar e a barra do tempo); o `dj-visor.js` (o visor
@@ -121,6 +122,7 @@ textos estarem no lugar) primeiro, as partes da página (`buttons.css`, `top-bar
 cima delas (`skin-vars.css`, as folhas geradas, `skin-top.css`, `skin-case.css`, ...), os arranjos do computador e da
 mesa de DJ (`desktop-library.css`, `dj-desk.css`, ...) e o `reduced-motion.css` perto do fim, antes do `deck.css`, do
 `mix.css` e do `pedal.css` da mesa. Como a folha chega dentro da página, os endereços relativos dela (`url(fonts/...)`)
-saem do endereço da página, que é a pasta do tema; por isso a folha de `gerado/` só usa `url(data:...)`. O bloco que vale só numa largura leva o `@media` em volta no
-arquivo. O que um gerador de `dev/` desenha mora em `gerado/` (o `gerado/molduras.css`, por exemplo): o gerador grava o
-arquivo inteiro e não mexe no `index.html`, e o que se muda à mão ali some na próxima vez que ele roda.
+saem do endereço da página, que é a pasta do tema; por isso a folha de `gerado/` só usa `url(data:...)`. O bloco que
+vale só numa largura leva o `@media` em volta no arquivo. O que um gerador de `dev/` desenha mora em `gerado/` (o
+`gerado/molduras.css`, por exemplo): o gerador grava o arquivo inteiro e não mexe no `index.html`, e o que se muda à mão
+ali some na próxima vez que ele roda.
