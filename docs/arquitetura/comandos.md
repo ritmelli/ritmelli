@@ -139,12 +139,13 @@ abaixo. O servidor chama o Automático pela dele (`ligar_auto`,
 `run_auto_watcher`, `run_tempo_watcher`, `refuse`, chamado com o `fila_lock` na mão, e lê o `auto` e o `tempo_of`), e o estado do Automático mora nele; o `auto_round` e o `fetch_mix` são a volta do vigia das parecidas e a busca
 que ela pede, que os testes chamam pelo `A.automatico`. A prateleira grava pelo `Library.save`.
 
-O `dev/testa_ganchos.py` conta, cada número contra o seu teto, que só desce: os acessos aos nomes privados do motor
-(`ENGINE_CEILING`), do `App` (`APP_CEILING`) e do Automático (`AUTOMATICO_CEILING`) vindos dos outros módulos da
-raiz, contando também os privados de módulo do `engine.py`, do `server.py` e do `automatico.py`; os acessos aos
-privados da `Library` vindos do resto do `server.py` (`LIBRARY_CEILING`); e as escritas diretas no estado público do
-`App` (`APP_WRITES_CEILING`) e do motor (`ENGINE_WRITES_CEILING`) vindas de fora do módulo deles. O que conta como
-acesso ou escrita são os casos do próprio teste; as formas que ele ainda não vê estão na #232.
+O `dev/testa_ganchos.py` conta, e o `dev/garden.py` segura cada número no seu teto do `dev/garden.json`, que só
+desce: os acessos aos nomes privados do motor (`engine_reaches`), do `App` (`app_reaches`) e do Automático
+(`automatico_reaches`) vindos dos outros módulos da raiz, contando também os privados de módulo do `engine.py`, do
+`server.py` e do `automatico.py`; os acessos aos privados da `Library` vindos do resto do `server.py`
+(`library_reaches`); e as escritas diretas no estado público do `App` (`app_writes`) e do motor (`engine_writes`)
+vindas de fora do módulo deles. O que conta como acesso ou escrita são os casos do próprio teste; as formas que ele
+ainda não vê estão na #232.
 
 ## A leitura do estado
 

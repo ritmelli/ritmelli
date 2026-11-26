@@ -1099,6 +1099,7 @@ def answer_of(srv, method, route, body):
 
 def the_theme_page_build():
     import server
+    import theme_page
     print("--- the theme page: every <script src> and stylesheet <link> inline, or no page")
     with tempfile.TemporaryDirectory(prefix="testa_mock_inline_") as t:
         folder = Path(t)
@@ -1107,15 +1108,15 @@ def the_theme_page_build():
         page.write_text(source, encoding="utf-8")
         script.write_text("const first = 1;\n", encoding="utf-8")
         sheet.write_text("a { b: c; }\n", encoding="utf-8")
-        shared = (server.THEMES / "ritmelli" / "i18n.js").read_text(encoding="utf-8")
-        html = server.inline_files(source, folder)
+        shared = (theme_page.THEMES / "ritmelli" / "i18n.js").read_text(encoding="utf-8")
+        html = theme_page.inline_files(source, folder)
         confere(html == f"<head>\n<script>\nconst first = 1;\n</script>\n<style>\na {{ b: c; }}\n</style>\n<script>\n{shared}</script>",
                 f"each tag becomes a <script> or a <style> with the text of its file, a /t/ path from the themes folder ({html[:120]!r})")
-        sent, etag = server.theme_page(page, folder / "i18n", "en")
+        sent, etag = theme_page.build(page, folder / "i18n", "en")
         stamp = script.stat().st_mtime_ns
         script.write_text("const first = 2;\n", encoding="utf-8")
         os.utime(script, ns=(stamp, stamp))
-        sent_after, etag_after = server.theme_page(page, folder / "i18n", "en")
+        sent_after, etag_after = theme_page.build(page, folder / "i18n", "en")
         confere(sent == html and etag != etag_after and "const first = 2;" in sent_after,
                 "the ETag of the page follows the text it sends, even when the inlined file keeps its mtime")
         refused = {
@@ -1169,9 +1170,9 @@ def the_theme_page_build():
             for name, text in files.items():
                 (folder / name).write_text(text, encoding="utf-8", newline="")
             try:
-                server.inline_files(f"<head>\n{tag}\n", folder)
+                theme_page.inline_files(f"<head>\n{tag}\n", folder)
                 error = "no error"
-            except server.ThemePageError as ex:
+            except theme_page.ThemePageError as ex:
                 error = str(ex)
             confere(said in error, f"{what} stops the build of the page ({error})")
         (folder / "sub" / "c.css").write_text("a { b: url(data:image/png;base64,AA); c: url(#d); e: url( 'data:x' ); }\n",
@@ -1197,16 +1198,16 @@ def the_theme_page_build():
                                                                  "url(#d); e: url( 'data:x' ); }\n</style>")}
         for what, (tag, expected) in kept.items():
             try:
-                out = server.inline_files(tag, folder)
-            except server.ThemePageError as ex:
+                out = theme_page.inline_files(tag, folder)
+            except theme_page.ThemePageError as ex:
                 out = f"error: {ex}"
             confere(out == (expected or tag), f"{what} builds as it should ({out[:90]!r})")
-        real = server.THEMES / "ritmelli" / "index.html"
-        server.theme_page(real, real.parent / "i18n", "en")
-        misses = server.sheet_problem.cache_info().misses
-        server.theme_page(real, real.parent / "i18n", "en")
-        confere(server.sheet_problem.cache_info().misses == misses,
-                f"a second build of the unchanged page reads no sheet again ({server.sheet_problem.cache_info()})")
+        real = theme_page.THEMES / "ritmelli" / "index.html"
+        theme_page.build(real, real.parent / "i18n", "en")
+        misses = theme_page.sheet_problem.cache_info().misses
+        theme_page.build(real, real.parent / "i18n", "en")
+        confere(theme_page.sheet_problem.cache_info().misses == misses,
+                f"a second build of the unchanged page reads no sheet again ({theme_page.sheet_problem.cache_info()})")
         asyncio.run(a_missing_file_answers_500(server, folder))
 
 
@@ -1231,7 +1232,8 @@ async def a_missing_file_answers_500(server, folder):
     log = io.StringIO()
     handler = logging.StreamHandler(log)
     logger = logging.getLogger("aiohttp.server")
-    with mock.patch.object(server, "THEMES", (folder / "themes").resolve()):
+    themes = (folder / "themes").resolve()
+    with mock.patch.object(server, "THEMES", themes), mock.patch.object(server.theme_page, "THEMES", themes):
         logger.addHandler(handler)
         try:
             A.port = so_mock.free_port()
@@ -1244,7 +1246,7 @@ async def a_missing_file_answers_500(server, folder):
             async with TestClient(TestServer(server.build(A), host="127.0.0.1", port=A.port)) as client:
                 resp = await client.get("/t/broken/", headers={"Host": f"localhost:{A.port}"})
                 status = resp.status
-                with mock.patch.object(server.os.path, "samefile", recorded):
+                with mock.patch.object(server.theme_page.os.path, "samefile", recorded):
                     sent = await client.get("/t/broken/index.html", headers={"Host": f"localhost:{A.port}"},
                                             allow_redirects=False)
         finally:

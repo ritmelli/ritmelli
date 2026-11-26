@@ -150,9 +150,6 @@ def check_block_pairs(tema, arquivos):
                   f"that order, in the same file")
 
 
-INLINE_CEILING = {"ritmelli": 0}
-
-
 def inline_lines(html):
     total = 0
     for attrs, _, _, body in script_elements(html, ("script", "style")):
@@ -163,17 +160,6 @@ def inline_lines(html):
     return total
 
 
-def check_inline_ceiling(tema, html):
-    if tema.name not in INLINE_CEILING:
-        return
-    count, ceiling = inline_lines(html), INLINE_CEILING[tema.name]
-    print(f"-- summary: {tema.name}/index.html: {count} lines of inline CSS and JS (ceiling {ceiling})")
-    if count > ceiling:
-        falha(f"{tema.name}: index.html has {count} lines of inline CSS and JS, over the ceiling of {ceiling}: new "
-              f"theme code goes into a file of the theme folder (INLINE_CEILING in dev/testa_i18n.py only goes down)")
-    elif count < ceiling:
-        falha(f"{tema.name}: index.html has {count} lines of inline CSS and JS, under the ceiling of {ceiling}: lower "
-              f"INLINE_CEILING in dev/testa_i18n.py to {count}")
 
 
 class _Scripts(HTMLParser):
@@ -321,7 +307,6 @@ def confere_tema(tema, servidor, efeitos):
     arquivos = arquivos_do_tema(tema)
     confere_blocos(tema, arquivos)
     check_block_pairs(tema, arquivos)
-    check_inline_ceiling(tema, arquivos["index.html"])
     html = "\n".join(arquivos.values())
     # o que o tema pede: os data-i18n* e as chaves entre aspas nas linhas que chamam o I18N.t, o I18N.tp ou o
     # I18N.rico (pega o I18N.t(cond ? 'a.b' : 'a.c'))
