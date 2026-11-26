@@ -2734,12 +2734,10 @@ def main():
     mock_only = [f for f in ("metricas_teste", "papel_local", "stop_on_stdin_eof") if getattr(a, f) and not a.mock]
     if mock_only:
         sys.exit(f"--{mock_only[0].replace('_', '-')} only works with --mock")
-    dados = Path(a.data_dir) if a.data_dir else LIB
-    if a.mock:  # o download de mentira na pasta de quem usa virava disco falso na prateleira (#117)
-        dados = pastas.dados_do_mock(a.data_dir)
-        if dados is None:
-            sys.exit(f"--mock never uses the user's data ({a.data_dir}): pass another --data-dir, or none for a "
-                     "temporary copy")
+    dados = pastas.dados_do_mock(a.data_dir) if a.mock else Path(a.data_dir) if a.data_dir else LIB
+    if dados is None:
+        sys.exit(f"--mock never uses the user's data ({a.data_dir}): pass another --data-dir, or none for a "
+                 "temporary copy")
     A = App(a.port, dados, mock=a.mock, metricas_teste=a.metricas_teste, papel_local=a.papel_local or "pc")
     if a.stop_on_stdin_eof:
         pastas.call_when_stdin_ends(A.pede_desligar)
@@ -2777,9 +2775,8 @@ def main():
 def roda(A, a):
     """O servidor ate desligar, e o audio fechado no fim. Com a janela, ela fecha junto."""
     try:
-        asyncio.run(servir(A, build(A), a.port, rede=not (a.so_local or a.mock)))
-    except (GracefulExit, KeyboardInterrupt):
-        pass
+        with contextlib.suppress(GracefulExit, KeyboardInterrupt):
+            asyncio.run(servir(A, build(A), a.port, rede=not (a.so_local or a.mock)))
     finally:
         sonoridade.stop_measurements()
         A.metricas.fecha()  # o uso ate aqui e o que ficou na fila, antes de o audio fechar (no maximo 3 s sem rede)

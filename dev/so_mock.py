@@ -176,13 +176,20 @@ class Filho:
         self.srv.wait()
 
     def encerra(self, espera=10):
-        """Started with STOP_FLAG: closes the child's stdin and waits for it to exit. Without it: the /api/shutdown, if
-        it is still the --mock that started. Either way, a child that does not exit gets its handle killed."""
+        """Started with STOP_FLAG: closes the child's stdin and waits for it to exit; one that does not exit is a hung
+        server, killed by its handle and raised as a Recusa, since what it started may still hold files. Without the
+        flag: the /api/shutdown, if it is still the --mock that started, and its handle if it does not exit."""
+        if self.srv.stdin:
+            self.srv.stdin.close()
+            try:
+                self.srv.wait(espera)
+            except subprocess.TimeoutExpired:
+                self.mata()
+                raise Recusa(f"the test server did not stop within {espera:g} s of its stdin closing: killed, and the "
+                             "processes it started may still be running") from None
+            return
         try:
-            if self.srv.stdin:
-                self.srv.stdin.close()
-            else:
-                self.api("POST", "/api/shutdown", espera=5)
+            self.api("POST", "/api/shutdown", espera=5)
             self.srv.wait(espera)
         except (Recusa, OSError, ValueError, subprocess.TimeoutExpired):
             self.mata()

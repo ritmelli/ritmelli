@@ -24,48 +24,54 @@ jobs:
           requirements: requirements-dev.txt
       - name: ffmpeg on the PATH
         run: Add-Content -Path $env:GITHUB_PATH -Value "$env:GITHUB_WORKSPACE/instalador/ffmpeg/bin" -Encoding utf8
-      - name: The fix, 5 runs, each must pass every check
+      - name: Expectation helper
+        shell: python
+        run: |
+          import os
+          from pathlib import Path
+          Path(os.environ["RUNNER_TEMP"], "expect.py").write_text('''
+          import subprocess, sys
+          code, summary, fails = int(sys.argv[1]), sys.argv[2], sorted(sys.argv[3:])
+          p = subprocess.run([sys.executable, "dev/test_mock_stop.py"], capture_output=True, text=True, encoding="utf-8", errors="replace")
+          out = p.stdout + p.stderr
+          print(out)
+          lines = out.splitlines()
+          got = sorted(l[6:].split(":")[0] + ":" + l[6:].split(":")[1][:40] for l in lines if l.startswith("FAIL  "))
+          want = sorted(f.split(":")[0] + ":" + f.split(":")[1][:40] for f in fails)
+          ok = p.returncode == code and lines and lines[-1] == summary and got == want and "Traceback" not in out
+          print(f"expected exit {code}, '{summary}', FAIL {want}; got exit {p.returncode}, '{lines[-1] if lines else ''}', FAIL {got}: {'MATCH' if ok else 'MISMATCH'}")
+          sys.exit(0 if ok else 1)
+          '''.replace("\n          ", "\n"), encoding="utf-8")
+      - name: The fix, 5 runs, each passes every check
         if: always()
         run: |
           $bad = 0
-          for ($i = 1; $i -le 5; $i++) {
-            $out = python dev/test_mock_stop.py 2>&1 | Out-String
-            $out
-            if ($LASTEXITCODE -ne 0 -or $out -notmatch 'all passed') { $bad++ }
-          }
-          "fix: $bad of 5 runs did not pass"
+          for ($i = 1; $i -le 5; $i++) { python "$env:RUNNER_TEMP/expect.py" 0 'all passed'; if ($LASTEXITCODE -ne 0) { $bad++ } }
+          "fix: $bad of 5 runs did not match"
           exit $bad
-      - name: Mutant without the measurement stop, 3 runs, each must fail only on the held track
+      - name: Mutant without the measurement stop, 3 runs, each fails exactly the two held-track checks
         if: always()
         run: |
           (Get-Content -Raw server.py).Replace("        sonoridade.stop_measurements()`r`n", "").Replace("        sonoridade.stop_measurements()`n", "") | Set-Content -NoNewline -Encoding utf8 server.py
           if (Select-String -Path server.py -Pattern 'sonoridade.stop_measurements' -Quiet) { throw 'the mutant did not apply' }
           $bad = 0
           for ($i = 1; $i -le 3; $i++) {
-            $out = python dev/test_mock_stop.py 2>&1 | Out-String
-            $out
-            $ok = $out -match 'ok    phone: the shelf loudness measurement opened the track' -and $out -match 'ok    phone: the server stops by itself' -and $out -match 'FAIL  phone: the moment the stop returns, nothing holds the track'
-            if (-not $ok) { $bad++ }
+            python "$env:RUNNER_TEMP/expect.py" 1 '2 failed' 'phone: the moment the stop returns, nothing holds the track' 'pc: the moment the stop returns, nothing holds the track'
+            if ($LASTEXITCODE -ne 0) { $bad++ }
           }
           git checkout -- server.py
-          "mutant without stop_measurements: $bad of 3 runs did not fail on the held track"
+          "mutant without stop_measurements: $bad of 3 runs did not match"
           exit $bad
-      - name: Mutant with the buffered stdin wait, 3 runs, each must fail the HTTP shutdown check
+      - name: Mutant with the buffered stdin wait, 3 runs, each fails exactly the HTTP shutdown check
         if: always()
         run: |
           (Get-Content -Raw pastas.py).Replace("while os.read(0, 65536):", "while sys.stdin.buffer.read():") | Set-Content -NoNewline -Encoding utf8 pastas.py
           if (-not (Select-String -Path pastas.py -Pattern 'sys.stdin.buffer.read' -Quiet)) { throw 'the mutant did not apply' }
           $bad = 0
           for ($i = 1; $i -le 3; $i++) {
-            $out = python dev/test_mock_stop.py 2>&1 | Out-String
-            $out
-            if ($out -notmatch 'FAIL  pc: the /api/shutdown with the stdin pipe still open') { $bad++ }
+            python "$env:RUNNER_TEMP/expect.py" 1 '1 failed' 'pc: the /api/shutdown with the stdin pipe still open'
+            if ($LASTEXITCODE -ne 0) { $bad++ }
           }
           git checkout -- pastas.py
-          "mutant with the buffered wait: $bad of 3 runs did not fail the HTTP shutdown check"
+          "mutant with the buffered wait: $bad of 3 runs did not match"
           exit $bad
-      - name: The base server, sonoridade, pastas and so_mock, 2 runs
-        if: always()
-        run: |
-          foreach ($f in 'server.py', 'sonoridade.py', 'pastas.py', 'dev/so_mock.py') { git show "origin/main:$f" > $f }
-          for ($i = 1; $i -le 2; $i++) { python dev/test_mock_stop.py 2>&1 | Out-String }

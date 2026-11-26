@@ -33,8 +33,9 @@ e as bibliotecas sem versão no `instalador/travas.txt` (as conhecidas, da issue
 Chrome que caiu do tema que não ficou pronto e, no segundo caso, mostra cada condição, os erros da página e as
 respostas com erro (o `Network.responseReceived`). O `dev/test_compara_not_ready.py` roda o `compara` com um sinal
 de pronto que nunca fecha e confere o diagnóstico, no celular e na mesa; o `dev/test_fitcheck_ready.py` faz o mesmo
-no `fitcheck` e confere que o aviso dos dados de uso aparece com um script do tema atrasado de propósito (a espera
-do aviso começa com a página pronta, não no `Page.navigate`). O `dev/test_capture.py` roda o `--capture` de verdade (os prints,
+no `fitcheck` e confere o relógio do aviso dos dados de uso: os 6 s contam da resposta do `GET /api/state` da página
+(o aviso só abre depois do estado), e não do `Page.navigate`. Com um script do tema ou o estado atrasados de propósito
+o aviso ainda passa, e um aviso que abre 8 s depois do estado reprova. O `dev/test_capture.py` roda o `--capture` de verdade (os prints,
 a chave e o `head_cache` que o workflow lê para salvar). O `dev/test_compara_push_steps.py` roda os
 passos do Compara que, no push, capturam sem calcular as áreas nem resolver a base. O `--tela` junta o `fitcheck` e o `compara` do jeito do PR (no
 `testa.yml` o `compara` roda num job à parte, pelo `--compara`, com a referência da base no

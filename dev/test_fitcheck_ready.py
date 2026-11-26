@@ -30,7 +30,10 @@ fitcheck.PRONTA_S = 3.0
 sys.argv = ["fitcheck.py", sys.argv[3], "--sizes", "390x844", "--shots", sys.argv[4]]
 fitcheck.main()
 """
-SLOW_SCRIPT_S = fitcheck.AVISO_ESPERA_S + 3
+LATE_S = fitcheck.AVISO_ESPERA_S + 2
+LATE_NOTICE = ("<script>(() => { const show = HTMLDialogElement.prototype.showModal; "
+               "HTMLDialogElement.prototype.showModal = function () { if (this.id !== 'dlg-metricas') "
+               f"return show.call(this); setTimeout(() => show.call(this), {LATE_S * 1000:.0f}); }}; }})();</script>")
 HOP_HEADERS = {"host", "origin", "referer", "content-length", "transfer-encoding", "connection", "content-encoding"}
 
 failures = []
@@ -42,17 +45,26 @@ def check(ok, msg):
         failures.append(msg)
 
 
-class SlowThemeProxy:
-    def __init__(self, target):
-        self.target, self.delayed, self.port = target, [], so_mock.free_port()
+class ThemeProxy:
+    def __init__(self, target, hold_script_s=0, hold_state_s=0, late_notice=False):
+        self.target, self.port = target, so_mock.free_port()
         self.base = f"http://127.0.0.1:{self.port}"
-        self.started = threading.Event()
+        self.hold_script_s, self.hold_state_s, self.late_notice = hold_script_s, hold_state_s, late_notice
+        self.held, self.started = [], threading.Event()
+
+    def hold_for(self, request):
+        from_browser = "Chrome" in request.headers.get("User-Agent", "")
+        if self.hold_script_s and request.path.startswith("/t/ritmelli/") and request.path.endswith(".js"):
+            return 0 if self.held else self.hold_script_s
+        if self.hold_state_s and from_browser and request.path == "/api/state":
+            return self.hold_state_s
+        return 0
 
     async def forward(self, request):
-        if request.path.startswith("/t/ritmelli/") and request.path.endswith(".js") and not self.delayed:
-            self.delayed.append(request.path)
-            await asyncio.sleep(SLOW_SCRIPT_S)
-        headers = {k: v for k, v in request.headers.items() if k.lower() not in HOP_HEADERS}
+        if hold := self.hold_for(request):
+            self.held.append(request.path)
+            await asyncio.sleep(hold)
+        headers = {k: v for k, v in request.headers.items() if k.lower() not in HOP_HEADERS | {"accept-encoding"}}
         if "Origin" in request.headers:
             headers["Origin"] = self.target
         async with self.session.request(request.method, self.target + request.path_qs, headers=headers,
@@ -60,8 +72,12 @@ class SlowThemeProxy:
             response = web.StreamResponse(status=upstream.status, headers={
                 k: v for k, v in upstream.headers.items() if k.lower() not in HOP_HEADERS})
             await response.prepare(request)
-            async for chunk in upstream.content.iter_any():
-                await response.write(chunk)
+            if self.late_notice and request.path == "/t/ritmelli/":
+                page = (await upstream.read()).decode("utf-8")
+                await response.write(page.replace("<head>", "<head>" + LATE_NOTICE, 1).encode("utf-8"))
+            else:
+                async for chunk in upstream.content.iter_any():
+                    await response.write(chunk)
             await response.write_eof()
             return response
 
@@ -78,30 +94,58 @@ class SlowThemeProxy:
         await self.session.close()
 
 
-def notice_on_slow_load():
-    with tempfile.TemporaryDirectory(prefix="ritmelli-slow-load-") as tmp:
+def notice_through(proxy_options, config, button=None):
+    with tempfile.TemporaryDirectory(prefix="ritmelli-notice-") as tmp:
         tmp = Path(tmp)
         with open(tmp / "server.log", "w", encoding="utf-8") as log:
-            srv = compara.sobe_servidor(tmp, so_mock.free_port(), log, config={"boas_vindas": True},
-                                        extras=["--metricas-teste"])
+            srv = compara.sobe_servidor(tmp, so_mock.free_port(), log, config=config, extras=["--metricas-teste"])
             try:
-                proxy = SlowThemeProxy(srv.base)
-                loop = asyncio.new_event_loop()
-                stop = asyncio.Event()
+                proxy = ThemeProxy(srv.base, **proxy_options)
+                loop, stop = asyncio.new_event_loop(), asyncio.Event()
                 thread = threading.Thread(target=loop.run_until_complete, args=(proxy.serve(stop),), daemon=True)
                 thread.start()
                 proxy.started.wait(10)
                 try:
-                    r = asyncio.run(fitcheck.aviso_no_chrome(proxy.base, None))
+                    r = asyncio.run(fitcheck.aviso_no_chrome(proxy.base, button))
                 finally:
                     loop.call_soon_threadsafe(stop.set)
                     thread.join(10)
             finally:
                 compara.para_servidor(srv)
-    check(bool(proxy.delayed), f"the proxy held a theme script {SLOW_SCRIPT_S:.0f} s ({proxy.delayed})")
-    check(r["abriu"] is True and not r["erros"],
-          f"with a theme script {SLOW_SCRIPT_S:.0f} s late, longer than the {fitcheck.AVISO_ESPERA_S:.0f} s wait "
-          f"for the notice, the notice is still seen opening on load ({r})")
+    return r, proxy
+
+
+def notice_on_slow_load():
+    r, proxy = notice_through({"hold_script_s": LATE_S}, {"boas_vindas": True})
+    check(bool(proxy.held) and r["abriu"] is True and not r["erros"],
+          f"with a theme script held {LATE_S:.0f} s ({proxy.held}), longer than the "
+          f"{fitcheck.AVISO_ESPERA_S:.0f} s wait for the notice, the notice is still seen opening on load ({r})")
+
+
+def notice_on_slow_state():
+    r, proxy = notice_through({"hold_state_s": LATE_S}, {"boas_vindas": True})
+    check("/api/state" in proxy.held and r["abriu"] is True and not r["erros"],
+          f"with the page's GET /api/state held {LATE_S:.0f} s after the load, the notice is still seen opening: the "
+          f"clock starts at that response ({r})")
+
+
+def notice_late_after_state():
+    r, _ = notice_through({"late_notice": True}, {"boas_vindas": True})
+    check(r["abriu"] is False and not r["not_ready"],
+          f"a notice that opens {LATE_S:.0f} s after the state, past the {fitcheck.AVISO_ESPERA_S:.0f} s wait, fails "
+          f"the check ({r})")
+
+
+def notice_page_not_ready():
+    saved = fitcheck.PRONTA_S
+    fitcheck.PRONTA_S = 2.0
+    try:
+        r, _ = notice_through({"hold_state_s": 6}, {"boas_vindas": True, "metricas": False}, "ligar")
+    finally:
+        fitcheck.PRONTA_S = saved
+    check(r["not_ready"] == ["notice: the theme was not ready in 2 s"] and r["abriu"] is False
+          and r["ao_ligar"] is None,
+          f"a page whose state never comes ends the notice check there, with no click on it ({r})")
 
 
 def fitcheck_never_ready():
@@ -128,27 +172,11 @@ def fitcheck_never_ready():
         check(shot.is_file() and shot.stat().st_size > 0, "the fitcheck saves a print of the page that was not ready")
 
 
-def notice_page_not_ready():
-    with tempfile.TemporaryDirectory(prefix="ritmelli-notice-not-ready-") as tmp:
-        tmp = Path(tmp)
-        with open(tmp / "server.log", "w", encoding="utf-8") as log:
-            srv = compara.sobe_servidor(tmp, so_mock.free_port(), log, config={"boas_vindas": True, "metricas": False},
-                                        extras=["--metricas-teste"])
-            saved = fitcheck.PRONTA, fitcheck.PRONTA_S
-            fitcheck.PRONTA, fitcheck.PRONTA_S = "false", 2.0
-            try:
-                r = asyncio.run(fitcheck.aviso_no_chrome(srv.base, "ligar"))
-            finally:
-                fitcheck.PRONTA, fitcheck.PRONTA_S = saved
-                compara.para_servidor(srv)
-    check(r["not_ready"] == ["notice: the theme was not ready in 2 s"] and r["abriu"] is False
-          and r["ao_ligar"] is None,
-          f"a page that never gets ready ends the notice check there, with no click on it ({r})")
-
-
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
     notice_on_slow_load()
+    notice_on_slow_state()
+    notice_late_after_state()
     notice_page_not_ready()
     fitcheck_never_ready()
     print(f"{'all passed' if not failures else f'{len(failures)} failed'}")
