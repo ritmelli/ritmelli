@@ -9,12 +9,14 @@ import time
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 MODELS = ROOT / "dev" / "tla"
 JAR_URL = "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar"
 JAR_SHA256 = "936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88"
 LIMIT_S = 60
+TIMED_OUT = "TLC was stopped at the time limit"
 KEYWORDS = ("CONSTANTS", "SYMMETRY", "SPECIFICATION", "INVARIANTS", "PROPERTIES", "CHECK_DEADLOCK")
 
 
@@ -290,10 +292,13 @@ def tlc(java, jar, work, run, index):
     cfg.write_text(write_cfg((MODELS / f"{run.spec}.cfg").read_text(encoding="utf-8"), run), encoding="utf-8")
     start = time.monotonic()
     liveness = ["-lncheck", "final"] if run.properties else []
-    p = subprocess.run([java, "-XX:+UseParallelGC", "-cp", str(jar), "tlc2.TLC", "-workers", "auto", "-cleanup",
-                        *liveness, "-metadir", str(work / f"states{index}"), "-config", cfg.name, f"{run.spec}.tla"],
-                       cwd=work, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                       stdin=subprocess.DEVNULL)
+    try:
+        p = subprocess.run([java, "-XX:+UseParallelGC", "-cp", str(jar), "tlc2.TLC", "-workers", "auto", "-cleanup",
+                            *liveness, "-metadir", str(work / f"states{index}"), "-config", cfg.name,
+                            f"{run.spec}.tla"], cwd=work, capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", stdin=subprocess.DEVNULL, timeout=LIMIT_S)
+    except subprocess.TimeoutExpired:
+        return TIMED_OUT, time.monotonic() - start
     return p.stdout + p.stderr, time.monotonic() - start
 
 
@@ -303,7 +308,7 @@ def report(run, got, text, took):
         steps = re.findall(r"State \d+: <(\w+) ", text)
         got, expect = f"{got} by {steps[-1] if steps else '?'}", f"{expect} by {run.action}"
     detail = f"{run.title}: {got}, {states(text)} states, {took:.1f} s"
-    if took > LIMIT_S:
+    if took > LIMIT_S or text == TIMED_OUT:
         check(False, f"{detail}: over the {LIMIT_S} s limit")
     else:
         check(got == expect, detail + ("" if got == expect else f" (expected {expect})"))
@@ -325,6 +330,15 @@ def main():
         work.mkdir()
         for f in MODELS.glob("*.tla"):
             shutil.copy(f, work / f.name)
+        limits = []
+
+        def stuck(*a, **kw):
+            limits.append(kw.get("timeout"))
+            raise subprocess.TimeoutExpired(a[0], kw.get("timeout"))
+        with mock.patch.object(subprocess, "run", stuck):
+            text, _ = tlc(java, jar, work, RUNS[0], "stuck")
+        check(limits == [LIMIT_S] and text == TIMED_OUT,
+              f"a TLC run is stopped at the {LIMIT_S} s limit and reported as over it ({limits})")
         for i, run in enumerate(RUNS):
             text, took = tlc(java, jar, work, run, i)
             report(run, outcome(text), text, took)

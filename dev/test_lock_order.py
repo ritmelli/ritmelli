@@ -196,9 +196,21 @@ def section_yields_under_qlock(engine):
 
 def returned_callables(func):
     local = {n.name: n for n in ast.walk(func) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n is not func}
-    values = [m for r in ast.walk(func) if isinstance(r, ast.Return) and r.value is not None for m in ast.walk(r.value)]
-    return [m for m in values if isinstance(m, ast.Lambda)] + \
-        [local[m.id] for m in values if isinstance(m, ast.Name) and m.id in local]
+    assigned = {}
+    for n in ast.walk(func):
+        for t in (n.targets if isinstance(n, ast.Assign) else []):
+            if isinstance(t, ast.Name):
+                assigned.setdefault(t.id, []).append(n.value)
+    todo, found, names = [r.value for r in ast.walk(func) if isinstance(r, ast.Return) and r.value is not None], [], set()
+    while todo:
+        for m in ast.walk(todo.pop()):
+            if isinstance(m, ast.Lambda):
+                found.append(m)
+            elif isinstance(m, ast.Name) and m.id not in names:
+                names.add(m.id)
+                found += [local[m.id]] if m.id in local else []
+                todo += assigned.get(m.id, [])
+    return found
 
 
 def value_calls(value):
@@ -1132,6 +1144,17 @@ def main():
     check(named != sources["server.py"] and any("lib_lock" in b for b in bad),
           f"and with fonte_de returning a local function as the builder "
           f"({[b for b in bad if 'lib_lock' in b][:1]})")
+    alias = named.replace("            return build\n", "            builder = build\n            return builder\n", 1)
+    bad, *_ = scan(dict(sources, **{"server.py": alias}), order, before)
+    check(alias != named and any("lib_lock" in b for b in bad),
+          f"and through a local name bound to that function ({[b for b in bad if 'lib_lock' in b][:1]})")
+    bound = sources["server.py"].replace(
+        '            return lambda: dict(it, path=str(LIB / it["file"]), **marca_auto(x))\n',
+        '            build = lambda: (self.lib.update(it["id"]), dict(it, path=str(LIB / it["file"]), **marca_auto(x)))[1]\n'
+        '            return build\n', 1)
+    bad, *_ = scan(dict(sources, **{"server.py": bound}), order, before)
+    check(bound != sources["server.py"] and any("lib_lock" in b for b in bad),
+          f"and with fonte_de returning a lambda bound to a name ({[b for b in bad if 'lib_lock' in b][:1]})")
     guarded = pode_guarantees(trees["engine.py"])
     check(len(guarded) >= 5 and not pode_failures(trees["engine.py"]),
           f"every Engine method that takes a pode runs it under the _lock and the _qlock, also through the methods it "

@@ -651,7 +651,7 @@ FinishedDownloadReachesThePlatter == Quiescent => ~(track.job /\ track.path = "s
 
 NameIsCurrentOutsideARename == pc["Rename"] /= "rn_platter" => (track.rec => track.name = shelfName)
 
-SwapLeavesTheShelfFileOff == ~(pc["Swap"] = "done" /\ track.id = swTr /\ track.id /= 0 /\ ~track.job)
+SwapLeavesTheShelfFileOff == ~(pc["Swap"] = "done" /\ track.id = swTr /\ track.id /= 0 /\ ~track.job /\ track.path = "file")
 
 PlatterHasTheCurrentName == Quiescent => (track.rec => track.name = shelfName)
 

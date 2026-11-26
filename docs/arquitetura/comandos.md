@@ -129,8 +129,8 @@ que pegue o `_lock` ou o próprio `_qlock`); com a `fila_lock` na mão, o `_lock
 `change_queue`, do `close_switches` e do `concilia` (a `fila_lock` e o `_qlock`), a do `with_engine` (a `fila_lock` e o
 `_lock`), o `pode` dos métodos do motor e o construtor do disco que o `trocar_fonte`, o `preparar` e o `load` (e o
 `_troca`, que o passa ao `load`) recebem (o `_lock` e o `_qlock`; também o que uma função devolve, uma lambda ou uma
-função local, como o do `fonte_de`, mesmo atrás de um `or` ou de um condicional), e as funções locais que elas chamam
-também; e confere essas travas no código que roda cada função (o
+função local, como o do `fonte_de`, mesmo atrás de um `or`, de um condicional ou de um nome local que a guarde), e
+as funções locais que elas chamam também; e confere essas travas no código que roda cada função (o
 `change_queue` chama a dele dentro do `_qlock`, e cada método público do motor que recebe um `pode` o roda sob o `_lock`
 e o `_qlock`, também pelo `_restart`; o `trocar_fonte`, o `preparar` e o `load` chamam o construtor sob as duas e
 publicam a própria chamada dele ali, não o que montaram na entrada), e que quem chama o `change_queue`, o
@@ -189,13 +189,14 @@ posição do disco viram escolha não determinística, e os `qid` são simétric
   resolve, com justiça fraca.
 
 O `dev/test_tla.py` roda o TLC (o `tla2tools.jar` da versão fixada, conferido pelo sha256) nas duas, cada execução em
-menos de 60 s (a `Races211` em cinco com todas as propriedades, além das seis acima (as três da #294 e do controle, e as
-três da troca de nome): o download, o stream e a troca, sem as trocas de lugar na fila, uma vez com o tocar de outro
-disco e outra com o esquecer da prateleira; o download, o stream e um pulo na barra, sem as trocas de lugar e sem o
-tocar de outro disco, o esquecer e a reserva; as trocas de lugar, a reserva, a preparação da passagem e a versão de
-áudio, sem o job; e os dois juntos, com uma troca de lugar só e sem o tocar de outro disco, o esquecer e a reserva; o
-pulo na barra só entra na terceira), e roda também os mutantes: cada propriedade tem um que desfaz o que ela protege, e
-o mutante tem de ser pego. No PR, o job `tla` do `testa.yml` roda isso numa máquina ubuntu (`python dev/testa_tudo.py
+menos de 60 s (a que passa disso é parada ali e falha; a `Races211` em cinco com todas as propriedades, além das sete
+acima (as três da #294 e do controle, as três da troca de nome e a do acerto na prateleira): o download, o stream
+e a troca, sem as trocas de lugar na fila, uma vez com o tocar de outro disco e outra com o esquecer da prateleira; o
+download, o stream e um pulo na barra, sem as trocas de lugar e sem o tocar de outro disco, o esquecer e a reserva; as
+trocas de lugar, a reserva, a preparação da passagem e a versão de áudio, sem o job; e os dois juntos, com uma troca de
+lugar só e sem o tocar de outro disco, o esquecer e a reserva; o pulo na barra só entra na terceira), e roda também os
+mutantes: cada propriedade tem um que desfaz o que ela protege, e o mutante tem de ser pego.
+No PR, o job `tla` do `testa.yml` roda isso numa máquina ubuntu (`python dev/testa_tudo.py
 --passo tla`). No PC, precisa do Java no PATH; o `TLA2TOOLS` aponta para um `tla2tools.jar` já baixado. As duas corridas
 da #211 se repetem no App de verdade no `dev/test_races_211.py`, com os passos do contraexemplo, um de cada vez.
 
