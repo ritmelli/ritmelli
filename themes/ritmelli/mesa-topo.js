@@ -1,4 +1,5 @@
-/* MESA-TOPO-INICIO: na mesa a plaqueta e as teclas do topo em largura par do palco. Com a largura do texto (176,8 px
+/* MESA-TOPO-INICIO */
+/* na mesa a plaqueta e as teclas do topo em largura par do palco. Com a largura do texto (176,8 px
    na plaqueta) tudo a direita andava meia celula e a moldura de pixel borrava; a largura vem do estilo computado, que
    nao sofre a escala do palco */
 (() => {

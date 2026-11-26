@@ -1,4 +1,5 @@
-/* MALETA-TIT-INICIO: o titulo da placa da maleta em letra de pixel (canvas de 1 px por celula, mostrado a 2x): o "A seguir"
+/* MALETA-TIT-INICIO */
+/* o titulo da placa da maleta em letra de pixel (canvas de 1 px por celula, mostrado a 2x): o "A seguir"
    na negrita da placa da prateleira e a contagem na regular dela (LETRA-PLACA), centrados entre os parafusos e o botao (madrugada, 07/11) */
 (() => {
   const { negrita: T, regular: G, desce: D } = LETRA_PLACA, TA = 9, GA = 9;
