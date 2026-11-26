@@ -14,7 +14,6 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "dev"))
 import workflow_yaml
 
-CEILINGS = ROOT / "dev" / "garden.json"
 USAGE = """The garden scoreboard: counts the weeds of the repo and holds each count to its ceiling in dev/garden.json.
 
     python dev/garden.py                   the counts against dev/garden.json and the base ($env:BASE)
@@ -46,7 +45,7 @@ PROSE = re.compile(r"risco aceito|accepted risk|sem prova|por enquanto|for now|k
                    r"|como antes", re.I)
 LEFT_OUT = re.compile(r"^--\s.*ficou de fora", re.S)
 KNOWN_FAILURE = re.compile(r"^\s*known failure", re.I)
-LEFT_OUT_QUOTED = re.compile(r"(?:^|[\"'])--\s[^\"']*ficou de fora")
+LEFT_OUT_QUOTED = re.compile(r"[\"'][^\"']*ficou de fora")
 SKIP_NAMES = {"skip", "skipIf", "skipUnless", "expectedFailure", "skipTest", "SkipTest", "xfail", "skipif"}
 BROAD = {"Exception", "BaseException"}
 SLEEP_MODULES = {"time", "asyncio"}
@@ -62,7 +61,8 @@ PROOF_SPAN = re.compile(r"^\s*(?:python|py|gh|git|pwsh|powershell|bash|node|npm|
                         r"|^\s*--[a-z][\w-]*")
 BLOCK_PROOF = re.compile(r"^\s*(?:\$|>|PS [^>]*>|[A-Z]:\\[^>]*>)\s*\S"
                          r"|^\s*(?:python|py|gh|git|pwsh|powershell|bash|node|npm|ruff|actionlint)\s"
-                         r"|^\s*(?:ok|FAIL|FALHA)\s|\b(?:\d+ (?:of|de) \d+|\d+ (?:passed|failed)|exit(?: code)? ?\d+)\b"
+                         r"|^\s*(?:ok|FAIL|FALHA)\s|^\s*(?:=+\s*)?\d+ (?:of|de) \d+\b|^\s*(?:=+\s*)?\d+ (?:passed|failed)\b"
+                         r"|^\s*exit(?: code)?\s*[=:]?\s*\d+\b"
                          r"|^Traceback \(most recent call last\)",
                          re.M)
 BIG_FILES = {"engine_py_lines": "engine.py", "server_py_lines": "server.py",
@@ -1010,11 +1010,11 @@ def git(*args, root=ROOT):
     return r.returncode, r.stdout
 
 
-def working_tree():
-    _, out = git("ls-files", "--cached", "--others", "--exclude-standard", "-z")
+def working_tree(root=ROOT):
+    _, out = git("ls-files", "--cached", "--others", "--exclude-standard", "-z", root=root)
     files = {}
     for p in sorted(set(out.split("\0")) - {""}):
-        path = ROOT / p
+        path = root / p
         if (suffix(p) in LEXERS or suffix(p) == ".md" or p in BIG_FILES.values()) and path.is_file():
             try:
                 files[p] = path.read_text(encoding="utf-8")
@@ -1078,10 +1078,10 @@ def base_ceilings(base, root=ROOT):
     return json.loads(out)
 
 
-def added_lines(base):
+def added_lines(base, root=ROOT):
     if not base:
         return {}
-    code, out = git("diff", "--unified=0", "--no-color", base, "--")
+    code, out = git("diff", "--unified=0", "--no-color", base, "--", root=root)
     added, path = {}, None
     for line in out.splitlines() if code == 0 else []:
         if line.startswith("+++ "):
@@ -1130,19 +1130,19 @@ def scoreboard(files):
     return {name: f(t) for name, f in COUNTERS.items()}
 
 
-def run():
-    counts = scoreboard(working_tree())
-    ceilings = json.loads(CEILINGS.read_text(encoding="utf-8"))
+def run(root=ROOT):
+    counts = scoreboard(working_tree(root))
+    ceilings = json.loads((root / "dev" / "garden.json").read_text(encoding="utf-8"))
     try:
         base = base_commit()
-        before = base_ceilings(base)
+        before = base_ceilings(base, root)
     except BaseError as ex:
         print(f"FAIL  {ex}")
         return 1
     measured = before is None and bool(base)
     if measured:
-        before = {name: count_of(value) for name, value in scoreboard(base_tree(base)).items()}
-    failures, summary = check(counts, ceilings, before, added_lines(base), base_has_ceilings=not measured)
+        before = {name: count_of(value) for name, value in scoreboard(base_tree(base, root)).items()}
+    failures, summary = check(counts, ceilings, before, added_lines(base, root), base_has_ceilings=not measured)
     for name, value in counts.items():
         print(f"{'ok  ' if count_of(value) == ceilings.get(name) else 'FAIL'}  {name}: {count_of(value)} "
               f"(ceiling {ceilings.get(name)})")
@@ -1264,7 +1264,7 @@ def proof_sections(lines):
 
 
 def description_problems(body):
-    lines = (body or "").splitlines()
+    lines = re.sub(r"<!--.*?-->", "", body or "", flags=re.S).splitlines()
     problems = []
     sections = list(proof_sections(lines))
     if not sections:

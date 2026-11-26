@@ -211,8 +211,11 @@ CASES = {
                                          "ISSUE = 'https://github.com/o/r/issues/255'\n"
                                          "print(f'known failure, {ISSUE}: a refused dequeue fails the run')\n"},
          {"dev/t.py": "print('known failure: theme_rebuild counts a reindented line')\n"}),
-        ("ficou de fora in a workflow", {"a.yml": "steps:\n  - run: echo 'sem placa, o pedal ficou de fora'\n"},
-         {"a.yml": "steps:\n  - run: echo '--   o pedal ficou de fora'\n"}),
+        ("ficou de fora in a workflow",
+         {"a.yml": "steps:\n  - run: echo 'sem placa de video, o pedal ficou de fora (#219)'\n"},
+         {"a.yml": "steps:\n  - run: echo 'sem placa de video, o pedal de troca de voz ficou de fora'\n"}),
+        ("ficou de fora in a PowerShell script", {"a.ps1": "# o pedal ficou de fora num comentario\n"},
+         {"a.ps1": "'--   o pedal ficou de fora'\n"}),
     ],
     "todo_markers": [
         ("in a comment", {"a.py": "PIXELS = ['XXX', '.X.']\n", "a.md": "o METODO e o MÉTODO\n"},
@@ -366,7 +369,8 @@ def test_description():
         "a link to a run": "## Proof\n\nThe [run](https://github.com/o/r/actions/runs/123) fails on the base.\n",
         "a screenshot": "**Proof**\n\n![the page](https://github.com/user-attachments/assets/1)\n",
         "a code block": "## Proof\n\n```\n$ make\nok\n```\n",
-        "a test runner's output": "## Proof\n\n```\n12 passed in 3.1s\n```\n",
+        "a test runner's output": "## Proof\n\n```\n===== 12 passed in 3.1s =====\n```\n",
+        "the summary of dev/testa_tudo.py": "## Proof\n\n```\n14 of 14 passed in 37 s, 4 at a time\n```\n",
         "a heading inside the code block": "# Change\n\n## Proof\n\n```bash\n# Before\n$ python dev/x.py\nfails\n```\n",
         "bold sub-labels under the heading": "## Proof\n\n**Before the change** ([run 1](https://github.com/o/r/"
                                              "actions/runs/1)): fails.\n",
@@ -384,6 +388,8 @@ def test_description():
         "an empty code block": "## Proof\n\n```\n```\n",
         "a code block with no run in it": "## Proof\n\n```\nIt works.\n```\n",
         "a code block with only a claim": "## Proof\n\n```\nAll tests passed.\n```\n",
+        "a code block that reports a claim": "## Proof\n\n```\nThe reviewer said 12 passed.\n```\n",
+        "a proof hidden in an HTML comment": "## Proof\n<!-- `python dev/garden.py` fails on the base -->\n",
         "a code block that never closes": "## Proof\n\n```\npython dev/x.py\n```text\n",
         "a proof section only inside an example block": "```markdown\n## Proof\n`python dev/garden.py`\n```\n",
     }
@@ -461,9 +467,47 @@ def test_queue_base():
           "a queue entry whose ref names no base fails")
     check(base_in({"GITHUB_EVENT_NAME": "pull_request", "GITHUB_REF": "refs/pull/9/merge", "BASE": "b" * 40}) == "b" * 40,
           "a PR is compared to its base")
-    second, _ = garden.check({"a": [("x.py", n) for n in range(10)]}, {"a": 10}, {"a": 9})
-    check(any("went up from 9 to 10" in f for f in second),
-          f"the second entry, after the first one lowered the ceiling to 9, can't put it back to 10 ({second})")
+
+
+def run_in(repo, env):
+    saved = {k: os.environ.get(k) for k in env}
+    os.environ.update(env)
+    out = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(out):
+            code = garden.run(repo)
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+    return code, out.getvalue()
+
+
+def ceilings_of(files):
+    return json.dumps({k: garden.count_of(v) for k, v in garden.scoreboard(files).items()}) + "\n"
+
+
+def test_queue_run():
+    two = {"a.py": "x = 1  # one\ny = 2  # two\n"}
+    one = {"a.py": "x = 1  # one\ny = 2\n"}
+    with tempfile.TemporaryDirectory() as d:
+        repo = Path(d)
+        garden.git("init", "-q", root=repo)
+        garden.git("config", "core.autocrlf", "false", root=repo)
+        main = commit(repo, {**two, "dev/garden.json": ceilings_of(two)}, "main, two comments")
+        first = commit(repo, {**one, "dev/garden.json": ceilings_of(one)}, "the first entry takes one out")
+        for path, text in {**two, "dev/garden.json": ceilings_of(two)}.items():
+            (repo / path).write_bytes(text.encode("utf-8"))
+        queue = {"GITHUB_EVENT_NAME": "merge_group", "BASE": main,
+                 "GITHUB_REF": f"refs/heads/gh-readonly-queue/main/pr-9-{first}"}
+        code, out = run_in(repo, queue)
+        check(code == 1 and "comment_lines: the ceiling went up from 1 to 2" in out,
+              "the second entry of the queue puts the comment back with the ceiling, and fails against the first entry")
+        code, out = run_in(repo, {"GITHUB_EVENT_NAME": "pull_request", "BASE": main, "GITHUB_REF": "refs/pull/9/merge"})
+        check(code == 0 and "-- summary: garden: no counter changed" in out,
+              f"the same tree as a PR against main passes ({out.splitlines()[-1:]})")
 
 
 def commit(repo, files, message):
@@ -565,6 +609,7 @@ test_acceptance()
 test_description()
 test_base()
 test_queue_base()
+test_queue_run()
 test_description_step()
 WORKFLOW_TEXT = (ROOT / ".github" / "workflows" / "testa.yml").read_text(encoding="utf-8")
 problems = workflow_problems(WORKFLOW_TEXT)
