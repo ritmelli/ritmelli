@@ -75,13 +75,14 @@ RAIZ = Path(__file__).resolve().parent.parent
 # so a biblioteca padrao: a monta.yml roda estes antes de instalar as bibliotecas do app
 STDLIB = [f"dev/testa_{n}.py" for n in ("i18n", "metricas", "migra", "mock", "vozes", "pareamento", "grava", "mfx",
                                              "ganchos", "pasta_protegida", "so_mock")] + [
-    "dev/test_trusted_author.py", "dev/test_needs_owner.py", "dev/test_ci_workflow.py"]
+    "dev/test_trusted_author.py", "dev/test_needs_owner.py", "dev/test_ci_workflow.py",
+    "dev/test_forbidden_terms.py"]
 # o STDLIB mais os que usam as bibliotecas do app (requirements-dev.txt) e o ffmpeg
 COMPLETO = STDLIB + [f"dev/testa_{n}.py" for n in (
     "adianta", "anel", "atualizacao", "atualizador", "automatico", "comandos", "congela", "conversor", "ganho", "musica",
     "passagens", "pedal_voz", "pista", "preabre", "protocolo", "rapido", "transicao", "vivo")] + [
     "instalador/atualizacao/testa_parcial.py", "dev/test_compara_not_ready.py",
-    "dev/test_compara_push_steps.py", "dev/test_stretch_outgoing.py"]
+    "dev/test_compara_push_steps.py", "dev/test_external_module.py", "dev/test_stretch_outgoing.py"]
 LONG_TESTS = {"bench": "dev/testa_passagem.py", "capture": "dev/test_capture.py"}
 # os do filtro, com as DLLs do microfone\apo\compila.bat teste: o testa.yml so roda quando a area do filtro muda
 # o testa_aparelho_mudo fica aqui pelo Inno Setup, que o job do filtro instala: sem ele, os casos do instalador
