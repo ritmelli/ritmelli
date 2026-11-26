@@ -10,6 +10,11 @@ transicao.py e o numpy. Toda funcao publica do transicao.py tem de ter ao menos 
 Regravar e para quando uma conta muda de proposito (o PR diz por que) ou quando a banca ganha par: a banca passa antes,
 e os casos novos saem do motor de verdade, nunca escritos a mao.
 
+The JSON keeps a fingerprint of the bench (its tokens, without comments and docstrings: unlike ast.dump, the same on
+Python 3.12 and 3.13), and the check fails when the bench changed since the recording: a pair that changed has to be
+recorded again. The fingerprint itself is checked on a small source (FINGERPRINT_CASES): docstring and comment edits
+keep it, and code edits, a statement on a docstring's line among them, change it.
+
 O nivel dos blocos (a lista (t0, quadros, rms) do leitor do motor) vai uma vez so, no "niveis", e cada chamada aponta
 para ele; as colunas dele (no "colunas", tambem uma vez cada) e os arrays vao em base64 dos bytes (zlib), para a volta
 ser exata.
@@ -20,10 +25,12 @@ import ast
 import base64
 import hashlib
 import inspect
+import io
 import json
 import math
 import runpy
 import sys
+import tokenize
 import zlib
 from pathlib import Path
 
@@ -110,6 +117,36 @@ class Gravador:
         setattr(transicao, nome, gravado)
 
 
+def _docstring_starts(source):
+    lines = source.split("\n")
+    return {(v.lineno, len(lines[v.lineno - 1].encode()[:v.col_offset].decode())) for n in ast.walk(ast.parse(source))
+            if isinstance(n, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and n.body
+            and isinstance(n.body[0], ast.Expr) and isinstance(v := n.body[0].value, ast.Constant)
+            and isinstance(v.value, str)}
+
+
+def bench_fingerprint(path=BANCA):
+    return source_fingerprint(path.read_text(encoding="utf-8"))
+
+
+def source_fingerprint(source):
+    docstrings = _docstring_starts(source)
+    skip = {tokenize.COMMENT, tokenize.NL, tokenize.ENCODING, tokenize.ENDMARKER}
+    kept, in_docstring = [], False
+    for t in tokenize.generate_tokens(io.StringIO(source).readline):
+        if t.type in skip:
+            continue
+        if t.type == tokenize.STRING and (in_docstring or t.start in docstrings):
+            in_docstring = True
+            continue
+        if in_docstring:
+            in_docstring = False
+            if t.type == tokenize.NEWLINE or t.exact_type == tokenize.SEMI:
+                continue
+        kept.append(f"{tokenize.tok_name[t.type]} {t.string}")
+    return hashlib.sha1("\n".join(kept).encode()).hexdigest()
+
+
 def grava():
     g = Gravador()
     for nome in _publicas():
@@ -134,7 +171,7 @@ def grava():
         return 1
     dados = {"sobre": "gerado por: python dev/testa_transicao.py --grava (as chamadas do motor ao transicao.py nos "
                       "pares da banca das passagens)",
-             "colunas": g.colunas, "niveis": g.niveis, "casos": g.casos}
+             "bench": bench_fingerprint(), "colunas": g.colunas, "niveis": g.niveis, "casos": g.casos}
     CASOS.write_text(json.dumps(dados, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     por_fn = {}
     for c in g.casos:
@@ -173,6 +210,26 @@ def _igual(a, b):
     if isinstance(b, list):
         return isinstance(a, (list, tuple)) and len(a) == len(b) and all(_igual(x, y) for x, y in zip(a, b))
     return a == b
+
+
+FINGERPRINT_BASE = 'r"""Module."""\n\n\ndef f(rms):\n    """Doc."""\n    return rms\n'
+FINGERPRINT_CASES = (
+    ("a docstring edited", True, ('"""Doc."""', '"""Other doc."""')),
+    ("a function's docstring removed", True, ('    """Doc."""\n', "")),
+    ("a comment added", True, ("return rms\n", "return rms  # note\n")),
+    ("two U+2028 in the module docstring", True, ("Module.", "Mod\u2028\u2028ule.")),
+    ("a statement on the docstring's line", False, ('"""Doc."""', '"""Doc."""; rms *= 0.5')),
+    ("a code edit", False, ("return rms", "return rms * 2")),
+)
+
+
+def fingerprint_ignores_only_docstrings_and_comments():
+    base = source_fingerprint(FINGERPRINT_BASE)
+    failures = []
+    for what, same, (old, new) in FINGERPRINT_CASES:
+        if (source_fingerprint(FINGERPRINT_BASE.replace(old, new)) == base) != same:
+            failures.append(f"the bench fingerprint {'changed' if same else 'stayed the same'} with {what}")
+    return failures
 
 
 def engine_takes_the_excerpt_from_transicao():
@@ -247,7 +304,11 @@ def confere():
     sem = [n for n in _publicas() if n not in por_fn]
     if sem:
         falhas.append(f"funcao publica do transicao.py sem caso gravado: {', '.join(sem)}")
-    falhas += phase_excerpt_stays_after_the_outgoing_ramp() + engine_takes_the_excerpt_from_transicao()
+    if dados.get("bench") != bench_fingerprint():
+        falhas.append(f"the bench ({BANCA.name}) changed since {CASOS.name} was recorded: python dev/testa_transicao.py "
+                      "--grava")
+    falhas += (phase_excerpt_stays_after_the_outgoing_ramp() + engine_takes_the_excerpt_from_transicao()
+               + fingerprint_ignores_only_docstrings_and_comments())
     for f in falhas:
         print(f"FALHA {f}")
     print("ok" if not falhas else f"{len(falhas)} falha(s)")
