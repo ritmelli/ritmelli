@@ -69,7 +69,8 @@ def uploads(jobs):
         for s in job_steps(job):
             if str(s.get("uses", "")).startswith("actions/upload-artifact@") and not switched_off(s.get("if")):
                 w = s.get("with") or {}
-                out.append((mark(w.get("name", ""), versions), w, "if" in job or "if" in s))
+                conditional = "if" in job or "if" in s or not all(runs(jobs, job_id, b) for b in BUILDS)
+                out.append((mark(w.get("name", ""), versions), w, conditional))
     return out
 
 
@@ -272,6 +273,14 @@ def rename_step(doc, old, base):
     step_by_id(monta, old)["id"] = new
     text = json.dumps(monta).replace(f"steps.{old}.", f"steps.{new}.")
     doc["jobs"]["monta"] = json.loads(text)
+
+
+def move_exe_upload(doc):
+    step = upload(doc, f"ritmelli-exe-{VERSION}")
+    doc["jobs"]["monta"]["steps"].remove(step)
+    step["with"]["name"] = "ritmelli-exe-${{ needs.monta.outputs.versao }}"
+    parcial = next(k for k, j in doc["jobs"].items() if j is shown(doc, "testa-parcial"))
+    doc["jobs"][free_job(doc, "exe")] = {"runs-on": "ubuntu-latest", "needs": ["monta", parcial], "steps": [step]}
 
 
 def version_from_other_job(doc, name):
@@ -481,6 +490,7 @@ def main():
         "the congela writing versao to another file": lambda d: step_by_id(d["jobs"]["monta"], "congela").update(
             run=step_by_id(d["jobs"]["monta"], "congela")["run"].replace(
                 "-Path $env:GITHUB_OUTPUT -Value \"versao=", '-Path "$env:GITHUB_OUTPUT.tmp" -Value "versao=')),
+        "the ritmelli-exe upload in a job that needs testa-parcial": lambda d: move_exe_upload(d),
         "testa-atualizador only on push": lambda d: shown(d, "testa-atualizador").update(
             {"if": "github.event_name == 'push'"}),
         "testa-atualizador needing a job that runs only on push": lambda d: (
