@@ -319,6 +319,9 @@ def main():
             {"if": shown(d, "testa-parcial")["if"].replace("outputs.parcial", "outputs.partial")}),
         "the output the if: of testa-migracao reads": lambda d: shown(d, "testa-migracao").update(
             {"if": shown(d, "testa-migracao")["if"].replace("outputs.anterior", "outputs.previous")}),
+        "an output the monta job does not declare in the if: of testa-parcial": lambda d: shown(
+            d, "testa-parcial").update(
+                {"if": shown(d, "testa-parcial")["if"] + " && needs.monta.outputs.migra == 'true'"}),
         "the versao output": lambda d: d["jobs"]["monta"]["outputs"].update(
             versao="${{ steps.freeze.outputs.versao }}"),
         "the Ritmelli artifact name": lambda d: upload(d, setup)["with"].update(name="Ritmelli-build"),
