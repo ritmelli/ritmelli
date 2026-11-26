@@ -33,6 +33,36 @@ fitcheck.PRONTA_S = 3.0
 sys.argv = ["fitcheck.py", sys.argv[3], "--sizes", "390x844", "--shots", sys.argv[4]]
 fitcheck.main()
 """
+FITCHECK_TIMEOUT_THEN_GONE = r"""
+import subprocess
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(sys.argv[1]) / "dev"))
+import fitcheck
+started = []
+real_popen, real_wait = subprocess.Popen, fitcheck.wait_ready
+
+
+def popen(cmd, *args, **kwargs):
+    child = real_popen(cmd, *args, **kwargs)
+    if cmd and cmd[0] == fitcheck.CHROME:
+        started.append(child)
+    return child
+
+
+async def wait_then_kill_chrome(*args, **kwargs):
+    outcome = await real_wait(*args, **kwargs)
+    for child in started:
+        subprocess.run(["taskkill", "/PID", str(child.pid), "/T", "/F"], capture_output=True)
+    return outcome
+
+
+subprocess.Popen, fitcheck.wait_ready = popen, wait_then_kill_chrome
+fitcheck.PRONTA = sys.argv[2]
+fitcheck.PRONTA_S = 2.0
+sys.argv = ["fitcheck.py", sys.argv[3], "--sizes", "390x844"]
+fitcheck.main()
+"""
 LATE_S = fitcheck.AVISO_ESPERA_S + 2
 LATE_ASKED = "/__ritmelli-test-late-notice"
 LATE_NOTICE = ("<script>(() => { const show = HTMLDialogElement.prototype.showModal; "
@@ -311,6 +341,30 @@ def fitcheck_never_ready():
         check(shot.is_file() and shot.stat().st_size > 0, "the fitcheck saves a print of the page that was not ready")
 
 
+def fitcheck_timeout_then_chrome_gone():
+    with tempfile.TemporaryDirectory(prefix="ritmelli-fitcheck-gone-") as tmp:
+        tmp = Path(tmp)
+        with open(tmp / "server.log", "w", encoding="utf-8") as log:
+            srv = compara.sobe_servidor(tmp, so_mock.free_port(), log)
+            try:
+                p = subprocess.run([sys.executable, "-c", FITCHECK_TIMEOUT_THEN_GONE, str(ROOT), NEVER_READY,
+                                    f"{srv.base}/t/ritmelli/?lang=pt_BR"], cwd=ROOT,
+                                   env=dict(os.environ, PYTHONUTF8="1"), capture_output=True, text=True,
+                                   encoding="utf-8", errors="replace", timeout=180)
+            finally:
+                compara.para_servidor(srv)
+    out = p.stdout + p.stderr
+    print(out.rstrip())
+    lines = out.splitlines()
+    verdict = next((i for i, line in enumerate(lines) if line.startswith("FALHA")
+                    and "390x844: the theme was not ready in 2 s" in line), None)
+    console = next((i for i, line in enumerate(lines) if line.startswith("  console: ") and CONSOLE_MARK in line), None)
+    check(p.returncode == 1 and verdict is not None and console is not None and console < verdict
+          and "Traceback" not in out,
+          f"the fitcheck, its Chrome gone right after a timeout, still gives the shared verdict and what it had "
+          f"collected, with no traceback (exit {p.returncode})")
+
+
 def timeout_then_disconnect():
     events = fitcheck.PageEvents()
     events.page_errors.append("console.error: collected before the timeout")
@@ -342,6 +396,7 @@ def main():
     notice_late_after_state()
     notice_page_not_ready()
     fitcheck_never_ready()
+    fitcheck_timeout_then_chrome_gone()
     print(f"{'all passed' if not failures else f'{len(failures)} failed'}")
     return 1 if failures else 0
 
