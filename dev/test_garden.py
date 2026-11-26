@@ -677,7 +677,9 @@ def test_description():
         "an image only as an example in code":"## Proof\n\n`![a](https://github.com/user-attachments/assets/1)`\n",
         "a proof label inside an open numbered item": "## Proof\n\n1. [ ] Pending\n   **Proof**\n"
                                                       "   `python dev/testa_i18n.py`\n",
-        "only an open checklist item": "## Proof\n\n- [ ] `python dev/testa_i18n.py`\n  ```\n  ok    the keys\n"
+        "a zip of logs as the only attachment": "## Proof\n\n[Download logs](https://github.com/user-attachments/files/"
+                                                "123/logs.zip)\n",
+        "only an open checklist item":"## Proof\n\n- [ ] `python dev/testa_i18n.py`\n  ```\n  ok    the keys\n"
                                        "  ```\n",
         "an anchor as the link's target": good + "\nThe rest stays for now ([details](#250)).\n",
         "the issue in the next paragraph": good + "\nThe rest stays for now.\n\nSee #250.\n",

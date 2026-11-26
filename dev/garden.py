@@ -72,7 +72,7 @@ SECTION_LABEL = re.compile(r"^\s*(?:#{1,6}\s+(?P<heading>[^:]+?)(?::\s*(?P<rest>
                            r"|\*\*(?P<bold>[^*]+?):?\*\*:?\s*(?P<rest2>.*)$"
                            r"|(?P<plain>[A-Z][\w ,'/-]{1,40}):(?:\s+(?P<rest3>.*))?$)")
 RUN_LINK = re.compile(r"https://github\.com/[\w.-]+/[\w.-]+/actions/runs/\d+")
-IMAGE = re.compile(r"!\[[^\]]*\]\([^)]+\)|<img\s|https://github\.com/user-attachments/")
+IMAGE = re.compile(r"!\[[^\]]*\]\([^)]+\)|<img\s|https://github\.com/user-attachments/assets/[\w-]+")
 PROOF_COMMANDS = {"python", "py", "gh", "git", "pwsh", "powershell", "bash", "node", "npm", "ruff", "actionlint"}
 RUNNER_NAMES = {"testa_tudo", "testa_tudo.py", "dev/testa_tudo.py"}
 BLOCK_PROOF = re.compile(r"^[ \t]*(?:(?:\$|>|PS [^>\n]*>|[A-Z]:\\[^>\n]*>)[ \t]*)?"
