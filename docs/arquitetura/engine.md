@@ -40,7 +40,8 @@ na The Real Slim Shady), nunca passa por ele, e todas saem 2 ms atrasadas, sempr
 interpretador do áudio); o stream, no próprio leitor, com uma estimativa aos 8 s e aos 30 s e a
 medida inteira no fim da primeira vez que toca do começo ao fim. A medida fica no `library.json`
 (`lufs`) ou, sem o disco na prateleira, no `sonoridades.json` do `--data-dir`; o servidor mede
-a prateleira aos poucos. Na prateleira de 14/11, as músicas iam de -19,2 a -5,3 LUFS (mediana
+a prateleira aos poucos. Todo ffmpeg da medida passa pelo `mede_arquivo`, e o servidor, ao desligar, mata e espera
+os que ainda medem (`stop_measurements`): nenhum fica segurando um arquivo depois que ele sai (`dev/test_mock_stop.py`). Na prateleira de 14/11, as músicas iam de -19,2 a -5,3 LUFS (mediana
 -9,3); o alvo de -11 (o do modo "Alto" do Spotify, que também sobe com limitador) deixa o Sultans
 of Swing (+3,1 dB) com 0,2% do tempo acima de 3 dB de limitação, e em -10 seriam 2,7%.
 `dev/testa_ganho.py` testa a medida, o limitador e o motor sem som.

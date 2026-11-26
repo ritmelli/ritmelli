@@ -2651,19 +2651,19 @@ def main():
     ap.add_argument("--metricas-teste", action="store_true",
                     help="with --mock: the usage data notice and choice work, but nothing is read from the installer "
                          "and nothing is sent (the events stay in memory)")
+    ap.add_argument("--stop-on-stdin-eof", action="store_true", help="with --mock: stop when stdin closes (dev/so_mock.py)")
     ap.add_argument("--version", action="version", version=f"Ritmelli {VERSAO}")
     a = ap.parse_args()
-    if a.metricas_teste and not a.mock:
-        sys.exit("--metricas-teste only works with --mock")
-    if a.papel_local is not None and not a.mock:
-        sys.exit("--papel-local only works with --mock")
-    dados = Path(a.data_dir) if a.data_dir else LIB
-    if a.mock:  # o download de mentira na pasta de quem usa virava disco falso na prateleira (#117)
-        dados = pastas.dados_do_mock(a.data_dir)
-        if dados is None:
-            sys.exit(f"--mock never uses the user's data ({a.data_dir}): pass another --data-dir, or none for a "
-                     "temporary copy")
+    mock_only = [f for f in ("metricas_teste", "papel_local", "stop_on_stdin_eof") if getattr(a, f) and not a.mock]
+    if mock_only:
+        sys.exit(f"--{mock_only[0].replace('_', '-')} only works with --mock")
+    dados = pastas.dados_do_mock(a.data_dir) if a.mock else Path(a.data_dir) if a.data_dir else LIB
+    if dados is None:
+        sys.exit(f"--mock never uses the user's data ({a.data_dir}): pass another --data-dir, or none for a "
+                 "temporary copy")
     A = App(a.port, dados, mock=a.mock, metricas_teste=a.metricas_teste, papel_local=a.papel_local or "pc")
+    if a.stop_on_stdin_eof:
+        pastas.call_when_stdin_ends(A.pede_desligar)
     if not a.mock:  # no --mock, o processo do YouTube so abre no primeiro pedido de quem testa (#128)
         threading.Thread(target=fora.aquece, daemon=True).start()  # o primeiro pedido ao YouTube ja acha o de reserva
     d = A.engine.active
@@ -2698,10 +2698,10 @@ def main():
 def roda(A, a):
     """O servidor ate desligar, e o audio fechado no fim. Com a janela, ela fecha junto."""
     try:
-        asyncio.run(servir(A, build(A), a.port, rede=not (a.so_local or a.mock)))
-    except (GracefulExit, KeyboardInterrupt):
-        pass
+        with contextlib.suppress(GracefulExit, KeyboardInterrupt):
+            asyncio.run(servir(A, build(A), a.port, rede=not (a.so_local or a.mock)))
     finally:
+        sonoridade.stop_measurements(eng.mata)
         A.metricas.fecha()  # o uso ate aqui e o que ficou na fila, antes de o audio fechar (no maximo 3 s sem rede)
         A.engine.close()
         if A.janela is not None:
