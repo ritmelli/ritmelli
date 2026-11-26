@@ -1256,15 +1256,17 @@ def workflow_jobs(t):
 
 
 def agents_rules(text):
-    rules, current, row = [], None, None
+    rules, current, row, width = [], None, None, 0
     for n, line in enumerate(text.splitlines(), 1):
         if line.startswith("|"):
             row = 0 if row is None else row + 1
-            if row >= 2:
-                cells = line.strip()
-                cells = cells[1:] if cells.startswith("|") else cells
-                cells = cells[:-1] if cells.endswith("|") else cells
-                rules.append([n, cells.split("|")[-1]])
+            cells = line.strip()
+            cells = cells[1:] if cells.startswith("|") else cells
+            cells = (cells[:-1] if cells.endswith("|") else cells).split("|")
+            if row == 0:
+                width = len(cells)
+            elif row >= 2:
+                rules.append([n, cells[width - 1] if len(cells) >= width else ""])
             current = None
             continue
         row = None
