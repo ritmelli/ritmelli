@@ -45,7 +45,7 @@ class VoicePedalStart:
         if start is not None and start[3] is None:
             start[3] = self.clock()
 
-    def track(self, live, stamp=None):
+    def track(self, stamp):
         now = self.clock()
         if stamp and stamp != self._stamp:
             now_ms = round(now * 1000)
@@ -61,7 +61,6 @@ class VoicePedalStart:
                 owner[2] = up_at
             self.track_up_at = up_at
         self._stamp = stamp
-        return live
 
     def starting(self, lo=None, empty_at=None):
         start, ended = self._on, self._ended

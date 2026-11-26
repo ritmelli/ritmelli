@@ -161,7 +161,7 @@ class PedalVoz(unittest.TestCase):
         e._pedal_voz_liga(True)
         now[0] = 2.3
         with contextlib.redirect_stderr(io.StringIO()) as log:
-            e.voice_pedal.track(True, stamp(2.2))
+            e.voice_pedal.track(stamp(2.2))
         self.assertEqual((log.getvalue(), e.voice_pedal.starting()[1]),
                          ("", "the pedal turned on 0.20 s ago, its voice track isn't up yet"),
                          "the track came up while the process of the first start was still stopping")
@@ -170,7 +170,7 @@ class PedalVoz(unittest.TestCase):
         self.assertEqual((sent.get(timeout=5), sent.get(timeout=5)), (False, True))
         now[0] = 2.6
         with contextlib.redirect_stderr(io.StringIO()) as log:
-            e.voice_pedal.track(True, stamp(2.5))
+            e.voice_pedal.track(stamp(2.5))
         self.assertIn("voice pedal: its voice track came up 0.40 s after the pedal turned on", log.getvalue())
 
     def test_liga_na_ordem_e_fecha(self):

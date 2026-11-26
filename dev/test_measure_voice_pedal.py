@@ -70,7 +70,7 @@ def track_up_line(after_s):
     pedal.sent(pedal.pedal(True))
     pedal.clock = lambda: 100.0 + after_s
     with mock.patch("sys.stderr", io.StringIO()) as err:
-        pedal.track(True, stamp=1 + round((100.0 + after_s) * 1000) % (2**32 - 1))
+        pedal.track(1 + round((100.0 + after_s) * 1000) % (2**32 - 1))
     return err.getvalue().strip()
 
 

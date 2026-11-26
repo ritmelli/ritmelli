@@ -969,7 +969,7 @@ class Injetor:
         self.saude.fila(fila, passagem=seca and self.motor.em_passagem(), esticando=seca and RUBBER_BAND.em_curso())
         if seca:
             self.secas += 1
-            self.motor.voice_pedal.track(m.pista_viva(), m.pista_ligou())
+            self.motor.voice_pedal.track(m.pista_ligou())
             self.dry_outs.ran_dry(volta, self.secas, self.volta_max)
 
     def para(self):
@@ -1038,8 +1038,8 @@ class Injetor:
         # a pista da voz no comando (um processo converte a voz e o filtro poe no lugar da do microfone): o fone e o
         # medidor levam a voz dela, que e o que o jogo ouve, e nao a crua
         p = m.pista_le()  # sempre le: a posicao anda junto com o escritor
-        viva = m.pista_viva()
-        self.motor._pista_viva = self.motor.voice_pedal.track(viva, m.pista_ligou())
+        self.motor.voice_pedal.track(m.pista_ligou())
+        self.motor._pista_viva = viva = m.pista_viva()
         if viva and len(p):
             p = np.concatenate([self._resto_pista, p])
             n = len(p) // BLOCK * BLOCK
