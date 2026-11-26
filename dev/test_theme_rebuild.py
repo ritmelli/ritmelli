@@ -13,6 +13,7 @@ FONT = "@font-face { font-family: 'A'; src: url(fonts/a.woff2) format('woff2'); 
 PEDAL = '<script src="pedal.js" onerror="scriptFailed(this)"></script>'
 HIDDEN = "html:not(.i18n-ok) body { visibility: hidden; }"
 TWO_INLINED = "<!-- inline-script: s.js -->\n<!-- inline-script: t.js -->\n"
+TRANSLATED = {"index.html": "<!-- i18n -->\n", "i18n/i18n_en.properties": "", "i18n/i18n_pt_BR.properties": ""}
 LEFT, CAME = "declaration left its script", "declaration came into the script"
 
 
@@ -121,13 +122,24 @@ SAMPLES = (
     ("a // <!-- in an inlined script turned into // <!-- <script>",
      {"index.html": TWO_INLINED, "s.js": "f();\n// <!--\n", "t.js": "g();\n"},
      {"index.html": TWO_INLINED, "s.js": "f();\n// <!-- <script>\n", "t.js": "g();\n"},
-     ["gone", "scripts", "does not parse", "gone", "new"]),
+     ["gone", "scripts", "does not parse", "script tag or strict mode", "gone", "new"]),
     ("a // <!-- --> in an inlined script turned into // <!-- <script></script> -->",
      {"index.html": TWO_INLINED, "s.js": "f();\n// <!-- -->\n", "t.js": "g();\n"},
      {"index.html": TWO_INLINED, "s.js": "f();\n// <!-- <script></script> -->\n", "t.js": "g();\n"}, []),
     ("a <script> put after the --> of a // <!-- --> in an inlined script",
      {"index.html": TWO_INLINED, "s.js": "f();\n// <!-- -->\n", "t.js": "g();\n"},
      {"index.html": TWO_INLINED, "s.js": "f();\n// <!-- --> <script>\n", "t.js": "g();\n"}, []),
+    ("the </script> of the last script of the page taken out",
+     {"index.html": "<p>x</p>\n<script src='x.js'></script>\n", "x.js": "f();\n"},
+     {"index.html": "<p>x</p>\n<script src='x.js'>\n", "x.js": "f();\n"}, ["script tag or strict mode"]),
+    ("the markup a <script src> with no </script> swallows changed",
+     {"index.html": "<script src='x.js'>\n<p>1</p>\n</script>\n", "x.js": "f();\n"},
+     {"index.html": "<script src='x.js'>\n<p>2</p>\n</script>\n", "x.js": "f();\n"}, ["script tag or strict mode"]),
+    ("a space put after the \\ that ends a translation",
+     {**TRANSLATED, "i18n/i18n_en.properties": "a=b\\\n"}, {**TRANSLATED, "i18n/i18n_en.properties": "a=b\\ \n"},
+     ["translation gone", "translation new"]),
+    ("a space put after a translation", {**TRANSLATED, "i18n/i18n_en.properties": "a=b\n"},
+     {**TRANSLATED, "i18n/i18n_en.properties": "a=b \n"}, []),
     ("a vertical tab in place of the space before + in a calc()", styled("a { padding: calc(14px + 1px); }\n"),
      styled("a { padding: calc(14px\v+ 1px); }\n"), ["gone", "new"]),
     ("a vertical tab after the space before + in a calc()", styled("a { padding: calc(14px + 1px); }\n"),

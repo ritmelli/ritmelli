@@ -44,11 +44,13 @@ compile, or that tree-sitter does not parse, is a change. Anything else is a cha
 
 INLINE_SCRIPT = re.compile(r"<!-- inline-script: ([\w-]+\.js) -->")
 INLINED = "data-theme-rebuild-inline-script"
+UNCLOSED = "data-theme-rebuild-never-closed"
 RAW_TEXT = re.compile(r"<!--.*?-->|<(script|style)\b[^>]*>", re.I | re.S)
 SCRIPT_START = re.compile(r"<script[\t\n\f\r />]", re.I)
 SCRIPT_END = re.compile(r"</script[\t\n\f\r />]", re.I)
 STYLE_END = re.compile(r"</style[\t\n\f\r />]", re.I)
 ANY_END = re.compile(r"</(?:script|style)", re.I)
+TRAILING_SPACE = re.compile(r"(?<!\\)\s+$")
 CSS_SPACES = re.compile(r"[ \t\n\r\f]+")
 HTML_SPACE = " \t\n\r\f"
 MARK = re.compile(r"/\*\s*(?:[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-(?:INICIO|FIM)|[a-z]+:(?:inicio|fim))\b[^*]*\*/")
@@ -166,6 +168,10 @@ def ended_as_the_browser_ends(page):
         kind = opened.group(1).lower()
         end = script_end(page, opened.end()) if kind == "script" else page_end(page, opened.end(), STYLE_END)
         close = tag_end(page, end + len(f"</{kind}")) if end >= 0 else -1
+        if close < 0 and kind == "script":
+            tag = opened.group(0)
+            return "".join(out) + page[at:opened.start()] + f"{tag[:7]} {UNCLOSED}{tag[7:]}" + \
+                inert(page[opened.end():]) + "</script>"
         if close < 0:
             return "".join(out) + page[at:opened.end()] + inert(page[opened.end():])
         out.append(page[at:opened.end()] + inert(page[opened.end():end]) + f"</{kind}>")
@@ -263,7 +269,8 @@ def translations(read, page):
     i18n = importlib.import_module("i18n")
     if i18n.MARCA not in page:
         return ()
-    return tuple((language, tuple(line.strip() for line in read(f"i18n/i18n_{language}.properties").split("\n")
+    return tuple((language, tuple(TRAILING_SPACE.sub("", line.lstrip())
+                                  for line in read(f"i18n/i18n_{language}.properties").split("\n")
                                   if line.strip() and not line.lstrip().startswith(("#", "!"))))
                  for language in i18n.LINGUAS)
 

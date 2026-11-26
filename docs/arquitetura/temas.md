@@ -84,6 +84,7 @@ commits, com cada `<!-- inline-script: -->` virando um `<script>` com o texto do
 primeiro `</script` ou `</style` seguido de espaço, `/` ou `>` (então um `</script>` num comentário fecha o script ali),
 salvo num script em que um `<!--` seguido de `<script` ainda não teve o `-->`, que pula esse `</script>` como o
 tokenizador do HTML pula; e um `<script src>` sem `</script>` engole o texto até o próximo, que entra na comparação.
+O script que chega ao fim da página sem fechar, e que por isso o navegador não roda, conta como outro script.
 O fim da tag respeita as aspas de um valor, e um `\r` sozinho conta como fim de linha, como no navegador (lido do git
 ou da pasta). Ela sai 0 quando o head só muda código de lugar:
 - a marcação é a mesma, na mesma ordem (sem os cinco espaços do HTML nas pontas de cada linha), com cada script e cada
@@ -97,7 +98,8 @@ ou da pasta). Ela sai 0 quando o head só muda código de lugar:
   ou de arquivo como antes (pode mudar de folha ligada ali: as URLs relativas dela continuam apontando para o mesmo
   arquivo);
 - as traduções que o servidor põe na página (a pasta `i18n/`, na página com a marca do i18n) são as mesmas linhas, na
-  mesma ordem (uma linha repetida também conta: chave repetida é erro no `i18n.ler`).
+  mesma ordem (uma linha repetida também conta: chave repetida é erro no `i18n.ler`), sem o espaço das pontas que o
+  `i18n.ler` também tira (o espaço depois de uma `\` fica).
 
 Instruções e regras são comparadas como árvores de sintaxe (o tree-sitter, do `requirements-dev.txt`), com o texto de
 cada nó que nenhum filho cobre (o número de um `14px`), sem os comentários e os espaços fora de strings e templates. Assim, uma marca de bloco, uma linha em branco ou uma indentação
