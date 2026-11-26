@@ -23,19 +23,17 @@ jobs:
         with:
           requirements: requirements-dev.txt
       - name: ffmpeg on the PATH
-        run: Add-Content -Path $env:GITHUB_PATH -Value "$env:GITHUB_WORKSPACE\instaladorfmpegin" -Encoding utf8
+        run: Add-Content -Path $env:GITHUB_PATH -Value "$env:GITHUB_WORKSPACE/instalador/ffmpeg/bin" -Encoding utf8
       - name: 4 runs of the Testes suite
         run: |
-          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\ganho" | Out-Null
+          $dir = "$env:RUNNER_TEMP/ganho"
+          New-Item -ItemType Directory -Force $dir | Out-Null
           for ($i = 1; $i -le 4; $i++) {
-            $env:GANHO_DUMP = "$env:RUNNER_TEMP\ganho
-un-$i.json"
+            $env:GANHO_DUMP = "$dir/run-$i.json"
             $t0 = Get-Date
-            python dev/testa_tudo.py --without-long > "$env:RUNNER_TEMP\ganho
-un-$i.log" 2>&1
+            python dev/testa_tudo.py --without-long > "$dir/run-$i.log" 2>&1
             "suite $i : exit $LASTEXITCODE in $([int]((Get-Date) - $t0).TotalSeconds) s"
-            Select-String -Path "$env:RUNNER_TEMP\ganho
-un-$i.log" -Pattern 'FALHOU|FAIL|falhou' | Select-Object -First 8
+            Select-String -Path "$dir/run-$i.log" -Pattern 'FALHOU|FAIL|falhou' | Select-Object -First 8
           }
       - name: Spread
         if: always()
@@ -67,23 +65,29 @@ un-$i.log" -Pattern 'FALHOU|FAIL|falhou' | Select-Object -First 8
         with:
           requirements: requirements-dev.txt
       - name: ffmpeg on the PATH
-        run: Add-Content -Path $env:GITHUB_PATH -Value "$env:GITHUB_WORKSPACE\instaladorfmpegin" -Encoding utf8
+        run: Add-Content -Path $env:GITHUB_PATH -Value "$env:GITHUB_WORKSPACE/instalador/ffmpeg/bin" -Encoding utf8
       - name: 5 runs on this code
+        if: always()
         run: |
           $fails = 0
           for ($i = 1; $i -le 5; $i++) { python dev/test_mock_stop.py; if ($LASTEXITCODE -ne 0) { $fails++ } }
           "fix: failed runs $fails of 5"
+          exit $fails
       - name: 10 runs of missing_script on this code
+        if: always()
         run: |
           $fails = 0
           for ($i = 1; $i -le 10; $i++) {
             $out = python dev/missing_script.py 2>&1
+            $code = $LASTEXITCODE
             $held = ($out | Select-String -Pattern 'WinError 32').Count
-            "missing_script $i : exit $LASTEXITCODE, WinError 32 lines $held"
-            if ($LASTEXITCODE -ne 0) { $fails++; $out | Select-String -Pattern '^FAIL|Error' | Select-Object -First 5 }
+            "missing_script $i : exit $code, WinError 32 lines $held"
+            if ($code -ne 0) { $fails++; $out | Select-String -Pattern '^FAIL|Error' | Select-Object -First 5 }
           }
           "missing_script: failed runs $fails of 10"
+          exit $fails
       - name: 3 runs on the base server, sonoridade and so_mock
+        if: always()
         run: |
           git show origin/main:server.py > server.py
           git show origin/main:sonoridade.py > sonoridade.py
@@ -108,54 +112,25 @@ un-$i.log" -Pattern 'FALHOU|FAIL|falhou' | Select-Object -First 8
         with:
           requirements: requirements-dev.txt
       - name: ffmpeg on the PATH
-        run: Add-Content -Path $env:GITHUB_PATH -Value "$env:GITHUB_WORKSPACE\instalador\ffmpeg\bin" -Encoding utf8
+        run: Add-Content -Path $env:GITHUB_PATH -Value "$env:GITHUB_WORKSPACE/instalador/ffmpeg/bin" -Encoding utf8
       - name: 10 captures
         run: |
-          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\compara" | Out-Null
+          $root = "$env:RUNNER_TEMP/compara"
+          New-Item -ItemType Directory -Force $root | Out-Null
           $fails = 0
           for ($i = 1; $i -le 10; $i++) {
-            $dir = "$env:RUNNER_TEMP\compara\run-$i"
+            $dir = "$root/run-$i"
             $t0 = Get-Date
             python dev/compara.py --ref --pasta $dir > "$dir.log" 2>&1
             $code = $LASTEXITCODE
-            $s = [int]((Get-Date) - $t0).TotalSeconds
-            "capture $i : exit $code in $s s"
+            "capture $i : exit $code in $([int]((Get-Date) - $t0).TotalSeconds) s"
             if ($code -ne 0) { $fails++; Get-Content "$dir.log" | Select-Object -Last 40 } else { Remove-Item -Recurse -Force $dir }
           }
           "failed captures: $fails of 10"
+          exit $fails
       - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: compara-${{ matrix.shard }}
           path: ${{ runner.temp }}/compara/
           if-no-files-found: ignore
-
-  metricas-loop:
-    name: usage notice loop ${{ matrix.shard }}
-    runs-on: windows-2025
-    timeout-minutes: 90
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2]
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/python
-        with:
-          requirements: requirements-dev.txt
-      - name: ffmpeg on the PATH
-        run: Add-Content -Path $env:GITHUB_PATH -Value "$env:GITHUB_WORKSPACE\instalador\ffmpeg\bin" -Encoding utf8
-      - name: 6 runs of the fitcheck --metricas
-        run: |
-          $fails = 0
-          for ($i = 1; $i -le 6; $i++) {
-            $t0 = Get-Date
-            $out = python dev/fitcheck.py --metricas 2>&1
-            $code = $LASTEXITCODE
-            $s = [int]((Get-Date) - $t0).TotalSeconds
-            "run $i : exit $code in $s s"
-            if ($code -ne 0) { $fails++; $out | Select-String -Pattern '^(FALHA|  )' }
-          }
-          "failed runs: $fails of 6"
