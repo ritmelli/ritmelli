@@ -386,6 +386,8 @@ CASES = {
     ],
     "prose_justifications": [
         ("in a comment", {"a.py": "print('using the old one for now')\n"}, {"a.py": "x = 1  # for now\n"}),
+        ("a description of what did not change", {"a.md": "as rotas que trocam no laço ainda esperam ali, como antes\n"},
+         {"a.md": "as rotas que trocam no laço ainda esperam ali, por enquanto\n"}),
         ("a docstring is not a comment", {"a.py": "def f():\n    '''Accepted risk.'''\n"},
          {"a.py": "def f():\n    '''Accepted risk.'''\n    return 1  # accepted risk\n"}),
         ("in a .md", {"a.md": "Sem teste: issue #5\n"}, {"a.md": "Sem teste.\n"}),
