@@ -293,7 +293,8 @@ def same_strings_as_the_exe(rc, spec):
     spec = re.sub(r"#[^\n]*", " ", spec)
     dll, exe = dict(SHARED_STRINGS.findall(rc)), dict(SHARED_STRINGS.findall(spec))
     return (len(dll) == 3 and dll == exe and 'BLOCK "041604B0"' in rc and 'StringTable("041604B0"' in spec
-            and "0x0416, 1200" in rc and "0x0416, 1200" in spec)
+            and re.search(r'VALUE "Translation", 0x0416, 1200\b', rc) is not None
+            and re.search(r'VarStruct\("Translation", \[0x0416, 1200\]\)', spec) is not None)
 
 
 def test_version_strings():
@@ -305,6 +306,9 @@ def test_version_strings():
                      ('"ProductName", "Ritmelli"', '"ProductName", "Ritmeli"')):
         check(not same_strings_as_the_exe(rc.replace(old, new, 1), spec),
               f"the check catches {old!r} changed in version.rc")
+    check(not same_strings_as_the_exe(rc, spec.replace('VarStruct("Translation"', 'VarStruct("Translaton"', 1))
+          and not same_strings_as_the_exe(rc.replace('VALUE "Translation"', 'VALUE "Translaton"', 1), spec),
+          "the check catches the Translation field misnamed in ritmelli.spec or in version.rc")
     company_rc, company_spec = '      VALUE "CompanyName"', '            StringStruct("CompanyName"'
     check(not same_strings_as_the_exe(rc.replace(company_rc, "      // " + company_rc.strip(), 1), spec)
           and not same_strings_as_the_exe(rc, spec.replace(company_spec, "            # " + company_spec.strip(), 1)),
