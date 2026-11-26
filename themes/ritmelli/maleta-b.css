@@ -1,5 +1,6 @@
 @media (min-width: 1400px) and (min-aspect-ratio: 20/19) {
-  /* MALETA-B-INICIO: a maleta do A seguir em pixel art (o sprite da maleta B, 1 celula = 2 px): as duas pontas
+  /* MALETA-B-INICIO */
+  /* a maleta do A seguir em pixel art (o sprite da maleta B, 1 celula = 2 px): as duas pontas
      inteiras, o miolo que repete de 5 em 5 celulas (o passo da costura, sem emenda) e a plaqueta e a alca por cima,
      centradas como no sprite (gerado por integra_maleta.py) */
   /* a maleta enche a fileira de 245 (pedido dele): a parede de tras com 15 linhas a mais (copias de um passo

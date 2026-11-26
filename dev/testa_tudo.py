@@ -22,9 +22,9 @@ each in its own process, and exits 1 if any fails. It is what the .github/workfl
     python dev\testa_tudo.py --capture <dir> | --capture-base <dir> --base <rev>
                                            only the compara capture of the HEAD or of the base, into the folder with
                                            its key (the jobs Compara: HEAD and Compara: base of the testa.yml)
-    python dev\testa_tudo.py --passo <name>
-                                           a step of the testa.yml that runs one script (PASSOS): the "disco" is the
-                                           testa_pasta_protegida.py --disco, the "metricas" the fitcheck.py --metricas
+    python dev\testa_tudo.py --passo <name> [--base <rev>]
+                                           a step of the testa.yml that runs one script (PASSOS), with the --base as
+                                           its last argument when given
     python dev\testa_tudo.py --areas <base> [--build-base <base>]
                                            (the PR labels come from the ETIQUETAS variable, a JSON list:
                                            $env:ETIQUETAS = '["extracao-tema"]'; in an argument, PowerShell 5.1 would
@@ -114,17 +114,20 @@ LIMITE_S = 600
 SERIAL = {f"dev/testa_{n}.py" for n in ("adianta", "mock", "grava", "comandos", "congela", "ganho", "musica", "passagem",
                                          "pedal_voz", "pista", "vivo")}
 JOBS = 4
-# the steps of the testa.yml that run one script of their own, by name (--passo): the protected folder on the real disk
-# (it creates a folder in Program Files and changes its ACL with icacls, so it needs an administrator: the GitHub
-# machine is one; on a PC, only a test Windows), the usage data notice of the theme and the PR description
+# the steps of the testa.yml that run one script of their own, by name (--passo), with the --base as the last argument
+# when given: the protected folder on the real disk (it needs an administrator: the GitHub machine is one; on a PC, only
+# a test Windows), the usage data notice of the theme, the PR description and the two proofs of a theme extraction
 PASSOS = {"disco": ("dev/testa_pasta_protegida.py", "--disco"), "metricas": ("dev/fitcheck.py", "--metricas"),
-          "pr-description": ("dev/garden.py", "--pr-description")}
+          "pr-description": ("dev/garden.py", "--pr-description"), "theme-rebuild": ("dev/theme_rebuild.py",),
+          "theme-listeners": ("dev/theme_listeners.py",)}
 # what the --tela and the --compara run
 TELA = ("dev/fitcheck.py", "dev/compara.py", "dev/missing_script.py", "dev/theme_scripts.py",
         "dev/test_theme_listeners.py")
 NOT_ON_PUSH = "github.event_name != 'push'"
 AFTER_RUFF = "${{ !cancelled() && steps.ruff.outcome != 'skipped' }}"
 SUMMARY_ARG = r'--resumo "$env:RUNNER_TEMP\resumo.md"'
+EXTRACTION = ("${{ !cancelled() && steps.areas.outputs.extracao == 'true' && steps.areas.outputs.tela == 'true' && "
+              "steps.tela.outcome != 'skipped' }}")
 HEAD_RUN = ('python dev/testa_tudo.py --capture "$env:RUNNER_TEMP\\compara-ref" --pasta "$env:RUNNER_TEMP\\tela" '
             f'{SUMMARY_ARG}')
 BASE_RUN = ('python dev/testa_tudo.py --capture-base "$env:RUNNER_TEMP\\compara-ref" --base $env:BASE_SHA --pasta '
@@ -157,13 +160,20 @@ REQUIRED_MODES = {
                          "python dev/testa_tudo.py --passo metricas"),
     "--passo pr-description": ("testes", NOT_ON_PUSH, "PR description", "${{ !cancelled() }}",
                                "python dev/testa_tudo.py --passo pr-description"),
+    "--passo theme-rebuild": ("tela", NOT_ON_PUSH, "Only moves code", EXTRACTION,
+                              "python dev/testa_tudo.py --passo theme-rebuild --base $env:PROOF_BASE"),
+    "--passo theme-listeners": ("tela", NOT_ON_PUSH, "Same listeners", EXTRACTION,
+                                "python dev/testa_tudo.py --passo theme-listeners --base $env:PROOF_BASE"),
     "--compara": ("compara", NOT_ON_PUSH, "compara", "steps.areas.outputs.roda == 'true'", COMPARA_RUN),
     "--capture": ("compara-head", None, "Captura do HEAD", "steps.areas.outputs.roda == 'true'", HEAD_RUN),
     "--capture-base": ("compara-base", NOT_ON_PUSH, "Captura da base", "steps.areas.outputs.roda == 'true'", BASE_RUN),
 }
 COMPARA_ENV = {"EXTRACAO": "${{ steps.areas.outputs.extracao }}", "BASE_SHA": "${{ steps.chave.outputs.base }}"}
+PROOF_BASE_ENV = {"PROOF_BASE": "${{ github.event_name == 'merge_group' && needs.etiquetas.outputs.queue_base || "
+                                "github.event.pull_request.base.sha }}"}
 REQUIRED_ENV = {"--compara": COMPARA_ENV, "--capture-base": {"BASE_SHA": "${{ steps.chave.outputs.base }}"},
-                "--passo pr-description": {"GH_TOKEN": "${{ github.token }}"}}
+                "--passo pr-description": {"GH_TOKEN": "${{ github.token }}"},
+                "--passo theme-rebuild": PROOF_BASE_ENV, "--passo theme-listeners": PROOF_BASE_ENV}
 BASE_ENV = "${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}"
 AREAS_RUN = "python dev/testa_tudo.py --areas $env:BASE"
 BUILD_AREAS_RUN = "python dev/testa_tudo.py --areas $env:BASE --build-base $env:BUILD_BASE"
@@ -696,15 +706,17 @@ def fitcheck(pasta):
         for script, what in (("dev/missing_script.py", "a theme file that does not load"),
                              ("dev/theme_scripts.py", "the theme's scripts"),
                              ("dev/test_theme_listeners.py", "the listener reader of dev/theme_listeners.py")):
+            started = time.monotonic()
             cod, saida = executa([sys.executable, script])
-            print(f"--- {Path(script).stem}: exits {cod}\n{saida.rstrip()}", flush=True)
+            took = time.monotonic() - started
+            print(f"--- {Path(script).stem}: exits {cod} in {took:.0f} s\n{saida.rstrip()}", flush=True)
             if cod != 0:
                 bloqueia = True
                 md += [f"<details><summary>❌ {what}: {script} exits {cod}</summary>", "", cerca(cauda(saida)), "",
                        "</details>"]
             else:
                 n = sum(linha.startswith("OK") for linha in saida.splitlines())
-                md.append(f"- ✅ {what}: {n} checks of {script} pass")
+                md.append(f"- ✅ {what}: {n} checks of {script} pass in {took:.0f} s")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     return md, bloqueia
@@ -841,7 +853,8 @@ def saida_do_job(valores):
 
 def passo(a):
     """The --passo: runs the script of the step, with its output as it comes, and exits with its code."""
-    return subprocess.run([sys.executable, *PASSOS[a.passo]], cwd=RAIZ, stdin=subprocess.DEVNULL,
+    return subprocess.run([sys.executable, *PASSOS[a.passo], *([a.base] if a.base else [])], cwd=RAIZ,
+                          stdin=subprocess.DEVNULL,
                           env=dict(os.environ, PYTHONUTF8="1")).returncode
 
 

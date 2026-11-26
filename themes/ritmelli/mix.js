@@ -1,4 +1,5 @@
-/* MIX-JS-INICIO: o mixer da mesa inteiro em pixel art (1 celula = 2 px), num canvas por cima do receptor: o painel
+/* MIX-JS-INICIO */
+/* o mixer da mesa inteiro em pixel art (1 celula = 2 px), num canvas por cima do receptor: o painel
    de metal escovado com os parafusos, os tres VUs (a janela ambar, o arco, os numeros e a agulha do medidor da
    pagina), os volumes em pe com as marcas e o pino creme, as chaves do set, o crossfader e a placa da transicao
    automatica. Os elementos de verdade seguem ali, transparentes: o clique, o estado e o lugar vem deles. */

@@ -307,9 +307,10 @@ def main(argv=None):
             srv = compara.sobe_servidor(tmp, so_mock.free_port(), log, raiz=args.raiz.resolve(),
                                         config={"boas_vindas": True})
             try:
-                for run in (checks, *(held_until(a) for a in RAN_BEFORE), startup_with_the_search,
-                            *(after_a_failure(*f) for f in EARLIER_FAILURES)):
-                    results += asyncio.run(missing_script.with_tab(srv, run))
+                runs = (checks, *(held_until(a) for a in RAN_BEFORE), startup_with_the_search,
+                        *(after_a_failure(*f) for f in EARLIER_FAILURES))
+                for found in asyncio.run(missing_script.with_tabs(srv, runs)):
+                    results += found
             finally:
                 compara.para_servidor(srv)
     for ok, message in results:
