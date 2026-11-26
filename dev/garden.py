@@ -715,14 +715,35 @@ def test_names(test):
     return {n.id for n in ast.walk(test) if isinstance(n, ast.Name)}
 
 
-def assigned_names(body):
-    out = set()
+def assignments(body):
     for s in body:
         for n in [s, *local_nodes(s)]:
-            targets = n.targets if isinstance(n, ast.Assign) else [n.target] if isinstance(
-                n, (ast.AnnAssign, ast.AugAssign, ast.NamedExpr)) else []
-            out |= {t.id for target in targets for t in ast.walk(target) if isinstance(t, ast.Name)}
-    return out
+            if isinstance(n, ast.Assign):
+                pairs = [(target, n.value) for target in n.targets]
+            elif isinstance(n, (ast.AnnAssign, ast.NamedExpr)):
+                pairs = [(n.target, n.value)]
+            elif isinstance(n, ast.AugAssign):
+                pairs = [(n.target, None)]
+            else:
+                continue
+            for target, value in pairs:
+                yield from ((t.id, value) for t in ast.walk(target) if isinstance(t, ast.Name))
+
+
+def keeps_going(test, name, value):
+    if not isinstance(value, ast.Constant):
+        return False
+    if isinstance(test, ast.Name) and test.id == name:
+        return bool(value.value)
+    if (isinstance(test, ast.UnaryOp) and isinstance(test.op, ast.Not) and isinstance(test.operand, ast.Name)
+            and test.operand.id == name):
+        return not value.value
+    return False
+
+
+def turns_off(tests, body):
+    return any(name in test_names(test) and not keeps_going(test, name, value)
+               for test in tests for name, value in assignments(body))
 
 
 def python_retries(tree):
@@ -733,14 +754,15 @@ def python_retries(tree):
             inner = list(local_nodes(loop))
             if not any(is_sleep(n, aliases) for n in inner):
                 continue
-            ends = any(isinstance(n, (ast.Return, ast.Break)) for n in inner)
-            guards = {id(s): test_names(n.test) for n in inner if isinstance(n, ast.If) for s in n.body}
+            handled = {id(x) for t in inner if isinstance(t, ast.Try) for h in t.handlers for x in ast.walk(h)}
+            ends = any(isinstance(n, (ast.Return, ast.Break)) and id(n) not in handled for n in inner)
+            guards = {id(s): n.test for n in inner if isinstance(n, ast.If) for s in n.body}
             for attempt in (n for n in inner if isinstance(n, ast.Try)):
                 again = [h for h in attempt.handlers if not leaves(h.body)]
                 waits_on_failure = any(is_sleep(n, aliases) for h in again for n in local_nodes(h)) and not any(
                     is_sleep(n, aliases) for s in attempt.body + attempt.orelse for n in [s, *local_nodes(s)])
-                guard = guards.get(id(attempt), set()) | (test_names(loop.test) if isinstance(loop, ast.While) else set())
-                stops_on_success = bool(guard & assigned_names(attempt.body))
+                tests = [t for t in (guards.get(id(attempt)), loop.test if isinstance(loop, ast.While) else None) if t]
+                stops_on_success = turns_off(tests, attempt.body)
                 if again and (waits_on_failure or ends or stops_on_success):
                     found.append(loop.lineno)
                     break

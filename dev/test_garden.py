@@ -257,6 +257,16 @@ CASES = {
          {"a.js": "function poll() {\n  try { f(); } catch (e) { setTimeout(poll, 1000); return; }\n"
                   "  setTimeout(poll, 1000);\n}\n"},
          {"a.js": "function poll() {\n  try { f(); } catch (e) { setTimeout(poll, 1000); return; }\n  mostrar();\n}\n"}),
+        ("a Python poll that breaks only on a failure",
+         {"a.py": "import time\nwhile True:\n    try:\n        f()\n    except FileNotFoundError:\n        break\n"
+                  "    except OSError:\n        pass\n    time.sleep(1)\n"},
+         {"a.py": "import time\nwhile True:\n    try:\n        f()\n        break\n    except OSError:\n        pass\n"
+                  "    time.sleep(1)\n"}),
+        ("a Python poll whose try keeps the loop on",
+         {"a.py": "import time\nwhile running:\n    try:\n        f()\n        running = True\n    except OSError:\n"
+                  "        pass\n    time.sleep(1)\n"},
+         {"a.py": "import time\nwhile running:\n    try:\n        f()\n        running = False\n    except OSError:\n"
+                  "        pass\n    time.sleep(1)\n"}),
         ("a do-while followed by another loop", {"a.py": "ps = 'do{f}while($a);while($b){Start-Sleep 1}'\n"},
          {"a.py": "ps = 'do{try{f}catch{Start-Sleep 1}}while($a);while($b){Start-Sleep 1}'\n"}),
         ("a script's onerror that loads it again",
@@ -461,6 +471,10 @@ KNOWN_MISSES = [
     ("broad_excepts", "a PowerShell catch with no type", {"a.ps1": "try { f } catch { }\n"}),
     ("broad_excepts", "a JavaScript catch that handles nothing but is not empty",
      {"a.js": "try { f(); } catch (e) { void e; }\n"}),
+    ("retries", "a PowerShell retry next to another try that waits (the tries of a loop are read together)",
+     {"a.ps1": "while ($true) { try { f } catch { Start-Sleep 1 }; try { g; Start-Sleep 5 } catch { } }\n"}),
+    ("retries", "a PowerShell retry whose if guard the try turns off",
+     {"a.ps1": "while ($true) { if (-not $done) { try { f; $done = $true } catch { } }; Start-Sleep 1 }\n"}),
     ("retries", "a JavaScript failure told by an if (index.html, the transport not loaded)",
      {"a.js": "function carregarTransporte() {\n  s.onload = () => {\n"
               "    if (typeof TRANSPORTE === 'undefined') { s.remove(); reconT = setTimeout(conectar, 3000); return; }\n"
