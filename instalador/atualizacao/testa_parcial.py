@@ -226,7 +226,7 @@ RELEASES = "https://github.com/ritmelli/ritmelli-releases/releases/download"
 VERSION_FILE, VERSION_LINES = re.subn(r'^VERSAO = "[^"\r\n]*"', 'VERSAO = "<version>"',
                                       (AQUI.parents[1] / "versao.py").read_text(encoding="utf-8"), flags=re.M)
 caso("the fake versao.py is the real one with only the VERSAO line swapped", VERSION_LINES == 1)
-RECORDED_MANIFEST = '{"recorded": true}'
+RECORDED_MANIFEST = '{"recorded": "áudio"}'
 PARTIAL_INFO = json.dumps({"de": "0.3.3", "arquivos": ["ritmelli.exe"], "apaga": ["_internal/sai.pyd"]})
 CHANGES_ONLY_INFO = json.dumps({"de": "0.3.3", "arquivos": ["ritmelli.exe"], "apaga": []})
 RECORDER = f"""import argparse
@@ -405,7 +405,11 @@ MANIFEST_CASES = {
         ('"--saida", OUTPUT,', '"--saida", OUTPUT.parent,'),
         ("*notes_options(notes_folder)]", '*notes_options(notes_folder), "--saida", APP]'),
         ("    sys.exit(result.returncode)",
-         '    (OUTPUT / "manifest.json").unlink(missing_ok=True)\n    sys.exit(result.returncode)')]),
+         '    (OUTPUT / "manifest.json").unlink(missing_ok=True)\n    sys.exit(result.returncode)'),
+        ("    sys.exit(result.returncode)",
+         '    manifest = OUTPUT / "manifest.json"\n'
+         '    manifest.write_bytes(manifest.read_bytes().decode("utf-8").encode("cp1252"))\n'
+         "    sys.exit(result.returncode)")]),
     "--notas and --notas-en give publica.py the lines of NOTAS and NOTAS_EN, split on |, each on its own": (
         notes_case, [
             ('("NOTAS", "--notas"), ("NOTAS_EN", "--notas-en")', '("NOTAS", "--notas-en"), ("NOTAS_EN", "--notas")'),
