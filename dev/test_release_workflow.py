@@ -155,6 +155,8 @@ def sparse_problems(doc):
     problems = []
     for job_id, job in doc["jobs"].items():
         checkout = next((s for s in job.get("steps") or [] if s.get("uses", "").startswith("actions/checkout@")), None)
+        if job_id in JOB_SCRIPTS and checkout is None:
+            problems.append(f"{job_id} has no checkout for {JOB_SCRIPTS[job_id]}")
         sparse = ((checkout or {}).get("with") or {}).get("sparse-checkout")
         if sparse is None:
             continue
@@ -213,6 +215,11 @@ def test_sparse_checkout():
              if s.get("uses", "").startswith("actions/checkout@"))["with"]["sparse-checkout-cone-mode"]
     check("testa-migracao lists /paths without sparse-checkout-cone-mode: false" in sparse_problems(cone),
           "the check catches the testa-migracao checkout without sparse-checkout-cone-mode: false")
+    no_checkout = copy.deepcopy(monta)
+    no_checkout["jobs"]["testa-migracao"]["steps"] = [s for s in no_checkout["jobs"]["testa-migracao"]["steps"]
+                                                      if not s.get("uses", "").startswith("actions/checkout@")]
+    check("testa-migracao has no checkout for /instalador/testa-migracao.ps1" in sparse_problems(no_checkout),
+          "the check catches the testa-migracao job without its checkout")
     run["run"] = "Write-Host instalador\\testa-migracao.ps1"
     check("testa-migracao does not run /instalador/testa-migracao.ps1" in sparse_problems(mutant),
           "the check catches a step that only prints the script name")
@@ -233,9 +240,15 @@ def version_check_after(job_steps, build, folder, required_if):
     return False
 
 
-def inno_runs(job_steps, required_if):
-    calls = [s for s in job_steps if s.get("uses") == INNO]
-    return len(calls) == 1 and calls[0].get("if") == required_if and not calls[0].get("continue-on-error")
+INNO_USERS = {"monta": lambda s: s.get("id") == "monta",
+              "microfone": lambda s: "dev/testa_tudo.py --microfone" in s.get("run", "")}
+
+
+def inno_runs(job_steps, required_if, job):
+    calls = [n for n, s in enumerate(job_steps) if s.get("uses") == INNO]
+    users = [n for n, s in enumerate(job_steps) if INNO_USERS[job](s)]
+    return (len(calls) == 1 and job_steps[calls[0]].get("if") == required_if
+            and not job_steps[calls[0]].get("continue-on-error") and bool(users) and calls[0] < min(users))
 
 
 def built_monta(step):
@@ -264,7 +277,8 @@ def test_version_resource():
     mutations = {"without it": None, "with continue-on-error": {"continue-on-error": True},
                  "printing the call": lambda step: {"run": "Write-Host " + step["run"]},
                  "on another folder": {"run": "microfone\\apo\\check_version.ps1 -Folder dist"},
-                 "under another if": {"if": "false"}}
+                 "under another if": {"if": "false"},
+                 "in the cmd shell": {"shell": "cmd"}}
     for doc, job, built in ((monta, "monta", built_monta), (testa, "microfone", built_testa)):
         for name, change in mutations.items():
             mutant = copy.deepcopy(doc)
@@ -283,12 +297,26 @@ def test_version_resource():
     check(not version_check_after(mutant["jobs"]["microfone"]["steps"], built_testa, DLL_FOLDERS["microfone"],
                                   DLL_IFS["microfone"]), "the check catches the build and the check both skipped")
     for doc, job in ((monta, "monta"), (testa, "microfone")):
-        check(inno_runs(doc["jobs"][job]["steps"], DLL_IFS[job]),
+        check(inno_runs(doc["jobs"][job]["steps"], DLL_IFS[job], job),
               f"the {job} job installs the Inno Setup once through {INNO}, under the if of its build")
+        for name, change in (("with continue-on-error", lambda s, i: s[i].update({"continue-on-error": True})),
+                             ("called twice", lambda s, i: s.insert(i, dict(s[i])))):
+            mutant = copy.deepcopy(doc)
+            job_steps = mutant["jobs"][job]["steps"]
+            change(job_steps, next(n for n, s in enumerate(job_steps) if s.get("uses") == INNO))
+            check(not inno_runs(job_steps, DLL_IFS[job], job),
+                  f"the check catches the Inno Setup step of the {job} job {name}")
     mutant = copy.deepcopy(monta)
     next(s for s in mutant["jobs"]["monta"]["steps"] if s.get("uses") == INNO)["if"] = DLL_IFS["microfone"]
-    check(not inno_runs(mutant["jobs"]["monta"]["steps"], DLL_IFS["monta"]),
+    check(not inno_runs(mutant["jobs"]["monta"]["steps"], DLL_IFS["monta"], "monta"),
           "the check catches the Inno Setup step of the monta job under the if of the filter job")
+    for doc, job in ((monta, "monta"), (testa, "microfone")):
+        mutant = copy.deepcopy(doc)
+        job_steps = mutant["jobs"][job]["steps"]
+        step = job_steps.pop(next(n for n, s in enumerate(job_steps) if s.get("uses") == INNO))
+        job_steps.insert(max(n for n, s in enumerate(job_steps) if INNO_USERS[job](s)) + 1, step)
+        check(not inno_runs(job_steps, DLL_IFS[job], job),
+              f"the check catches the Inno Setup step of the {job} job after the step that uses it")
     copies = [f"{p.name}:{w}" for p in files() if p.parent.name != "inno-setup"
               for w, s in steps(load(p)) if "innosetup-" in s.get("run", "")]
     check(copies == [], f"the Inno Setup is downloaded only in {INNO} ({copies})")
