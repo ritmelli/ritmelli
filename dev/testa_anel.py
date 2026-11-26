@@ -407,6 +407,30 @@ class TestVoicePedalStart(unittest.TestCase):
         self.assertEqual(dry.while_pedal_starting, 0, "the first start's track came up 5.9 s before the ring was seen")
         self.assertIn("the microphone ring ran dry (", log.getvalue())
 
+    def test_an_ended_start_does_not_take_the_track_of_the_start_after_it(self):
+        now = [0.0]
+        pedal = dryouts.VoicePedalStart(clock=lambda: now[0])
+        dry = dryouts.RingDryOuts(pedal)
+        with mock.patch("sys.stderr", io.StringIO()) as log:
+            pedal.pedal(True)
+            now[0] = 0.1
+            pedal.track(True, stamp(0.1))
+            now[0] = 6.0
+            dry.read_ring(lambda: 1)
+            now[0] = 6.1
+            pedal.pedal(False)
+            now[0] = 6.101
+            dry.read_ring(lambda: 0)
+            now[0] = 6.102
+            pedal.pedal(True)
+            now[0] = 6.2
+            pedal.track(True, stamp(6.112))
+            dry.ran_dry(0.1, 1, 0.0)
+            dryouts.LOG.written()
+        self.assertEqual(dry.while_pedal_starting, 0,
+                         "the track at 6.112 s is the second start's, and the first one's came up 5.9 s before the ring")
+        self.assertIn("the microphone ring ran dry (", log.getvalue())
+
     def ended_start_with_a_track_read_late(self, up_s_ago):
         now = [0.0]
         pedal = dryouts.VoicePedalStart(clock=lambda: now[0])
