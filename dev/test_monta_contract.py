@@ -66,11 +66,13 @@ def uploads(jobs):
         versions = {"needs.monta.outputs.versao"} if "monta" in needs else set()
         if job_id == "monta":
             versions.add(inner(VERSION))
+        loose = {f"needs.{n}.outputs.versao" for n in needs if "versao" in ((jobs.get(n) or {}).get("outputs") or {})}
+        loose |= {inner((job.get("outputs") or {}).get("versao", ""))} - {None}
         for s in job_steps(job):
             if str(s.get("uses", "")).startswith("actions/upload-artifact@") and not switched_off(s.get("if")):
                 w = s.get("with") or {}
                 conditional = "if" in job or "if" in s or not all(runs(jobs, job_id, b) for b in BUILDS)
-                out.append((mark(w.get("name", ""), versions), w, conditional))
+                out.append((mark(w.get("name", ""), versions), w, conditional, mark(w.get("name", ""), loose)))
     return out
 
 
@@ -212,14 +214,16 @@ def contract_problems(doc):
             if not re.fullmatch(rf"needs\.monta\.outputs\.{output}\s*==\s*'true'", bare(job.get("if", "")) or ""):
                 problems.append(f"the if: of {required} does not read the {output} output of the monta job")
     run_uploads = uploads(jobs)
-    found = {name: [w for n, w, _ in run_uploads if n == name] for name in (SETUP, EXE)}
+    found = {name: [w for n, w, _, _ in run_uploads if n == name] for name in (SETUP, EXE)}
+    problems += [f"the pipeline would count {c} artifacts named {name}, not 1" for name in (SETUP, EXE)
+                 if (c := sum(1 for _, _, _, seen in run_uploads if seen == name)) > 1]
     if len(found[SETUP]) == 1 and not partial_probed(monta, found[SETUP][0].get("path")):
         problems.append("the step behind the parcial output does not Test-Path the partial setup in the "
                         f"{SETUP} folder")
     problems += [f"the run uploads {len(w)} artifacts named {n}, not 1" for n, w in found.items() if len(w) != 1]
     problems += [f"the {n} artifact is uploaded under an if: or in a job that does not run in every build the "
-                 "pipeline expects" for n, _, c in run_uploads if n in found and c]
-    fixed = [n for n, _, _ in run_uploads if n != SETUP and OTHER_VERSION.fullmatch(n)]
+                 "pipeline expects" for n, _, c, _ in run_uploads if n in found and c]
+    fixed = [n for n, _, _, _ in run_uploads if n != SETUP and OTHER_VERSION.fullmatch(n)]
     if fixed:
         problems.append(f"the run uploads {fixed}, which the pipeline would take for the version of the build")
     if len(found[EXE]) == 1 and not one_literal_file(found[EXE][0].get("path"), "ritmelli.exe"):
@@ -549,6 +553,13 @@ def main():
                 '-Value "versao=$v"', '-Value "versao=$v", "versao="')),
         "a second parcial=false in the -Value array": lambda d: source_step(d, "parcial").update(
             run=source_step(d, "parcial")["run"].replace(".ToLower())\"", '.ToLower())", "parcial=false"')),
+        "a second ritmelli-exe named by the versao output of its own job": lambda d: d["jobs"].update(
+            {free_job(d, "copy"): {"runs-on": "ubuntu-latest", "needs": ["monta"],
+                                   "outputs": {"versao": "${{ steps.v.outputs.versao }}"},
+                                   "steps": [{"id": "v", "run": "echo"},
+                                             {"uses": upload(d, exe)["uses"],
+                                              "with": {"name": "ritmelli-exe-${{ steps.v.outputs.versao }}",
+                                                       "path": "dist/ritmelli/ritmelli.exe"}}]}}),
         "a parcial=false in a one-line if block": lambda d: source_step(d, "parcial").update(
             run=source_step(d, "parcial")["run"].rstrip("\n")
             + '\nif ($env:ANTERIOR) { Add-Content -Path $env:GITHUB_OUTPUT -Value "parcial=false" -Encoding ascii }\n'),
