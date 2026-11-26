@@ -525,6 +525,9 @@ jobs:
               --jq '.workflow_runs[0].html_url // empty'); then
               if [ -n "$build_run" ]; then
                 avisos+=("✅ **monta.yml:** the PR changes the build, and [Monta o instalador passed]($build_run) on \`${build_head:0:12}\`")
+              elif [ "$GITHUB_EVENT_NAME" = pull_request ] && [ "$DO_REPO" != true ]; then
+                avisos+=("❌ **monta.yml:** the PR changes the build and no passed Monta o instalador run is on \`${build_head:0:12}\`: it comes from a fork, so a maintainer pushes this commit to a branch of $REPO, runs \`gh workflow run monta.yml -R $REPO --ref <that branch>\`, and runs this job again when it passes")
+                build_ok=false
               else
                 avisos+=("❌ **monta.yml:** the PR changes the build and no passed Monta o instalador run is on \`${build_head:0:12}\`: run \`gh workflow run monta.yml --ref <branch>\` on this head, and this job again when it passes")
                 build_ok=false

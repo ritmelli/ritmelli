@@ -265,10 +265,11 @@ def test_shape(flows):
 
 
 def run_summary(block, event, states, comment_fails=False, runs=RUNS, queue_fails=False, monta="false",
-                build_runs=(), build_fails=False, pr_head=PR_HEAD):
+                build_runs=(), build_fails=False, pr_head=PR_HEAD, fork=False):
     env = {"GITHUB_EVENT_NAME": event, "GH_TOKEN": "x", "REPO": "ritmelli/ritmelli",
            "PR": "7" if event == "pull_request" else "", "HEAD": HEAD, "RUN_ID": "1", "ATTEMPT": "1",
-           "EXECUCAO": "https://example.invalid/run", "DO_REPO": "true" if event == "pull_request" else "false",
+           "EXECUCAO": "https://example.invalid/run",
+           "DO_REPO": "true" if event == "pull_request" and not fork else "false",
            "LABELS_PR": "" if event == "push" else "7", "LABELS": "[]", "LINHAS": "", "MUDARAM": "0",
            "MONTA": "" if event == "push" else monta, "PR_HEAD": PR_HEAD if event == "pull_request" else ""}
     env.update({f"S_{n}": s for n, s in zip(NEEDS, states)})
@@ -305,6 +306,12 @@ def test_build_gate(block):
         code, out, summary, calls = run_summary(block, event, ok, monta="")
         check(code != 0 and "did not say whether the PR changes the build" in summary,
               f"in a {event}, an empty build answer from the filter job fails the check (exit {code})")
+    code, out, summary, calls = run_summary(block, "pull_request", ok, monta="true", fork=True)
+    check(code != 0 and "it comes from a fork, so a maintainer pushes this commit to a branch of ritmelli/ritmelli"
+          in summary, f"a fork PR that changes the build fails and says how a maintainer gets the run (exit {code})")
+    code, out, summary, calls = run_summary(block, "pull_request", ok, monta="true", fork=True, build_runs=[green])
+    check(code == 0 and BUILD_URL in summary,
+          f"a fork PR that changes the build passes once the run on its head is in the repository (exit {code})")
     code, out, summary, calls = run_summary(block, "merge_group", ok, monta="true", build_runs=[green], pr_head=None)
     check(code != 0 and "the head of PR 7 did not come" in summary and not builds(calls),
           f"in a merge_group, a PR head that does not come fails the check (exit {code})")
