@@ -66,7 +66,7 @@ compara os ouvintes de cada nó, do `document` e da `window`, na ordem em que en
 DevTools), com as opções e o texto de cada função; sai 0 só com as duas tabelas iguais. O arquivo em que um ouvinte mora
 não entra na comparação: mudar um ouvinte de arquivo, ou para dentro de uma função, mantém a tabela.
 
-Toda conversa do tema com o servidor passa pelo `transporte.js` (os pedidos da API, que o `api()` do `index.html` chama,
+Toda conversa do tema com o servidor passa pelo `transporte.js` (os pedidos da API, que o `api()` do `api.js` chama,
 e o fluxo de eventos do SSE): o resto do tema não sabe como ela chega, e o `fetch`, o `EventSource` e o
 `location.hostname` só aparecem nele. O que o tema mostra a cada um vem do `caps` que o servidor manda (no `/api/state`,
 no 401 do pareamento e no começo do SSE; ver o `API.md`), e não do endereço da página: os controles do PC (o botão

@@ -54,10 +54,12 @@ FEATURE_HANDLERS = (
 RAN_BEFORE = {"queue.js": "fecharMenu", "ui-events.js": "abrirDispositivos"}
 STILL_ON = (("#b-disp", "click"), ("#b-cortar", "click"), ("#f-vol", "input"), ("#b-anterior", "click"),
             ("#seek", "input"))
+FORM_INERT = ("the search form stays inert", "document.getElementById('form-busca')?.inert === true")
 EARLIER_FAILURES = (
-    ("voice-effects.js", STILL_ON, ()),
+    ("gerado/pecas.js", (), (FORM_INERT,)),
+    ("voice-effects.js", STILL_ON, (FORM_INERT,)),
     ("search.js", STILL_ON + (("#rolo-busca", "scroll"),),
-     (("the mesa builds the effects drawer", "!!document.querySelector('#banco .aviso-gav:not([data-i18n])')"),)),
+     (("the mesa builds the effects drawer", "!!document.querySelector('#banco .aviso-gav:not([data-i18n])')"), FORM_INERT)),
 )
 SEARCH_OPEN = ("(() => { const q = document.getElementById('q'); q.value = 'abc';"
                " document.getElementById('form-busca').requestSubmit(); })()")

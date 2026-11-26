@@ -359,7 +359,7 @@ function bindSearch() {
     if (!q || !jaBuscando(q)) buscar(q);
   });
   // the search form starts inert: while the theme's scripts load, Enter would submit it natively and reload the page
-  $('#form-busca').inert = false;
+  if (!scriptsMissing().length) $('#form-busca').inert = false;
   $('#q').addEventListener('keydown', e => { if (e.key === 'Escape' && S.busca) { e.preventDefault(); fecharBusca(); } });
   $('#b-voltar').addEventListener('click', () => { fecharBusca(); if (!toque()) $('#q').focus(); });
   /* celular: tocar em qualquer lugar fora do campo fecha o teclado, como nos
