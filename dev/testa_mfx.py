@@ -292,41 +292,51 @@ class TestaMfx(Base):
         self.assertIsNone(self.vaga(0))
 
 
-class TestFailedListWriteAfterTheSingleEffect(Base):
-    """#261: _pendura deletes the maker's single EFX/MFX before it writes the list that takes it over."""
+class FailedListWriteAfterTheSingleEffect:
+    """#261: _pendura deletes the maker's single EFX/MFX before it writes the list that takes it over. setUp runs the
+    first install with that list write refused once, then the second one."""
 
-    def _first_and_second_run(self, failing_list):
+    failing_list = None
+
+    def setUp(self):
+        super().setUp()
         r = self.reg
         self.microfone({mf.EFX: (EFX_FM, r.REG_SZ), mf.MFX: (MFX_FM, r.REG_SZ),
                         mf.MODOS_MFX: ([mf.MODO_PADRAO, mf.MODO_RAW], r.REG_MULTI_SZ)})
         real_set_value, refused = r.SetValueEx, []
 
         def set_value(key, name, reserved, kind, value):
-            if name.lower() == failing_list.lower() and not refused:
+            if name.lower() == self.failing_list.lower() and not refused:
                 refused.append(name)
                 raise OSError("the list write was refused")
             real_set_value(key, name, reserved, kind, value)
         with mock.patch.object(r, "SetValueEx", set_value), self.assertRaises(OSError):
             mf._pendura(EP)
-        self.assertEqual(refused, [failing_list])
-        mf._pendura(EP)
-        self.assertEqual(self.le(mf.EFX_LISTA)[-1], mf.CLSID, "the second run installs the filter")
+        self.assertEqual(refused, [self.failing_list])
+        self.assertIsNone(self.le(mf.ASSOCIACAO), "the first run stopped before the association")
+        self.second_run_changed = mf._pendura(EP)
 
-    def test_the_second_run_after_a_failed_efx_list_write_installs_the_filter(self):
-        self._first_and_second_run(mf.EFX_LISTA)
+    def test_the_second_run_finishes_the_install(self):
+        self.assertTrue(self.second_run_changed)
+        self.assertEqual((self.le(mf.EFX_LISTA)[-1], self.le(mf.LFX), self.le(mf.ASSOCIACAO)),
+                         (mf.CLSID, mf.CLSID, mf.KSNODETYPE_ANY))
 
-    def test_the_second_run_after_a_failed_mfx_list_write_installs_the_filter(self):
-        self._first_and_second_run(mf.MFX_LISTA)
 
-    @unittest.expectedFailure
-    def test_the_maker_efx_survives_a_failed_list_write(self):
-        self._first_and_second_run(mf.EFX_LISTA)
-        self.assertEqual(self.le(mf.EFX_LISTA), [EFX_FM, mf.CLSID], "#261: the maker's EFX left the chain")
+class TestFailedEfxListWrite(FailedListWriteAfterTheSingleEffect, Base):
+    failing_list = mf.EFX_LISTA
 
     @unittest.expectedFailure
-    def test_the_maker_mfx_survives_a_failed_list_write(self):
-        self._first_and_second_run(mf.MFX_LISTA)
-        self.assertEqual((self.le(mf.MFX_LISTA), self.vaga(0)), ([HOST0], MFX_FM),
+    def test_the_maker_efx_survives(self):
+        self.assertEqual((self.le(mf.EFX_LISTA), self.le(mf.EFX)), ([EFX_FM, mf.CLSID], None),
+                         "#261: the maker's EFX left the chain")
+
+
+class TestFailedMfxListWrite(FailedListWriteAfterTheSingleEffect, Base):
+    failing_list = mf.MFX_LISTA
+
+    @unittest.expectedFailure
+    def test_the_maker_mfx_survives(self):
+        self.assertEqual((self.le(mf.MFX_LISTA), self.le(mf.MFX), self.vaga(0)), ([HOST0], None, MFX_FM),
                          "#261: the maker's MFX left the chain")
 
 
