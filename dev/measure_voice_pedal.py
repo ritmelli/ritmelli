@@ -130,7 +130,7 @@ def interruption(states_seen, mic):
             return "the ring's reader changed (a new reader's first empty read is not counted as a dry-out)"
         dropped = a["folga_min_ms"] is not None and (b["folga_min_ms"] is None or b["folga_min_ms"] > a["folga_min_ms"])
         if any(b[k] < a[k] for k in ("secas", "secas_pedal", "volta_max_ms")) or dropped:
-            return "the ring's counters started over (the injector was opened again)"
+            return "the ring's counters went back with the same injector"
     return None
 
 

@@ -757,6 +757,16 @@ class TestVoicePedalStart(unittest.TestCase):
         counts = [dryouts.RingDryOuts(dryouts.VoicePedalStart()) for _ in range(2)]
         self.assertEqual(counts[1].state()["injetor"], counts[0].state()["injetor"] + 1)
 
+    def test_an_ended_start_is_not_taken_without_a_fill_seen(self):
+        now = [0.0]
+        pedal = dryouts.VoicePedalStart(clock=lambda: now[0])
+        pedal.pedal(True)
+        now[0] = 1.0
+        pedal.pedal(False)
+        now[0] = 2.0
+        self.assertEqual(pedal.starting(None, 1.5), (None, None),
+                         "with no read that found something, the dry-out may have come before the start ended or not")
+
     def test_a_stamp_from_before_the_wrap_read_after_it(self):
         wrap = 2**32 / 1000
         now = [wrap - 1.0]
