@@ -602,12 +602,12 @@ def named(receiver, names):
             or (isinstance(receiver, ast.Attribute) and receiver.attr in names))
 
 
-def state_writes(module, tree, names, receivers):
+def state_writes(module, tree, names, receivers, undeclared=False):
     loop_names = loop_variable_names(tree)
     bindings = ModuleBindings(tree)
     return [(module, node.lineno, attr) for node, scope in lexical_nodes(tree, tree)
             for receiver, attr in written_attributes(node, loop_names, bindings, scope)
-            if attr in names and named(receiver, receivers)]
+            if (attr in names or undeclared and not attr.startswith("_")) and named(receiver, receivers)]
 
 
 def class_reaches(owner, classes):
@@ -621,11 +621,11 @@ def class_reaches(owner, classes):
                   + module_private_reaches(m, parsed(m), owner.removesuffix(".py"), module_names))
 
 
-def owner_writes(owner, classes, receivers):
+def owner_writes(owner, classes, receivers, undeclared=False):
     names = instance_state(parsed(owner), classes)
     if not names:
         return None
-    return sorted(r for m in root_modules(owner) for r in state_writes(m, parsed(m), names, receivers))
+    return sorted(r for m in root_modules(owner) for r in state_writes(m, parsed(m), names, receivers, undeclared))
 
 
 def library_reaches():
@@ -857,8 +857,9 @@ MODULE_KNOWN_MISSES = [
 STATE_OWNER = "class App:\n    def __init__(self):\n        self.x = []\n\n    @property\n    def p(self):\n        return 1\n"
 WRITES_CAUGHT = [
     ("an assignment", APP_NAMES, "def f(A):\n    A.x = 1\n"),
+    ("an attribute the App doesn't declare", APP_NAMES, "def f(A):\n    A.y = 1\n"),
     ("an augmented assignment", APP_NAMES, "def f(A):\n    A.x += [1]\n"),
-    ("one of a pair", APP_NAMES, "def f(A):\n    A.x, A.y = 1, 2\n"),
+    ("one of a pair", APP_NAMES, "def f(A, o):\n    A.x, o.y = 1, 2\n"),
     ("through self.app", APP_NAMES, "class Other:\n    def m(self):\n        self.app.x = 1\n"),
     ("an item", APP_NAMES, "def f(A):\n    A.x[0] = 1\n"),
     ("a slice", APP_NAMES, "def f(A):\n    A.x[1:] = []\n"),
@@ -886,7 +887,6 @@ WRITES_NOT_COUNTED = [
     ("a call of a public method", APP_NAMES, "def f(A):\n    A.change_queue(A.x.copy)\n"),
     ("another class's own attribute", APP_NAMES, "class Other:\n    def m(self):\n        self.x = 1\n"),
     ("an object that is not the App", APP_NAMES, "def f(o):\n    o.x = 1\n"),
-    ("an attribute the App does not have", APP_NAMES, "def f(A):\n    A.y = 1\n"),
 ]
 WRITES_KNOWN_MISSES = [
     ("the App under another name", APP_NAMES, "def f(server_app):\n    server_app.x = 1\n"),
@@ -905,7 +905,8 @@ def case_module_reaches(owner, other):
 
 
 def case_writes(receivers, other):
-    return len(state_writes("case.py", ast.parse(other), instance_state(ast.parse(STATE_OWNER), {"App"}), receivers))
+    return len(state_writes("case.py", ast.parse(other), instance_state(ast.parse(STATE_OWNER), {"App"}), receivers,
+                            receivers is APP_NAMES))
 
 
 def check_cases(what, count, caught, not_counted, misses):
@@ -943,7 +944,7 @@ falhou |= ratchet("reaches into the Automatico's insides", "outside automatico.p
 falhou |= ratchet("reaches into the Library's insides", "outside the Library class", library_reaches(),
                   LIBRARY_CEILING, "LIBRARY_CEILING", "go through its public methods")
 falhou |= ratchet("direct writes to the App's state", "outside server.py",
-                  owner_writes("server.py", {"App"}, APP_NAMES), APP_WRITES_CEILING, "APP_WRITES_CEILING",
+                  owner_writes("server.py", {"App"}, APP_NAMES, undeclared=True), APP_WRITES_CEILING, "APP_WRITES_CEILING",
                   "change it through a method of the App or of the object that owns it")
 falhou |= ratchet("direct writes to the engine's state", "outside engine.py",
                   owner_writes("engine.py", {"Engine", "MockEngine"}, ENGINE_NAMES), ENGINE_WRITES_CEILING,

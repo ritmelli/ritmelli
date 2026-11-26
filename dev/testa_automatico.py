@@ -12,6 +12,7 @@ read.
     python dev/testa_automatico.py
 
 Exits 1 if something fails."""
+import asyncio
 import contextlib
 import io
 import json
@@ -24,7 +25,10 @@ from unittest import mock
 RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ))
 
+sys.path.insert(1, str(RAIZ / "dev"))
+
 with contextlib.redirect_stderr(io.StringIO()):  # o aviso das vozes do pedal, que nao sao deste teste
+    from testa_comandos import pede_corpo
     import automatico as auto_mod
     import engine as eng
     import pastas
@@ -131,8 +135,27 @@ def automatico(A, E):
     removed = next(x for x in A.fila if x["youtube_id"] == "aaaaaaaaaa6")
     A.tirar_da_fila(removed["qid"], recusar=True)
     visto, sinal = A.automatico.auto_round(visto, sinal)
-    confere("aaaaaaaaaa6" not in auto() and "aaaaaaaaaa5" in auto() and "aaaaaaaaaa6" in A.automatico.fora,
-            f"a similar track the user takes out stays out, and the next one from the Mix takes its place ({auto()})")
+    confere("aaaaaaaaaa6" not in auto() and "aaaaaaaaaa5" in auto(),
+            f"a similar track the user takes out leaves, and the next one from the Mix takes its place ({auto()})")
+    other = next(x for x in A.fila if x["youtube_id"] == "aaaaaaaaaa2")
+    A.tirar_da_fila(other["qid"], recusar=True)
+
+    def offer(candidate):
+        with A.fila_lock:
+            A.automatico.mix_seq += 1
+            A.automatico.mix = [dict(candidate, ordem=A.automatico.mix_seq)]
+        with mock.patch.object(threading, "Thread"):
+            return A.automatico.auto_round(visto, sinal)
+    visto, sinal = offer(dict(removed, title="Live Session", channel="Outro Canal"))
+    confere("aaaaaaaaaa6" not in auto() and len(auto()) == 4,
+            f"the track the user took out doesn't come back from the Mix ({auto()})")
+    visto, sinal = offer({"youtube_id": "aaaaaaaaaa7", "title": "Musica Seis (Lyrics)", "duration": 200.0,
+                          "channel": "Artista Seis"})
+    confere("aaaaaaaaaa7" not in auto() and len(auto()) == 4,
+            f"nor does the same song in another video ({auto()})")
+    visto, sinal = offer({"youtube_id": "aaaaaaaaaa8", "title": "Musica Oito", "duration": 200.0,
+                          "channel": "Artista Oito"})
+    confere("aaaaaaaaaa8" in auto() and len(auto()) == 5, f"while another track fills the place ({auto()})")
 
     # desligar tira as parecidas da fila
     A.ligar_auto(False)
@@ -141,18 +164,63 @@ def automatico(A, E):
     confere(A.fila == [] and pedidos == ["sssssssssss"], "e a volta com o Automatico desligado nao poe nada")
 
 
-def saved_choice(tmp, A):
+def saved_choice(tmp):
     print("--- the Automatico's choice, saved in config.json")
-    confere(A.automatico.auto is True, "a fresh install has the Automatico on")
-    A.ligar_auto(False)
-    A.save_cfg()
+    A, E = monta(tmp)
+    try:
+        confere(A.automatico.auto is True, "a fresh install has the Automatico on")
+        st, _ = asyncio.run(pede_corpo(server.build(A), A, "POST", "/api/settings", {"auto": False}))
+        confere(st == 200 and A.automatico.auto is False, f"POST /api/settings turns it off ({st})")
+    finally:
+        E.close()
     B, E = monta(tmp)
     try:
         confere(B.automatico.auto is False, "the next start keeps the choice the user saved")
     finally:
         E.close()
-    A.ligar_auto(True)
-    A.save_cfg()
+
+
+def mix_handoff(tmp):
+    print("--- the seed's Mix runs out: the next Mix is the last similar track's")
+    A, E = monta(tmp)
+    try:
+        E.load(dict(SEMENTE))
+        with A.fila_lock:
+            M = A.automatico
+            M.auto, M.semente = True, {"youtube_id": "sssssssssss", "title": "Semente Primeira"}
+            M.mix, M.mix_base, M.ponte = [], "sssssssssss", "aaaaaaaaaa3"
+        with mock.patch.object(threading, "Thread") as thread:
+            A.automatico.auto_round("sssssssssss", None)
+        asked = [c.kwargs.get("args") for c in thread.call_args_list]
+        confere(asked == [("aaaaaaaaaa3",)] and A.automatico.mix_base == "aaaaaaaaaa3",
+                f"the next search is the Mix of the last similar track that played ({asked}, {A.automatico.mix_base})")
+    finally:
+        E.close()
+
+
+def caches(tmp):
+    print("--- each tempo and each audio version is looked up once")
+    found = {"youtube_id": "vvvvvvvvvv1", "duration": 190.0, "title": "Musica Um", "channel": "Artista Um"}
+    (tmp / "versoes_audio.json").write_text(json.dumps({"aaaaaaaaaa1": found, "aaaaaaaaaa2": None}), encoding="utf-8")
+    A, E = monta(tmp)
+    try:
+        M = A.automatico
+        M.mix_do = lambda yid: [{"youtube_id": v, "title": t, "duration": 200.0, "channel": f"Artista {t.split()[-1]}"}
+                                for v, t in PARECIDAS[:2]]
+        M.mix_base = "sssssssssss"
+        M.fetch_mix("sssssssssss")
+        um = next(m for m in M.mix if m.get("video") == "aaaaaaaaaa1")
+        confere(um["youtube_id"] == "vvvvvvvvvv1" and um["audio"],
+                f"a saved audio version is applied to the Mix ({um['youtube_id']})")
+        E.load(dict(SEMENTE))
+        with A.fila_lock:
+            M.mix = [{"youtube_id": "aaaaaaaaaa2", "title": "Musica Dois", "duration": 200.0, "channel": "Artista Dois",
+                      "ordem": 1}]
+            todo = M._a_medir()
+        confere(todo == (None, None),
+                f"a cached empty version is not looked up again, and a known tempo is not measured again ({todo})")
+    finally:
+        E.close()
 
 
 def main():
@@ -161,10 +229,12 @@ def main():
         with mock.patch.object(server, "LIB", audio), mock.patch.object(pastas, "LIB", audio):
             A, E = monta(Path(tmp))
             try:
-                saved_choice(Path(tmp), A)
                 automatico(A, E)
             finally:
                 E.close()
+            for i, check in enumerate((saved_choice, mix_handoff, caches)):
+                (Path(tmp) / f"case{i}").mkdir()
+                check(Path(tmp) / f"case{i}")
     if falhas:
         print(f"\n{len(falhas)} falha(s)")
         sys.exit(1)
