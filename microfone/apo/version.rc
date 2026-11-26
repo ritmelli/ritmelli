@@ -1,7 +1,3 @@
-// The version resource of micfx.dll and voz.dll: the same names as the ritmelli.exe (ritmelli.spec), with the version
-// from versao.py. Code signing needs it (the product name and version a signing policy checks), and without it the
-// DLL's Properties > Details tab is blank. compila.bat writes saida\version.h from versao.py and compiles this file
-// once per DLL, with /d RITMELLI_MICFX or /d RITMELLI_VOZ.
 #pragma code_page(65001)
 #include <winver.h>
 #include "version.h"
@@ -27,7 +23,6 @@ FILESUBTYPE VFT2_UNKNOWN
 BEGIN
   BLOCK "StringFileInfo"
   BEGIN
-    // Brazilian Portuguese, Unicode: the same table as the ritmelli.exe
     BLOCK "041604B0"
     BEGIN
       VALUE "CompanyName", "Behling Informática Ltda."
