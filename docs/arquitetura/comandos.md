@@ -215,15 +215,18 @@ posição do disco viram escolha não determinística, e os `qid` são simétric
   `fonte_de`) e o motor que falha o deck preparado, com duas entradas, a cabeça que muda, a versão de áudio e o arquivo
   que chega à prateleira a qualquer hora. A falha leva a chave do preparo que a gerou (o disco, a entrada, a fonte e o
   arquivo que ele escolheu: o `_prepara` a passa ao `Engine.preparar`, e o motor a devolve pelo `take_prepare_failure`),
-  e o vigia guarda essas chaves num conjunto, as do disco que toca, sem rotular a falha pelo que viu; ele lê a falha e
+  e o vigia guarda essas chaves num conjunto, as do disco que toca (a chave leva o disco por identidade,
+  `comandos.Identity`, e não pelo `id`, que outro disco pode herdar), sem rotular a falha pelo que viu; ele lê a falha e
   tira o deck preparado para outra entrada no mesmo trecho do `_qlock` (`take_prepare_failure(keep=)`), e o preparo
   confere a fonte que escolheu contra o conjunto antes de abrir o stream ou o arquivo (o `fonte_de` recebe a mesma
   leitura da prateleira). A prateleira ganha e perde o arquivo a qualquer hora. Confere que uma falha só bloqueia o
   preparo que a gerou (`FailureBlocksOnlyItsPrepare`) e que a fonte que falhou não começa de novo
-  (`NoRetryOfTheFailedSource`), com seis mutantes: a falha só com a entrada, a falha com a chave da cabeça da fila, o
+  (`NoRetryOfTheFailedSource`), com sete mutantes: a falha só com a entrada, a falha com a chave da cabeça da fila, o
   preparo com a chave que o vigia pediu em vez da fonte que ele escolheu, uma falha só guardada (a segunda apaga a
-  primeira), o preparo que não confere a fonte que escolheu e o deck de outra entrada tirado num segundo trecho do
-  `_qlock`, depois de ler a falha.
+  primeira), o preparo que não confere a fonte que escolheu o deck de outra entrada tirado num segundo trecho do
+  `_qlock`, depois de ler a falha, e o preparo que confere a fonte que escolheu só pela entrada (e recusa o arquivo
+  depois que o stream falhou). O `dev/test_tla.py` exige de cada configuração uma execução do código que passa
+  conferindo todas as invariantes.
 
 O `dev/test_tla.py` roda o TLC (o `tla2tools.jar` da versão fixada, conferido pelo sha256) nas três, cada execução em
 menos de 60 s (a que passa disso é parada ali e falha; a `Races211` em cinco com todas as propriedades, além das onze
@@ -249,47 +252,47 @@ passos do contraexemplo, um de cada vez.
 O servidor e os comandos leem e conferem o prato pela interface do motor, e não pelos campos de dentro dele: a
 `Engine.line()` dá a linha do prato (a `Line`, com o deck e a linha, os mesmos dois campos da `Captura`, da `Reserva` e
 do `Proximo`), e a `Engine.on_line(t)` confere, sob o `_qlock`, se o prato ainda é aquela linha. A virada sai do motor
-pelo `take_switch`, a passagem preparada pelo `drop_prepared` (o `cancelar_pronto` é o mesmo, pegando o `_qlock`), o
-ganho medido antes das travas pelo `gain_for`, o nome novo do disco no prato pelo `update_track`, a leitura do estado
-pelo `platter_state` e os arquivos em uso pelo `tracks_in_use`. Toda mudança da fila passa pelo `App.change_queue`, que
-pega o `_qlock`, muda e confere a preparada no mesmo trecho: fora do `App`, nenhum módulo escreve nas entradas da fila
-ou do Mix (atribuição, `update`, subscript ou `del`), e o `dev/test_queue_entries.py` falha se escrever, seguindo as
-entradas e as listas que uma função devolve e as que ela recebe, até nada mais mudar. Ele só segue as formas que o
-código usa. Uma referência à fila, ao Mix, a uma fatia deles ou a uma entrada só aparece assim: lendo um campo ou
-chamando um método com nome ali mesmo, nunca um dunder (o mutador chamado conta como escrita); comparada ou testada;
-ligada a um nome por um `=` simples ou aos atributos da própria fila e da entrada (`fila`, `fila_ordem`, `mix`, `_mix`,
-`x`, `entrada`, `historico`); passada por posição ou por nome a uma função nomeada, ou devolvida por uma, que ele segue
-(também por um dict ligado a um nome só usado como `**nome` numa chamada a uma função nomeada, e nunca numa função de
-dentro, pelo `args` de uma thread cujo `target` é uma função nomeada, e por uma vaga: o parâmetro que a função chama com
-ela, onde um `def` passado é seguido e um `lambda` só a devolve, compara ou testa), ou, a quem ele não segue, só a
-própria fila ao `len`, ao `reversed` e aos que copiam ou percorrem (`list`, `sorted`, `tuple`, `iter`, `enumerate`,
-`filter`), uma cópia também ao `next`, `min`, `max`, à `Thread` e ao `random.shuffle` (que só reordena uma lista que não
-pode ser a fila), e uma entrada ao `dict`, ao `id`, ao `append`, `insert` ou `extend` de uma lista (que vira uma lista
-de entradas) e a uma classe do repo, com no máximo quatro repasses seguidos, a função que recebe e passa adiante (o
-máximo do código: `App.tocar_entrada`, `App.tocar_remoto`, `App._troca`, `App.release_reservation` e `Proximo.resolve`;
-o teste falha se a cadeia mais funda do código não der quatro, para o teto descer junto). Nessa conta, e ao ligar a
-entrada ao parâmetro de quem a recebe, `self.metodo()` só vai à própria classe e às bases dela, `modulo.f()` à função do
-módulo importado, e `obj.metodo()` aos métodos com esse nome que aceitam os argumentos da chamada (todos os
-obrigatórios, e nenhum a mais), nunca a um método da própria fila ou da entrada; a chamada que não chega a nenhum desses
-liga a entrada a toda função com esse nome; num laço com um nome só ou com o `enumerate(...)` desempacotado em dois;
-desempacotada de uma chamada ou de uma tupla do mesmo tamanho; ou copiada (`list()`, `sorted()`, uma compreensão, uma
-fatia, `{**x}`). As outras que ela reconhece reprovam, com o arquivo e a linha, por exemplo: um `:=`, uma anotação,
-desempacotar a fila ou o Mix, um `*`, o `getattr`, o mutador guardado ou devolvido sem a chamada, uma atribuição
-encadeada, guardar num atributo que não é da fila, sob uma chave ou num dict, numa lista, numa tupla ou num conjunto,
-passar a uma lambda, o `enumerate` sem desempacotar, a própria fila devolvida por uma função, um quinto repasse seguido,
-um dunder, entregar a quem ele não segue fora da lista acima, e, no `App`, um nome que recebe o retorno de um método
-dele que devolve a própria fila. A checagem confere as formas desta lista e reprova as outras que reconhece como fora
-dela, mas não promete pegar toda escrita: quem promete é a fila e o Mix como um objeto que só muda dentro do
-`change_queue`, a https://github.com/ritmelli/ritmelli/issues/316. Dentro do `App`, as entradas da fila só mudam numa
-função passada ao `change_queue`, e a própria fila (atribuição, fatia, `append`, `remove` e afins, também por um apelido
-dela ou por quem a recebe como argumento) só muda ali, em qualquer módulo. A versão de áudio das parecidas entra no Mix
-do Automático como entradas novas (o `_troca_audio`, que não escreve nas que já existem) e na fila pelo
-`App.apply_audio_version`, que muda a fila pelo `change_queue` e, no mesmo trecho do `_qlock`, deixa como estão a
-entrada da virada pendente (pelo `qid`, a mesma versão que o prato toca), a primeira da fila presa e a que uma reserva
-em curso vai tocar (`App.reserva`); o `tocar_da_fila` e a preparação da passagem leem a entrada numa cópia feita sob a
-`fila_lock`, e uma versão de áudio que chega no meio não mistura o alvo de antes com os dados de depois. Os trechos do
-servidor e dos comandos que precisam do `_qlock` (os do Próximo, da reserva, do `concilia`, da troca, do `remember_pos`,
-do `release_reservation` e do `change_queue`) o pegam pelo `Engine.state_section()`, e o `_lock` só pelo
+pelo `take_switch`, a passagem preparada pelo `drop_prepared`, o ganho medido antes das travas pelo `gain_for`, o nome
+novo do disco no prato pelo `update_track`, a leitura do estado pelo `platter_state` e os arquivos em uso pelo
+`tracks_in_use`. Toda mudança da fila passa pelo `App.change_queue`, que pega o `_qlock`, muda e confere a preparada no
+mesmo trecho: fora do `App`, nenhum módulo escreve nas entradas da fila ou do Mix (atribuição, `update`, subscript ou
+`del`), e o `dev/test_queue_entries.py` falha se escrever, seguindo as entradas e as listas que uma função devolve e as
+que ela recebe, até nada mais mudar. Ele só segue as formas que o código usa. Uma referência à fila, ao Mix, a uma fatia
+deles ou a uma entrada só aparece assim: lendo um campo ou chamando um método com nome ali mesmo, nunca um dunder (o
+mutador chamado conta como escrita); comparada ou testada; ligada a um nome por um `=` simples ou aos atributos da
+própria fila e da entrada (`fila`, `fila_ordem`, `mix`, `_mix`, `x`, `entrada`, `historico`); passada por posição ou por
+nome a uma função nomeada, ou devolvida por uma, que ele segue (também por um dict ligado a um nome só usado como
+`**nome` numa chamada a uma função nomeada, e nunca numa função de dentro, pelo `args` de uma thread cujo `target` é uma
+função nomeada, e por uma vaga: o parâmetro que a função chama com ela, onde um `def` passado é seguido e um `lambda` só
+a devolve, compara ou testa), ou, a quem ele não segue, só a própria fila ao `len`, ao `reversed` e aos que copiam ou
+percorrem (`list`, `sorted`, `tuple`, `iter`, `enumerate`, `filter`), uma cópia também ao `next`, `min`, `max`, à
+`Thread` e ao `random.shuffle` (que só reordena uma lista que não pode ser a fila), e uma entrada ao `dict`, ao `id`, ao
+`append`, `insert` ou `extend` de uma lista (que vira uma lista de entradas) e a uma classe do repo, com no máximo
+quatro repasses seguidos, a função que recebe e passa adiante (o máximo do código: `App.tocar_entrada`,
+`App.tocar_remoto`, `App._troca`, `App.release_reservation` e `Proximo.resolve`; o teste falha se a cadeia mais funda do
+código não der quatro, para o teto descer junto). Nessa conta, e ao ligar a entrada ao parâmetro de quem a recebe,
+`self.metodo()` só vai à própria classe e às bases dela, `modulo.f()` à função do módulo importado, e `obj.metodo()` aos
+métodos com esse nome que aceitam os argumentos da chamada (todos os obrigatórios, e nenhum a mais), nunca a um método
+da própria fila ou da entrada; a chamada que não chega a nenhum desses liga a entrada a toda função com esse nome; num
+laço com um nome só ou com o `enumerate(...)` desempacotado em dois; desempacotada de uma chamada ou de uma tupla do
+mesmo tamanho; ou copiada (`list()`, `sorted()`, uma compreensão, uma fatia, `{**x}`). As outras que ela reconhece
+reprovam, com o arquivo e a linha, por exemplo: um `:=`, uma anotação, desempacotar a fila ou o Mix, um `*`, o
+`getattr`, o mutador guardado ou devolvido sem a chamada, uma atribuição encadeada, guardar num atributo que não é da
+fila, sob uma chave ou num dict, numa lista, numa tupla ou num conjunto, passar a uma lambda, o `enumerate` sem
+desempacotar, a própria fila devolvida por uma função, um quinto repasse seguido, um dunder, entregar a quem ele não
+segue fora da lista acima, e, no `App`, um nome que recebe o retorno de um método dele que devolve a própria fila. A
+checagem confere as formas desta lista e reprova as outras que reconhece como fora dela, mas não promete pegar toda
+escrita: quem promete é a fila e o Mix como um objeto que só muda dentro do `change_queue`, a
+https://github.com/ritmelli/ritmelli/issues/316. Dentro do `App`, as entradas da fila só mudam numa função passada ao
+`change_queue`, e a própria fila (atribuição, fatia, `append`, `remove` e afins, também por um apelido dela ou por quem
+a recebe como argumento) só muda ali, em qualquer módulo. A versão de áudio das parecidas entra no Mix do Automático
+como entradas novas (o `_troca_audio`, que não escreve nas que já existem) e na fila pelo `App.apply_audio_version`, que
+muda a fila pelo `change_queue` e, no mesmo trecho do `_qlock`, deixa como estão a entrada da virada pendente (pelo
+`qid`, a mesma versão que o prato toca), a primeira da fila presa e a que uma reserva em curso vai tocar
+(`App.reserva`); o `tocar_da_fila` e a preparação da passagem leem a entrada numa cópia feita sob a `fila_lock`, e uma
+versão de áudio que chega no meio não mistura o alvo de antes com os dados de depois. Os trechos do servidor e dos
+comandos que precisam do `_qlock` (os do Próximo, da reserva, do `concilia`, da troca, do `remember_pos`, do
+`release_reservation` e do `change_queue`) o pegam pelo `Engine.state_section()`, e o `_lock` só pelo
 `Engine.with_lock`. A falha de preparar a próxima sai do motor pelo `take_prepare_failure`, sob o `_qlock`, com a chave
 que o preparo passou ao `preparar`, e o erro da tela entra pelo `set_error` (o `error` do motor só se lê).
 

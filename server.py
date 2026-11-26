@@ -1507,9 +1507,9 @@ class App:
         return d
 
     def _prepara(self, tr, x, seen, cap):
-        chave = (id(tr), x["qid"], (seen.get("youtube_id") or seen.get("url"), None))
+        chave = (cmd.Identity(tr), x["qid"], (seen.get("youtube_id") or seen.get("url"), None))
         try:
-            chave = (id(tr), x["qid"], self.passage_source(seen, shelf := self.shelf_item(seen)))
+            chave = (chave[0], x["qid"], self.passage_source(seen, shelf := self.shelf_item(seen)))
             if chave in self.failed_passages:
                 return
             novo = self.fonte_de(seen, shelf)
@@ -1557,10 +1557,10 @@ class App:
                     and cap.status in ("playing", "paused", "buffering"))
             busy, (failed, pronto) = self.preparando, e.take_prepare_failure(x["qid"] if pode else None)
         self.failed_passages.update([failed] if failed is not None else [])
-        self.failed_passages.difference_update([k for k in list(self.failed_passages) if k[0] != id(tr)])
+        self.failed_passages.difference_update([k for k in list(self.failed_passages) if k[0].obj is not tr])
         if not pode or (pronto is not None and x["qid"] == pronto) or dur - cap.pos > eng.TRANS_PREP_S:
             return
-        if busy is not None or (chave := (id(tr), x["qid"], self.passage_source(seen))) in self.failed_passages:
+        if busy or (chave := (cmd.Identity(tr), x["qid"], self.passage_source(seen))) in self.failed_passages:
             return
         self.preparando = chave
         threading.Thread(target=self._prepara, args=(tr, x, seen, cap), daemon=True).start()

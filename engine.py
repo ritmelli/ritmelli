@@ -2147,10 +2147,12 @@ class Engine:
     def on_silent_stream(self, f):
         self._stream_silent = f
 
-    def take_prepare_failure(self, keep=False):
+    def take_prepare_failure(self, keep):
         with self._qlock:
             key, self._prepare_failure = self._prepare_failure, None
-            return key, (self.pronto_tag if keep is False or self.pronto_tag in (None, keep) else self.drop_prepared())
+            if self.pronto_tag not in (None, keep):
+                self.drop_prepared()
+            return key, self.pronto_tag
 
     @contextlib.contextmanager
     def state_section(self):
@@ -2545,11 +2547,6 @@ class Engine:
         reabertura do leitor perdido ainda continua: o descarte da janela a alcanca."""
         inj = self._injetor if self._stack is not None or not aberto else None
         return inj.saude if inj is not None else None
-
-    def cancelar_pronto(self):
-        """drop_prepared, taking the _qlock itself."""
-        with self._qlock:
-            self.drop_prepared()
 
     def drop_prepared(self):
         """With _qlock: the prepared next record leaves (its reader stops), and the engine does not switch to it. The

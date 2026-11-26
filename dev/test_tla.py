@@ -257,6 +257,8 @@ RUNS = (
     Run("mutant: the watcher drops the stale deck in a second hold of the _qlock, after it took the failure, and a "
         "failure in between is lost", "PassageFailure", "invariant NoRetryOfTheFailedSource",
         constants=(("TakeDropsTheStaleDeck", "FALSE"),)),
+    Run("mutant: the prepare matches its pick against the failures by the entry, and refuses a file after its stream "
+        "failed", "PassageFailure", "invariant FailureBlocksOnlyItsPrepare", constants=(("PickMatchesByEntry", "TRUE"),)),
 )
 
 failures = []
@@ -414,6 +416,9 @@ def invariant_failures(runs, cfgs):
         out += [f"{run.title} leaves out {stray}, which no known failure of #294 in its configuration breaks"
                 ] if stray else []
         out += [f"{run.title} does not check deadlock"] if blocks["CHECK_DEADLOCK"] != ["TRUE"] else []
+    out += [f"{spec} has no passing run of the code that checks every invariant" for spec in REQUIRED
+            if not any(r.spec == spec and r.expect == "pass" and r.specification is None and r.invariants is None
+                       and not r.unchecked for r in runs)]
     return out + ([] if fair else ["no passing run checks ReservationsResolve under FairSpec"])
 
 
@@ -454,6 +459,8 @@ def main():
              [replace(r, unchecked=r.unchecked + ("TypeOK",)) if r is drop else r for r in RUNS]),
             ("a #294 run leaves out an invariant no known failure of its configuration breaks",
              [replace(r, unchecked=("NoOrphanLoading",)) if r is drop else r for r in RUNS]),
+            ("the schedule has no passing run of PassageFailure",
+             [r for r in RUNS if not (r.spec == "PassageFailure" and r.expect == "pass")]),
             ("a run with no known failure leaves out SwitchEntryMatchesPlatter",
              [replace(r, unchecked=("SwitchEntryMatchesPlatter",)) if r is moves else r for r in RUNS])):
         check(invariant_failures(schedule, cfgs) != [], f"the mutant where {name} fails")

@@ -1028,7 +1028,7 @@ def two_entries(A, n):
 
 
 def carried_key(A, x):
-    return id(A.engine.captura().track), x["qid"], A.passage_source(x)
+    return cmd.Identity(A.engine.captura().track), x["qid"], A.passage_source(x)
 
 
 def watch(A, launches):
@@ -1116,10 +1116,15 @@ def stream_prepare_failed_then_the_file_reached_the_shelf(A, E, readers):
         A.lib.add({"id": "shelf11", "title": "similar", "file": "shelf11.m4a", "duration": 600.0, "lufs": -14.0,
                    "youtube_id": "kkkkkkkkkkk"})
         watch(A, launches)
+        cap = E.captura()
+        with mock.patch.object(E, "preparar", return_value=True) as prepares:
+            A._prepara(cap.track, x, dict(x), cap)
     A.lib.remove("shelf11")
-    check(launches.qids == [x["qid"], x["qid"]],
+    handed = prepares.call_args.args[0]() if prepares.call_count == 1 and callable(prepares.call_args.args[0]) else None
+    check(launches.qids == [x["qid"], x["qid"]] and (handed or {}).get("file") == "shelf11.m4a",
           f"a stream prepare that failed is not started again from the same stream, and the file that then reaches "
-          f"the shelf gets its own attempt (launched {launches.qids})")
+          f"the shelf gets its own attempt, which the worker hands to the engine (launched {launches.qids}, handed "
+          f"{(handed or {}).get('file')})")
 
 
 def file_reached_the_shelf_while_the_prepare_picked_its_source(A, E, readers):
@@ -1135,13 +1140,18 @@ def file_reached_the_shelf_while_the_prepare_picked_its_source(A, E, readers):
         with mock.patch.object(A, "shelf_item", worker_pauses(A, picking, go)), \
                 mock.patch.object(E, "preparar", side_effect=RuntimeError("the file would not open")):
             A._volta_passagem()
-            picking.wait(WAIT_S)
+            paused = picking.wait(WAIT_S)
             A.lib.add({"id": "shelf12", "title": "similar", "file": "shelf12.m4a", "duration": 600.0, "lufs": -14.0,
                        "youtube_id": "lllllllllll"})
             go.set()
-            harness.ate(lambda: A.preparando is None)
+            ended = harness.ate(lambda: A.preparando is None)
+            handed = E.preparar.call_args.args[0]() if E.preparar.call_count == 1 else None
+        recorded = carried_key(A, x) in A.failed_passages
         watch(A, launches)
     A.lib.remove("shelf12")
+    check(paused and ended and (handed or {}).get("file") == "shelf12.m4a" and recorded,
+          f"the worker paused before its pick, found the file, handed it to the engine and recorded its key (paused "
+          f"{paused}, ended {ended}, handed {(handed or {}).get('file')}, recorded {recorded})")
     check(launches.qids == [],
           f"a file that reaches the shelf while the prepare picks its source, and then fails, is keyed by that file: "
           f"the next poll does not start it again ({A.failed_passages}, launched {launches.qids})")
@@ -1208,6 +1218,29 @@ def two_failures_on_one_record(A, E, readers):
     check(launches.qids == [x["qid"], y["qid"]],
           f"two prepares that fail on the same record both stay failed: the first is not started again when it "
           f"comes back to the head after the second failed ({A.failed_passages}, launched {launches.qids})")
+    old = E.captura().track
+    check(play(A, E, readers, "d2"), "d2 is on the platter, read")
+    with mock.patch.object(eng, "TRANS_PREP_S", 1e6):
+        watch(A, launches)
+    check(not any(k[0].obj is old for k in A.failed_passages),
+          f"the failures of a record leave when another record plays ({A.failed_passages})")
+
+
+def failure_of_an_earlier_record_with_the_same_identity_hash(A, E, readers):
+    check(play(A, E, readers, "d1"), "d1 is on the platter, read")
+    x, _ = two_entries(A, 18)
+    launches = Launches()
+    with mock.patch.object(eng, "TRANS_PREP_S", 1e6), mock.patch.object(cmd, "id", lambda obj: 7, create=True):
+        earlier = dict(E.captura().track)
+        key = (cmd.Identity(earlier), x["qid"], A.passage_source(x))
+        same = cmd.Identity(earlier) == key[0] and hash(key[0]) == hash(cmd.Identity(E.captura().track))
+        A.failed_passages.add(key)
+        distinct = carried_key(A, x) not in A.failed_passages
+        watch(A, launches)
+    A.failed_passages.clear()
+    check(same and distinct and launches.qids == [x["qid"]],
+          f"a failure of an earlier record whose identity hashes like the one playing does not block the one playing "
+          f"(same {same}, distinct {distinct}, launched {launches.qids})")
 
 
 def shelf_record_deleted_before_the_pick(A, E, readers):
@@ -1254,7 +1287,7 @@ def prepared_head_moved_back_during_the_poll(A, E, readers):
     x, y = (dict(e, auto=False) for e in two_entries(A, 10))
     with A.fila_lock:
         A.change_queue(lambda: (A.fila.clear(), A.fila.extend([x, y])))
-    inner, take, cancel, done = A.fila_lock, E.take_prepare_failure, E.cancelar_pronto, []
+    inner, take, done = A.fila_lock, E.take_prepare_failure, []
 
     def gap():
         if not done:
@@ -1283,15 +1316,10 @@ def prepared_head_moved_back_during_the_poll(A, E, readers):
             gap()
         return take(*a)
 
-    def moves_back_and_cancels():
-        if not inner.locked():
-            gap()
-        return cancel()
     with E.state_section():
         E.pronto_tag = y["qid"]
     with mock.patch.object(eng, "TRANS_PREP_S", 1e6), mock.patch.object(server.threading, "Thread", Launches()), \
             mock.patch.object(E, "take_prepare_failure", moves_back_and_publishes), \
-            mock.patch.object(E, "cancelar_pronto", moves_back_and_cancels), \
             mock.patch.object(A, "fila_lock", GapLock()):
         A._volta_passagem()
     gap()
@@ -1404,6 +1432,7 @@ def main():
                 gain_failure_of_a_shelf_file(A, E, readers)
                 two_failures_on_one_record(A, E, readers)
                 shelf_record_deleted_before_the_pick(A, E, readers)
+                failure_of_an_earlier_record_with_the_same_identity_hash(A, E, readers)
                 engine_failure_through_the_real_prepare(A, E, readers)
                 audio_version_entries(A, E)
                 audio_version_while_an_entry_plays_from_the_queue(A)

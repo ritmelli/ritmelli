@@ -2,7 +2,7 @@
 EXTENDS TLC
 
 CONSTANTS Entries, Sources, NoKey, FailureCarriesTheKey, FailureLabelledByTheHead, PrepareKeysItsPick,
-          FailuresKeptTogether, PickChecksTheFailures, TakeDropsTheStaleDeck
+          FailuresKeptTogether, PickChecksTheFailures, TakeDropsTheStaleDeck, PickMatchesByEntry
 
 Keys == [e : Entries, src : Sources, file : BOOLEAN]
 
@@ -17,6 +17,8 @@ vars == <<head, src, shelf, failed, failedSources, busy, worker, asked, picked, 
 watcherVars == <<watcher, took, tookHead, tookSrc, tookBusy, tookPronto>>
 
 Blocks(m, k) == IF FailureCarriesTheKey THEN k \in m ELSE \E f \in m : f.e = k.e
+
+PickBlocks(m, c) == IF PickMatchesByEntry THEN \E f \in m : f.e = c.e ELSE Blocks(m, c)
 
 Stored(m, k) == IF FailuresKeptTogether THEN m \cup {k} ELSE {k}
 
@@ -90,14 +92,14 @@ Pick ==
         c == IF PrepareKeysItsPick THEN p ELSE asked
     IN /\ worker = "picking"
        /\ picked' = p /\ carried' = c
-       /\ IF PickChecksTheFailures /\ Blocks(failed, c)
+       /\ IF PickChecksTheFailures /\ PickBlocks(failed, c)
           THEN /\ busy' = FALSE /\ worker' = "idle"
+               /\ blockedOther' = (blockedOther \/ p \notin failedSources)
                /\ UNCHANGED retriedTheFailure
           ELSE /\ worker' = "picked"
                /\ retriedTheFailure' = (retriedTheFailure \/ p \in failedSources)
-               /\ UNCHANGED busy
-       /\ UNCHANGED <<head, src, shelf, failed, failedSources, asked, prepared, preparedSource, failure, watcherVars,
-                      blockedOther>>
+               /\ UNCHANGED <<busy, blockedOther>>
+       /\ UNCHANGED <<head, src, shelf, failed, failedSources, asked, prepared, preparedSource, failure, watcherVars>>
 
 FailsBeforeTheEngine ==
     /\ worker = "picked"

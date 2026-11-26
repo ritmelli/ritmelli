@@ -35,6 +35,19 @@ _CONTINUE_ADVANCE = object()
 ADVANCE_TRIES = 3
 
 
+class Identity:
+    __slots__ = ("obj",)
+
+    def __init__(self, obj):
+        self.obj = obj
+
+    def __eq__(self, other):
+        return isinstance(other, Identity) and other.obj is self.obj
+
+    def __hash__(self):
+        return id(self.obj)
+
+
 class Reserva:
     """A reserva de avanco da fila numa linha do prato: o deck e a linha do prato e a entrada (x) que vai tocar. Ha uma
     so em curso por deck e linha (App.reserva, que muda sob a fila_lock e o _qlock). A confirmacao, o erro e a

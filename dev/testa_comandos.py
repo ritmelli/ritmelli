@@ -425,7 +425,8 @@ def voltas(A, E):
         libera_onda.wait(5)
         return onda(tr)
 
-    E.cancelar_pronto()
+    with E.state_section():
+        E.drop_prepared()
     A.fonte_de, E._onda_pede = fonte_presa, onda_presa
     try:
         A._volta_passagem()
@@ -533,7 +534,8 @@ def andamento(A, E):
 
     class Fim(Exception):
         pass
-    E.cancelar_pronto()
+    with E.state_section():
+        E.drop_prepared()
     if E.track is None:
         cmd.tocar(A, "d1")
     ate(lambda: E.status() == "playing")
@@ -680,7 +682,8 @@ def bloco(A, E):
     """O bloco do _mixa: retirado sob o _qlock, renderizado fora dele e publicado so se o deck e a linha ainda sao os
     do prato. Cada caso para o _mixa depois de retirar o bloco (Suspenso), faz a outra operacao e solta."""
     print("--- o bloco do motor: a linha de reproducao")
-    E.cancelar_pronto()
+    with E.state_section():
+        E.drop_prepared()
     E.virou = None
     cmd.limpar_fila(A)
     app = server.build(A)
@@ -795,7 +798,8 @@ def bloco(A, E):
         E._qlock = qlock
     confere(E.virou is None and no_prato(E) == "d1" and E._pronto is outra,
             f"a preparada trocada logo antes do bloco, sem a virada medida, nao vira ({no_prato(E)})")
-    E.cancelar_pronto()
+    with E.state_section():
+        E.drop_prepared()
 
     prepara("d2", "t2")
     E._qlock = AntesDaTrava(qlock, lambda: E.load(arquivo(A, "d3")))
@@ -1220,7 +1224,8 @@ def avanco(A, E):
     app = server.build(A)
 
     def limpa():
-        E.cancelar_pronto()
+        with E.state_section():
+            E.drop_prepared()
         E.set_loop(False)
         E.virou = None
         cmd.limpar_fila(A)
@@ -2474,7 +2479,8 @@ def two_nexts_table(A, E):
     print("--- two Proximos together, as a table")
 
     def fresh():
-        E.cancelar_pronto()
+        with E.state_section():
+            E.drop_prepared()
         E.set_loop(False)
         E.virou = None
         cmd.limpar_fila(A)
@@ -2591,7 +2597,8 @@ def two_nexts_table(A, E):
     ]
     # a group that already resolved with nothing to play takes no one: the first found the queue empty and is still
     # finishing its command; an entry comes in, and the second plays it on its own (the last row of the table)
-    E.cancelar_pronto()
+    with E.state_section():
+        E.drop_prepared()
     E.set_loop(False)
     E.virou = None
     cmd.limpar_fila(A)
@@ -2797,14 +2804,14 @@ def engine_seams(A, E):
                 "inside the preparation window, the head of the queue is prepared")
         A.preparando = None
         prepara.reset_mock()
-        failed_key = (id(E.track), x["qid"], A.passage_source(x))
+        failed_key = (cmd.Identity(E.track), x["qid"], A.passage_source(x))
         with E.state_section():
             E._prepare_failure, E.pronto_tag = failed_key, "a deck prepared for another entry"
         qlock, E.__class__ = E._qlock, Watched
         E._qlock = Counted(qlock)
         try:
             A._volta_passagem()
-            again, _ = E.take_prepare_failure()
+            again, _ = E.take_prepare_failure(x["qid"])
         finally:
             E.__class__, E._qlock = engine_class, qlock
         A._volta_passagem()
@@ -2819,14 +2826,14 @@ def engine_seams(A, E):
             f"and reads the prepared deck's tag in the same hold of the _qlock as the failure ({pairs})")
     confere(not prepara.called and A.preparando is None,
             f"and the head that failed is not prepared again ({prepara.call_count}, {A.preparando})")
-    carried, taken = (id(E.track), x["qid"], ("the source the prepare picked", None)), []
+    carried, taken = (cmd.Identity(E.track), x["qid"], ("the source the prepare picked", None)), []
 
     def decodes_nothing(gen, track, start, deck):
         with E._qlock:
             deck.eof_gen = gen
     with contextlib.redirect_stderr(io.StringIO()), mock.patch.object(E, "_reader", decodes_nothing):
         started = E.preparar(arquivo(A, "d2"), x["qid"], key=carried)
-        failed = ate(lambda: taken.append(E.take_prepare_failure()[0]) or taken[-1] is not None, limite=15.0)
+        failed = ate(lambda: taken.append(E.take_prepare_failure(x["qid"])[0]) or taken[-1] is not None, limite=15.0)
     confere(started and failed and taken[-1] == carried,
             f"a prepared deck that does not decode hands back the key its prepare carried ({taken[-1:]})")
     with contextlib.redirect_stderr(io.StringIO()), mock.patch.object(E, "_reader", decodes_nothing), \
@@ -2835,7 +2842,7 @@ def engine_seams(A, E):
         with E.state_section():
             atual, prox, playing = E._deck, E._pronto, E.track
     eng.Engine._mede(E, atual, prox, playing)
-    real_failure, _ = E.take_prepare_failure()
+    real_failure, _ = E.take_prepare_failure(x["qid"])
     confere(started and real_failure == carried,
             f"and so does the engine's own measure of the passage, Engine._mede ({real_failure})")
     cmd.tirar_da_fila(A, x["qid"])
