@@ -14,7 +14,7 @@ PEDAL = '<script src="pedal.js" onerror="scriptFailed(this)"></script>'
 HIDDEN = "html:not(.i18n-ok) body { visibility: hidden; }"
 TWO_INLINED = "<!-- inline-script: s.js -->\n<!-- inline-script: t.js -->\n"
 TRANSLATED = {"index.html": "<!-- i18n -->\n", "i18n/i18n_en.properties": "", "i18n/i18n_pt_BR.properties": ""}
-NEW_FILES = ("transporte-new.js", "base.txt")
+NOTICE = '<script src="notice.js" onerror="scriptFailed(this)"></script>'
 LEFT, CAME = "declaration left its script", "declaration came into the script"
 
 
@@ -136,6 +136,18 @@ SAMPLES = (
     ("the markup a <script src> with no </script> swallows changed",
      {"index.html": "<script src='x.js'>\n<p>1</p>\n</script>\n", "x.js": "f();\n"},
      {"index.html": "<script src='x.js'>\n<p>2</p>\n</script>\n", "x.js": "f();\n"}, ["script tag or strict mode"]),
+    ("a stylesheet renamed with a # in its name", styled(HIDDEN),
+     {"index.html": "<link rel='stylesheet' href='a#copy.css'>\n", "a#copy.css": HIDDEN}, ["gone"]),
+    ("an empty script file taken out", {"index.html": "<script src='x.js'></script>\n", "x.js": ""},
+     {"index.html": "<script src='x.js'></script>\n"}, ["script tag or strict mode"]),
+    ("two spaces put around the = of a quoted value with a > in the end tag of a script",
+     {"index.html": "<script src='x.js'></script>\n", "x.js": "f();\n"},
+     {"index.html": "<script src='x.js'></script x  =  \"a>b\">\n", "x.js": "f();\n"}, []),
+    ("a stylesheet linked with a query", styled(HIDDEN),
+     {"index.html": "<link rel='stylesheet' href='a.css?v=2'>\n", "a.css": HIDDEN}, []),
+    ("a </script y> in a quoted value of the start tag of a script turned into </script z>",
+     {"index.html": '<script x="a></script y>">\nf();\n</script>\n'},
+     {"index.html": '<script x="a></script z>">\nf();\n</script>\n'}, ["script tag or strict mode"]),
     ("a space put after the \\ that ends a translation",
      {**TRANSLATED, "i18n/i18n_en.properties": "a=b\\\n"}, {**TRANSLATED, "i18n/i18n_en.properties": "a=b\\ \n"},
      ["translation gone", "translation new"]),
@@ -168,13 +180,12 @@ SAMPLES = (
 
 def theme_mutant(changes):
     read = theme_rebuild.reader(None, "ritmelli")
-    return lambda name: changes[name](read(name) if name not in NEW_FILES else "", read) if name in changes \
+    return lambda name: changes[name](read(name), read) if name in changes \
         else read(name)
 
 
 def swapped(html, _):
-    notice, covers = ('<script src="notice.js" onerror="scriptFailed(this)"></script>',
-                      '<script src="covers.js" onerror="scriptFailed(this)"></script>')
+    notice, covers = NOTICE, '<script src="covers.js" onerror="scriptFailed(this)"></script>'
     return html.replace(notice, "\0").replace(covers, notice).replace("\0", covers) if covers in html else ""
 
 
@@ -192,12 +203,14 @@ def binder(text):
 
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
-    samples = [(title, theme_rebuild.assemble(base.__getitem__), theme_rebuild.assemble(head.__getitem__), expected)
+    samples = [(title, theme_rebuild.assemble(base.get), theme_rebuild.assemble(head.get), expected)
                for title, base, head, expected in SAMPLES]
-    theme = theme_rebuild.assemble(theme_rebuild.reader(None, "ritmelli"))
+    files = theme_rebuild.listing(None, "ritmelli")
+    theme = theme_rebuild.assemble(theme_rebuild.reader(None, "ritmelli"), files)
+    other_grain = {**files, "texturas/veio.webp": files["texturas/veio-v.webp"]}
     shelf_moved = {"shelf.js": lambda text, _: text.replace(binder(text), "") if binder(text) else "",
                    "start.js": lambda text, read: text + binder(read("shelf.js"))}
-    mutants = [(title, theme_rebuild.assemble(theme_mutant(changes)), expected) for title, changes, expected in (
+    mutants = [(title, theme_rebuild.assemble(theme_mutant(changes), files), expected) for title, changes, expected in (
         ("notice.js and covers.js swapped", {"index.html": swapped}, "moved to another script"),
         ("desk-buttons.js and start.js before ui-events.js", {"index.html": early}, "moved to another script"),
         ("bindShelfClick moved from shelf.js to the end of start.js", shelf_moved, LEFT),
@@ -232,10 +245,15 @@ def main():
         ("a translation put after a vertical tab in a comment", {"i18n/i18n_en.properties": lambda text, _: text.replace(
             "# Geral:", "#\vnav.backToShelf=Close the app\v# Geral:") if "# Geral:" in text else ""},
          "translation new"),
+        ("the </script> of notice.js ended at its first > by a value with no quote at its start",
+         {"index.html": lambda html, _: html.replace(NOTICE, NOTICE.replace(
+             "</script>", '</script x=x="><p>Visible text</p>">')) if NOTICE in html else ""}, "new"),
         ("transporte.js renamed",
          {"index.html": lambda html, _: html.replace('src="transporte.js"', 'src="transporte-new.js"')
           if 'src="transporte.js"' in html else "",
           "transporte-new.js": lambda _, read: read("transporte.js")}, "script tag or strict mode"))]
+    mutants.append(("texturas/veio.webp holding the image of veio-v.webp",
+                    theme_rebuild.assemble(theme_rebuild.reader(None, "ritmelli"), other_grain), "file changed"))
     compiles = theme_rebuild.syntax([theme, *(page for _, a, b, _ in samples for page in (a, b)),
                                      *(page for _, page, _ in mutants)])
     results = []
@@ -246,6 +264,13 @@ def main():
         found = sorted({kind for kind, _, _ in theme_rebuild.compare(theme, head, compiles).changes})
         results.append((len(head.blocks) == len(theme.blocks) and expected in found,
                         f"the theme with {title} does more than move code ({found})"))
+    quiet = {"say": lambda *_: None}
+    for title, head, _ in mutants[:2]:
+        code = theme_rebuild.judge(theme, head, compiles, **quiet)
+        results.append((code == 1, f"the verdict on the theme with {title} is {code}"))
+    allowed = next((a, b) for title, a, b, _ in samples if title == "two functions swapped")
+    code = theme_rebuild.judge(*allowed, compiles, **quiet)
+    results.append((code == 0, f"the verdict on two functions swapped is {code}"))
     report = theme_rebuild.compare(theme, theme, compiles)
     results.append((not report.changes and report.declarations > 100,
                     f"the theme against itself only moves code ({report.declarations} declarations compared)"))

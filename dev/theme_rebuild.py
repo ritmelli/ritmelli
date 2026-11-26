@@ -8,6 +8,7 @@ import re
 import subprocess
 import sys
 import types
+import urllib.parse
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from pathlib import Path
@@ -45,7 +46,7 @@ compile, or that tree-sitter does not parse, is a change. Anything else is a cha
 INLINE_SCRIPT = re.compile(r"<!-- inline-script: ([\w-]+\.js) -->")
 INLINED = "data-theme-rebuild-inline-script"
 UNCLOSED = "data-theme-rebuild-never-closed"
-RAW_TEXT = re.compile(r"<!--.*?-->|<(script|style)\b[^>]*>", re.I | re.S)
+RAW_TEXT = re.compile(r"<!--.*?-->|<(script|style)(?=[\t\n\f\r />])", re.I | re.S)
 SCRIPT_START = re.compile(r"<script[\t\n\f\r />]", re.I)
 SCRIPT_END = re.compile(r"</script[\t\n\f\r />]", re.I)
 STYLE_END = re.compile(r"</style[\t\n\f\r />]", re.I)
@@ -71,14 +72,31 @@ def text_of(data):
 def reader(rev, theme):
     folder = f"themes/{theme}/"
     if rev is None:
-        return lambda name: text_of((RAIZ / folder / name).read_bytes())
+        return lambda name: text_of((RAIZ / folder / name).read_bytes()) if (RAIZ / folder / name).is_file() else None
 
     def show(name):
         out = subprocess.run(["git", "-C", str(RAIZ), "show", f"{rev}:{folder}{name}"], capture_output=True)
-        if out.returncode:
-            raise SystemExit(f"{rev}: {folder}{name}: {out.stderr.decode(errors='replace').strip()}")
-        return text_of(out.stdout)
+        return None if out.returncode else text_of(out.stdout)
     return show
+
+
+def git(*args, given=None):
+    out = subprocess.run(["git", "-C", str(RAIZ), *args], capture_output=True, input=given)
+    if out.returncode:
+        raise SystemExit(f"git {' '.join(args)}: {out.stderr.decode(errors='replace').strip()}")
+    return out.stdout.decode("utf-8")
+
+
+def listing(rev, theme):
+    folder = f"themes/{theme}/"
+    if rev is None:
+        names = [x for x in git("ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", folder).split("\0")
+                 if x and (RAIZ / x).is_file()]
+        ids = git("hash-object", "--stdin-paths", given="\n".join(names).encode("utf-8")).split()
+    else:
+        rows = [x.split("\t", 1) for x in git("ls-tree", "-r", "-z", rev, "--", folder).split("\0") if x]
+        names, ids = [path for _, path in rows], [meta.split()[2] for meta, _ in rows]
+    return {name[len(folder):]: blob for name, blob in zip(names, ids)}
 
 
 @dataclass
@@ -102,6 +120,8 @@ class Page:
     items: list
     blocks: list
     texts: tuple = ()
+    read: frozenset = frozenset()
+    files: dict = field(default_factory=dict)
 
     def view(self):
         lines = []
@@ -149,11 +169,19 @@ def header(kind, name, others):
     return f"[{title}: {list(others.items())!r}]" if others else f"[{title}]"
 
 
+def requested(url):
+    parts = urllib.parse.urlsplit(url)
+    path = posixpath.normpath(urllib.parse.unquote(parts.path)) if parts.path else ""
+    local = not (parts.scheme or parts.netloc or path.startswith(("/", "..")) or path in ("", "."))
+    return path if local else None
+
+
 def block_of(kind, name, others):
     if kind in ("link", "style-open"):
         return Block("style", header("link" if kind == "link" else "style", name, others), tuple(others.items()),
                      others.get("type") in CSS_TYPES, posixpath.dirname(name) if kind == "link" else "",
-                     source=("file", posixpath.splitext(name)[1].lower()) if kind == "link" else ("inline",))
+                     source=("file", posixpath.splitext(requested(name) or "")[1].lower()) if kind == "link"
+                     else ("inline",))
     return Block("script", header("script" if kind == "script-open" else kind, name, others), tuple(others.items()),
                  others.get("type") in JS_TYPES, source=("file" if kind == "script" else "inline", name))
 
@@ -166,15 +194,17 @@ def ended_as_the_browser_ends(page):
             at = opened.end()
             continue
         kind = opened.group(1).lower()
-        end = script_end(page, opened.end()) if kind == "script" else page_end(page, opened.end(), STYLE_END)
+        started = tag_end(page, opened.end()) + 1
+        if not started:
+            break
+        end = script_end(page, started) if kind == "script" else page_end(page, started, STYLE_END)
         close = tag_end(page, end + len(f"</{kind}")) if end >= 0 else -1
         if close < 0 and kind == "script":
-            tag = opened.group(0)
-            return "".join(out) + page[at:opened.start()] + f"{tag[:7]} {UNCLOSED}{tag[7:]}" + \
-                inert(page[opened.end():]) + "</script>"
+            return "".join(out) + page[at:opened.end()] + f" {UNCLOSED}" + page[opened.end():started] + \
+                inert(page[started:]) + "</script>"
         if close < 0:
-            return "".join(out) + page[at:opened.end()] + inert(page[opened.end():])
-        out.append(page[at:opened.end()] + inert(page[opened.end():end]) + f"</{kind}>")
+            return "".join(out) + page[at:started] + inert(page[started:])
+        out.append(page[at:started] + inert(page[started:end]) + f"</{kind}>")
         at = close + 1
     return "".join(out) + page[at:]
 
@@ -207,21 +237,42 @@ def script_end(page, at):
 
 
 def tag_end(page, at):
-    while at < len(page) and page[at] != ">":
-        if page[at] == "=":
-            value = at + 1 + len(page[at + 1:]) - len(page[at + 1:].lstrip(HTML_SPACE))
-            if value < len(page) and page[value] in "\"'":
-                at = page.find(page[value], value + 1)
-                if at < 0:
-                    return -1
+    state = "before name"
+    while at < len(page):
+        c = page[at]
+        if state in ('"', "'"):
+            state = "after value" if c == state else state
+        elif c == ">":
+            return at
+        elif state == "before value":
+            state = c if c in "\"'" else state if c in HTML_SPACE else "unquoted"
+        elif c in HTML_SPACE or c == "/":
+            state = "after name" if state in ("name", "after name") and c != "/" else "before name"
+        elif c == "=" and state in ("name", "after name"):
+            state = "before value"
+        elif state in ("before name", "after name", "after value"):
+            state = "name"
         at += 1
-    return at if at < len(page) else -1
+    return -1
 
 
-def assemble(read):
+def assemble(read, files=None):
+    names = set()
+
+    def need(name):
+        names.add(name)
+        if (text := read(name)) is None:
+            raise SystemExit(f"{name}: not in the theme")
+        return text
+
+    def fetch(url):
+        name = requested(url)
+        if name is not None:
+            names.add(name)
+        return None if name is None else read(name)
     page = ended_as_the_browser_ends(INLINE_SCRIPT.sub(
-        lambda m: f'<script {INLINED}="{m.group(1)}">\n{read(m.group(1))}</script>',
-        read("index.html").replace("\r\n", "\n")))
+        lambda m: f'<script {INLINED}="{m.group(1)}">\n{need(m.group(1))}</script>',
+        need("index.html").replace("\r\n", "\n")))
     parser = _FileTags()
     parser.feed(page)
     parser.close()
@@ -245,7 +296,9 @@ def assemble(read):
             end = close + len("</script>") if close >= 0 else len(page)
         body = f"\n\x00open {number[id(found)]}\x00\n"
         if kind in ("script", "link"):
-            body += f"{read(name)}\n\x00close\x00\n"
+            if (text := fetch(name)) is None:
+                blocks[number[id(found)]].source += ("not served",)
+            body += f"{text or ''}\n\x00close\x00\n"
         page = page[:begin] + body + page[end:]
     items, current = [], []
     for line in page.split("\n"):
@@ -260,7 +313,8 @@ def assemble(read):
             blocks[current[-1]].raw.append(line)
         else:
             items.append(("line", line, None, None))
-    return Page(items, blocks, translations(read, page))
+    texts = translations(need, page)
+    return Page(items, blocks, texts, frozenset(names), files or {})
 
 
 def translations(read, page):
@@ -448,8 +502,16 @@ def markup(page):
     return out
 
 
+def compare_files(report, a, b):
+    for name in sorted((set(a.files) | set(b.files)) - a.read - b.read):
+        if a.files.get(name) != b.files.get(name):
+            kind = "file gone" if name not in b.files else "file new" if name not in a.files else "file changed"
+            report.changes.append((kind, name, []))
+
+
 def compare(a, b, compiles):
     report = Report()
+    compare_files(report, a, b)
     found = parsers()
     sides = []
     for page in (a, b):
@@ -511,19 +573,23 @@ def main(argv=None):
     ap.add_argument("head", nargs="?")
     ap.add_argument("--theme", default="ritmelli")
     args = ap.parse_args(argv)
-    a = assemble(reader(args.base, args.theme))
-    b = assemble(reader(args.head, args.theme))
+    a = assemble(reader(args.base, args.theme), listing(args.base, args.theme))
+    b = assemble(reader(args.head, args.theme), listing(args.head, args.theme))
     print(f"{args.base}: {len(a.view())} lines; {args.head or 'working tree'}: {len(b.view())} lines")
+    return judge(a, b)
+
+
+def judge(a, b, compiles=None, say=print):
     if a == b:
-        print("the pages are equal")
+        say("the pages are equal")
         return 0
-    report = compare(a, b, syntax([a, b]))
-    print(f"{report.declarations} top-level function declaration(s) compared by script; {report.moved} block(s) "
-          f"moved out of order; {len(report.changes)} change(s)")
+    report = compare(a, b, compiles or syntax([a, b]))
+    say(f"{report.declarations} top-level function declaration(s) compared by script; {report.moved} block(s) "
+        f"moved out of order; {len(report.changes)} change(s)")
     for kind, where, lines in report.changes:
-        print(f"\n{kind}, {where}:")
-        print("\n".join("  " + x for x in lines))
-    print("\nthe head only moves code" if not report.changes else
+        say(f"\n{kind}, {where}:")
+        say("\n".join("  " + x for x in lines))
+    say("\nthe head only moves code" if not report.changes else
           f"\nthe head does more than move code: {len(report.changes)} change(s)")
     return 0 if not report.changes else 1
 

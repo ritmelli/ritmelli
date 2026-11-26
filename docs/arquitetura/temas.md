@@ -91,8 +91,11 @@ primeiro `</script` ou `</style` seguido de espaço, `/` ou `>` (então um `</sc
 salvo num script em que um `<!--` seguido de `<script` ainda não teve o `-->`, que pula esse `</script>` como o
 tokenizador do HTML pula; e um `<script src>` sem `</script>` engole o texto até o próximo, que entra na comparação.
 O script que chega ao fim da página sem fechar, e que por isso o navegador não roda, conta como outro script.
-O fim da tag respeita as aspas de um valor, e um `\r` sozinho conta como fim de linha, como no navegador (lido do git
-ou da pasta). Ela sai 0 quando o head só muda código de lugar:
+O fim de uma tag `<script>`, `<style>`, `</script>` ou `</style>` respeita as aspas de um valor, que só abrem no começo
+dele (depois do `=`), e um `\r` sozinho conta como fim de linha, como no navegador (lido do git ou da pasta). O
+`src` e o `href` se leem como a URL que o navegador pede (sem a busca e o `#`, com os `%` desfeitos), e um arquivo que
+não está lá é um script ou uma folha que o servidor não entrega. Ela sai 0 quando o head só muda código de lugar:
+- todo arquivo do tema que a página não lê (as imagens e as fontes) tem o mesmo conteúdo nos dois commits;
 - a marcação é a mesma, na mesma ordem (sem os cinco espaços do HTML nas pontas de cada linha), com cada script e cada
   folha de estilo no mesmo lugar dela;
 - os scripts são os mesmos, na mesma ordem, cada um carregado do mesmo jeito (inline ou do mesmo arquivo), com os
