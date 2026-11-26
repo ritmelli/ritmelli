@@ -110,16 +110,15 @@ def code(run):
     return "\n".join(line.split("#", 1)[0] for line in str(run).splitlines())
 
 
-def literal(value):
-    return value[1:-1] if re.fullmatch(r"'[^']*'|\"[^\"$`]*\"", value) else None
-
-
 def output_folder(run):
-    value = re.findall(r"""['"]--saida['"],\s*('[^']*'|"[^"]*"|\$\w+)\s*[,)]""", str(run))
-    if len(value) != 1 or not value[0].startswith("$"):
-        return literal(value[0]) if len(value) == 1 else None
-    assigned = re.findall(rf"\{value[0]}\b\s*([-+*/]?=)(?!=)\s*(.*?)\s*$", str(run), re.M | re.I)
-    return literal(assigned[0][1]) if len(assigned) == 1 and assigned[0][0] == "=" else None
+    run = str(run)
+    found = re.search(r"""['"]--saida['"],\s*(?:(['"])([^'"]*)\1|\$(\w+))\s*[,)]""", run)
+    if found and found.group(3):
+        if len(re.findall(rf"\${found.group(3)}\s*[-+*/]?=(?!=)", run, re.I)) != 1:
+            return None
+        found = re.search(rf"""^\s*\${found.group(3)}\s*=\s*(['"])([^'"]*)\1\s*$""", run, re.M | re.I)
+    value = found and found.group(2)
+    return value if value and "$" not in value else None
 
 
 def one_literal_file(path, filename):
@@ -302,6 +301,8 @@ def main():
     check('@("NOTAS", "notas", "--notas")' in manifest_step(tuples["jobs"]["monta"])["run"]
           and '@("NOTAS_EN", "notas_en", "--notas-en")' in manifest_step(tuples["jobs"]["monta"])["run"]
           and contract_problems(tuples) == [], "the notes tuples in double quotes keep the contract")
+    cited = mutant(doc, lambda d: edit_run(d, lambda run: run + "# publica.py also takes '--saida', $other)\n"))
+    check(contract_problems(cited) == [], "a comment citing --saida after the real option keeps the contract")
     later = mutant(doc, lambda d: shown(d, "testa")["steps"].append(
         {"name": "Lista", "shell": "powershell", "run": "# publica.py wrote the manifest\n"}))
     check(contract_problems(later) == [], "a step after the manifest that mentions publica.py keeps the contract")
@@ -409,6 +410,8 @@ def main():
             {"uses": upload(d, setup)["uses"], "with": {"name": "Ritmelli-${{ github.run_number }}", "path": "x"}}),
         "the --saida of publica.py with a subfolder": lambda d: edit_run(d, lambda run: run.replace(
             "'--saida', $saida)", "'--saida', $saida + '\\sub')")),
+        "the only assignment of the --saida folder commented out": lambda d: edit_run(d, lambda run: re.sub(
+            r"^(\s*)(\$saida\s*=.*)$", r"\1# \2", run, count=1, flags=re.M)),
         "a comment that assigns the folder of --saida": lambda d: edit_run(d, lambda run: re.sub(
             r"^(\s*)(\$saida\s*=.*)$", r"\1# $saida = 'saida'\n\1\2", run, count=1, flags=re.M)),
         "a trailing comment on the --saida assignment": lambda d: edit_run(d, lambda run: re.sub(
