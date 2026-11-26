@@ -217,7 +217,7 @@ FINGERPRINT_CASES = (
     ("a docstring edited", True, ('"""Doc."""', '"""Other doc."""')),
     ("a function's docstring removed", True, ('    """Doc."""\n', "")),
     ("a comment added", True, ("return rms\n", "return rms  # note\n")),
-    ("two U+2028 in the module docstring", True, ("Module.", "Mod  ule.")),
+    ("two U+2028 in the module docstring", True, ("Module.", "Mod\u2028\u2028ule.")),
     ("a statement on the docstring's line", False, ('"""Doc."""', '"""Doc."""; rms *= 0.5')),
     ("a code edit", False, ("return rms", "return rms * 2")),
 )
