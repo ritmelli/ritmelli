@@ -172,6 +172,7 @@ RENAME_ROUTE = ("PATCH", "/api/library/{iid}")
 EMPTY_TARGET_TEXT = {"/api/queue": "Send the id of a record on the shelf, a video id or a YouTube link.",
                      "/api/library": "Send a YouTube link, a video ID, or search text."}
 BODY_READERS = {"read", "text", "json", "post", "multipart", "content"}
+ROUTE_REGISTRARS = {"get", "post", "put", "patch", "delete", "head", "options", "view", "route"}
 
 
 class PassedTheCheck(Exception):
@@ -346,6 +347,15 @@ def track_field_routes(sources=None):
                 found[route] = read[0]
             if lost:
                 lost_by_route[route] = lost
+    for name, tree in trees:
+        for node in ast.walk(tree):
+            if name == "server" and isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+                owner = node.func.value
+                owner_name = owner.id if isinstance(owner, ast.Name) else getattr(owner, "attr", None)
+                if ((owner_name == "web" and node.func.attr in ROUTE_REGISTRARS)
+                        or (owner_name == "router" and node.func.attr.startswith("add_")
+                            and node.func.attr != "add_static")):
+                    lost_by_route[("registered", ast.unparse(node)[:70])] = ["a route registered outside @r.<method>"]
     return found, lost_by_route
 
 
@@ -383,7 +393,9 @@ TRACKER_CASES = (('b = await body(request)\n    return b.get("title")', "found")
 TRACKER_ROUTE_SHAPE_CASES = (('@r.post("/api/x")', "request, /", 'return await request.json()', "lost"),
                              ('@r.post("/api/x")', "request, /", 'b = await body(request)\n    return b.get("title")',
                               "found"),
-                             ('@r.get(PREFIX + "{rest:(?:/.*)?}")', "request", 'return await request.json()', "lost"))
+                             ('@r.get(PREFIX + "{rest:(?:/.*)?}")', "request", 'return await request.json()', "lost"),
+                             ("", "request", 'return await request.json()\nroutes = [web.post("/api/x", x)]', "lost"),
+                             ("", "request", 'return await request.json()\napp.router.add_post("/api/x", x)', "lost"))
 
 
 def check_track_field_routes():
@@ -407,7 +419,7 @@ def check_track_field_routes():
         found, lost = track_field_routes({"server": source, "comandos": helpers})
         got = "lost" if lost else "found" if found else "none"
         confere(got == expected, f"the search on the route {decorator} x({params}): "
-                f"{route_body.replace(chr(10) + '    ', '; ')}: {expected} ({got})")
+                f"{route_body.replace(chr(10) + '    ', '; ').replace(chr(10), '; ')}: {expected} ({got})")
 
 
 def tabela():
