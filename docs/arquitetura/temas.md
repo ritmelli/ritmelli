@@ -110,12 +110,13 @@ Ela sai 0 quando o head só muda código de lugar:
   folha de estilo no mesmo lugar dela;
 - os scripts são os mesmos, na mesma ordem, cada um carregado do mesmo jeito (inline ou do mesmo arquivo), com os
   mesmos atributos e o mesmo modo estrito;
-- cada script declara as mesmas funções no alto (elas podem mudar de lugar dentro dele, porque existem antes de qualquer
-  instrução dele rodar, e só nele);
+- cada script declara as mesmas funções no alto, pelo nome que o V8 lê (com os escapes `\u` desfeitos); elas podem
+  mudar de lugar dentro dele, porque existem antes de qualquer instrução dele rodar, e só nele;
 - toda outra instrução do alto está no head, na mesma ordem e no mesmo script;
 - toda regra de estilo está no head, na mesma ordem, com os mesmos atributos de folha, numa folha da mesma pasta e inline
   ou de arquivo como antes (pode mudar de folha ligada ali, com a mesma extensão: as URLs relativas dela continuam
-  apontando para o mesmo arquivo, e o servidor a entrega com o mesmo tipo);
+  apontando para o mesmo arquivo, e o servidor a entrega com o mesmo tipo) e com os mesmos scripts antes da folha dela
+  (um script vê as regras das folhas que vêm antes dele);
 - as traduções que o servidor põe na página (a pasta `i18n/`, na página com a marca do i18n) são as mesmas linhas, na
   mesma ordem (uma linha repetida também conta: chave repetida é erro no `i18n.ler`), sem o espaço das pontas que o
   `i18n.ler` também tira (o espaço depois de uma `\` fica), com as linhas quebradas onde o `i18n.ler` as quebra (o

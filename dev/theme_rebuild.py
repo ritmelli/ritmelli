@@ -45,7 +45,8 @@ Exit 0 when the head only moves code: the two pages are the same, or
 - every other top-level statement of the base is in the head, in the same order and in the same script;
 - every style rule of the base is in the head, in the same order, under the same stylesheet attributes, in a
   stylesheet of the same folder and extension and inline or from a file as before (it may move to another linked
-  stylesheet there: its relative URLs keep their target and the server sends it with the same type);
+  stylesheet there: its relative URLs keep their target and the server sends it with the same type) and with the
+  same scripts before its stylesheet (a script sees the rules of the stylesheets before it);
 - the translation lines the server puts in the page (the i18n folder, for a page with the i18n mark) are the same,
   in the same order and as many times, split and trimmed as i18n.ler splits and trims them.
 Statements and rules are compared as syntax trees (tree-sitter), with the text of every node that no child covers,
@@ -87,6 +88,7 @@ RESTRICTED = ("return_statement", "break_statement", "continue_statement", "thro
               "update_expression", "arrow_function", "function_declaration", "function_expression",
               "generator_function_declaration", "generator_function")
 LINE_TERMINATORS = (b"\n", "\u2028".encode("utf-8"), "\u2029".encode("utf-8"))
+JS_ESCAPE = re.compile(r"\\u\{([0-9a-fA-F]+)\}|\\u([0-9a-fA-F]{4})")
 STRICT = ("'use strict'", '"use strict"')
 CSS_COMMENT = re.compile(r"/\*.*?\*/", re.S)
 MIN_PIECE = 2
@@ -496,7 +498,8 @@ def parse(parser, block, n, compiles):
         name = node.child_by_field_name("name")
         unit = Unit(shape(node, src, [node.start_byte] if block.kind == "style" else None), n,
                     text.split("\n")[0][:120],
-                    src[name.start_byte:name.end_byte].decode("utf-8") if name else "")
+                    JS_ESCAPE.sub(lambda m: chr(int(m.group(1) or m.group(2), 16)),
+                                  src[name.start_byte:name.end_byte].decode("utf-8")) if name else "")
         (out.declarations if block.kind == "script" and node.type in DECLARATIONS else out.units).append(unit)
     return out
 
@@ -592,8 +595,8 @@ def compare(a, b, compiles):
         units = []
         for page, scripts, parsed in ((a, scripts_a, parsed_a), (b, scripts_b, parsed_b)):
             rank = {n: k for k, n in enumerate(scripts)}
-            units.append([((u.shape, page.blocks[n].others, page.blocks[n].folder, page.blocks[n].source)
-                            if kind == "style" else u.shape,
+            units.append([((u.shape, page.blocks[n].others, page.blocks[n].folder, page.blocks[n].source,
+                             sum(x < n for x in scripts)) if kind == "style" else u.shape,
                            rank[n] if kind == "script" else None, u.text)
                           for n, p in sorted(parsed.items()) if page.blocks[n].kind == kind for u in p.units])
         compare_sequences(report, what, *units,
