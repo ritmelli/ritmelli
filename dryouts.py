@@ -1,65 +1,16 @@
 import itertools
 import math
-import os
-import queue
 import sys
-import threading
 import time
 
 AFTER_TRACK_S = 5.0
 QUIET_S = 10.0
 PEDAL_LINES = 10
-LOG_LINES = 64
 TICK_S = 0.016
 
 
-class Log:
-    def __init__(self, size=LOG_LINES):
-        self._lines = queue.Queue(size)
-        self._full = self._failed = 0
-        threading.Thread(target=self._write, daemon=True, name="dryouts-log").start()
-
-    def tell(self, line):
-        try:
-            self._lines.put_nowait(line)
-        except queue.Full:
-            self._full += 1
-
-    @property
-    def dropped(self):
-        return self._full + self._failed
-
-    def written(self):
-        self._lines.join()
-
-    def _write(self):
-        told = 0
-        while True:
-            line = self._lines.get()
-            dropped = self.dropped
-            if dropped > told:
-                line = f"{line} ({dropped - told} line(s) of the dry-out log dropped before this one)"
-            try:
-                err = sys.stderr
-                raw = getattr(getattr(err, "buffer", None), "raw", None)
-                if raw is not None:
-                    data = (line + os.linesep).encode(err.encoding, err.errors)
-                    while data:
-                        sent = raw.write(data)
-                        if not sent:
-                            raise BlockingIOError("stderr took none of the line")
-                        data = data[sent:]
-                    told = dropped
-                elif err is not None:
-                    print(line, file=err, flush=True)
-                    told = dropped
-            except OSError:
-                self._failed += 1
-            finally:
-                self._lines.task_done()
-
-
-LOG = Log()
+def tell(line):
+    print(line, file=sys.stderr, flush=True)
 
 
 class VoicePedalStart:
@@ -94,7 +45,7 @@ class VoicePedalStart:
             elif ended is not None and ended[0] <= up_at <= ended[1] + TICK_S:
                 owner = ended
             if owner is not None:
-                LOG.tell(f"voice pedal: its voice track came up {up_at - owner[0]:.2f} s after the pedal turned on")
+                tell(f"voice pedal: its voice track came up {up_at - owner[0]:.2f} s after the pedal turned on")
                 owner[2] = up_at
             self.track_up_at = up_at
         self._live = live
@@ -192,11 +143,11 @@ class RingDryOuts:
                 self._start, self._told_this_start = start, 0
             self._told_this_start += 1
             if self._told_this_start <= PEDAL_LINES:
-                LOG.tell(f"game output: the microphone ring ran dry while the voice pedal was starting (the thread "
+                tell(f"game output: the microphone ring ran dry while the voice pedal was starting (the thread "
                          f"came back after {back_s * 1000:.0f} ms;{self._bounds(start)} {starting}; "
                          f"{self.while_pedal_starting} of {count} so far, injector {self.injector})")
                 return
         if self.pedal.clock() - self._told_at > QUIET_S:
             self._told_at = self.pedal.clock()
-            LOG.tell(f"game output: the microphone ring ran dry (the thread came back after {back_s * 1000:.0f} ms; "
+            tell(f"game output: the microphone ring ran dry (the thread came back after {back_s * 1000:.0f} ms; "
                      f"{count} so far, injector {self.injector})")

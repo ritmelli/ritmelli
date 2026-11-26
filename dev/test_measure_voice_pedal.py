@@ -67,7 +67,6 @@ def track_up_line(after_s):
     pedal.clock = lambda: 100.0 + after_s
     with mock.patch("sys.stderr", io.StringIO()) as err:
         pedal.track(True, stamp=1 + round((100.0 + after_s) * 1000) % (2**32 - 1))
-        dryouts.LOG.written()
     return err.getvalue().strip()
 
 
@@ -169,7 +168,6 @@ def dry_out_line(count, injector, pedal=False):
     dry.injector = injector
     with mock.patch("sys.stderr", io.StringIO()) as err:
         dry.ran_dry(0.656, count, 0.0)
-        dryouts.LOG.written()
     return err.getvalue().strip()
 
 
