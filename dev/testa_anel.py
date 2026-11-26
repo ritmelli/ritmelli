@@ -695,6 +695,18 @@ class TestVoicePedalStart(unittest.TestCase):
         self.assertEqual(dry.while_pedal_starting, 1, "the ring was seen empty 4.9 s after the track came up")
         self.assertIn("its voice track came up 5.10 s ago", log.getvalue())
 
+    def test_without_a_ring_the_window_ends_now(self):
+        now = [0.0]
+        pedal = dryouts.VoicePedalStart(clock=lambda: now[0])
+        with mock.patch("sys.stderr", io.StringIO()):
+            pedal.sent(pedal.pedal(True))
+            now[0] = 1.0
+            pedal.track(stamp(1.0))
+        now[0] = 5.9
+        self.assertEqual(pedal.starting()[1], "the pedal turned on 5.90 s ago, its voice track came up 4.90 s ago")
+        now[0] = 6.1
+        self.assertEqual(pedal.starting(), (0.0, None), "5.1 s after the track came up, with no read of the ring")
+
     def test_an_ended_start_is_not_taken_without_a_fill_seen(self):
         now = [0.0]
         pedal = dryouts.VoicePedalStart(clock=lambda: now[0])
