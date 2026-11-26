@@ -64,8 +64,8 @@ roda tudo isso em todo PR e na fila de merge. A fila leva a `main` ao mesmo comm
 então o push na `main` roda só a captura do `compara` desse commit para o cache (o `--capture`), e o
 "Testa o PR" do push reprova se nenhuma execução da fila passou nele. As bibliotecas da CI se
 instalam com as versões do `instalador/travas.txt` (`-c`) e as de dev com as do `dev/travas.txt` (o `-c` do
-`requirements-dev.txt`); os dois entram na chave do cache delas, o primeiro também na
-da captura do `compara`, e o PR que muda esse arquivo dispara todas as áreas. No PR, só abrir, reabrir e
+`requirements-dev.txt`); os dois entram na chave do cache delas e na da captura do `compara`, e o PR que muda um
+deles dispara todas as áreas. No PR, só abrir, reabrir e
 um commit novo rodam o check: editar a descrição ou mexer numa etiqueta não roda, porque uma
 execução no mesmo commit vira a suite mais nova do workflow e o check exigido sai só dela
 (encobriria o "Testa o PR" de quem testou). A etiqueta `extracao-tema` e a base nova de um PR

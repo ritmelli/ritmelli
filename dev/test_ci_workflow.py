@@ -498,10 +498,12 @@ def requirement(line):
 
 
 def test_unpinned():
-    pinned = {name for travas in (TRAVAS, DEV_TRAVAS)
-              for name, exact in map(requirement, travas.read_text(encoding="utf-8").splitlines()) if exact}
+    def pins(travas):
+        return {name for name, exact in map(requirement, travas.read_text(encoding="utf-8").splitlines()) if exact}
+
+    app, dev_only = pins(TRAVAS), pins(DEV_TRAVAS)
     unpinned = set()
-    for req in REQUIREMENTS:
+    for req, pinned in zip(REQUIREMENTS, (app, app | dev_only)):
         for line in req.read_text(encoding="utf-8").splitlines():
             if line.strip().startswith("-"):
                 continue
@@ -509,16 +511,17 @@ def test_unpinned():
             if name and not exact and name not in pinned:
                 unpinned.add(name)
     check(unpinned == ALWAYS_NEWEST,
-          f"every library the CI installs has an exact version, in instalador/travas.txt, dev/travas.txt or its own "
-          f"line, except yt-dlp, which is always the newest (unpinned: {sorted(unpinned)})")
+          f"every library the CI installs has an exact version (requirements.txt by instalador/travas.txt or its own "
+          f"line, requirements-dev.txt by dev/travas.txt too), except yt-dlp, always the newest (unpinned: "
+          f"{sorted(unpinned)})")
     dev = (ROOT / "requirements-dev.txt").read_text(encoding="utf-8").splitlines()
     check("-c dev/travas.txt" in dev, "requirements-dev.txt takes dev/travas.txt as constraints")
     steps = job_steps(load(ACTION)["runs"])
     saved = next((i for i, s in enumerate(steps) if (s.get("uses") or "").startswith("actions/cache/save@")), None)
-    newest = [i for i, s in enumerate(steps) if re.search(r'pip install .*--upgrade "yt-dlp\[default\]"', s.get("run") or "")]
+    newest = [i for i, s in enumerate(steps) if re.search(r'pip install .*--upgrade "yt-dlp\[default\]" yt-dlp-ejs ', s.get("run") or "")]
     check(saved is not None and len(newest) == 1 and newest[0] > saved and "if" not in steps[newest[0]],
-          f"the python action installs the newest yt-dlp on every run, after the cache is saved and on a hit too "
-          f"(cache save at {saved}, yt-dlp at {newest})")
+          f"the python action installs the newest yt-dlp and yt-dlp-ejs on every run, after the cache is saved and on a "
+          f"hit too (cache save at {saved}, yt-dlp at {newest})")
     check(any("'dev/travas.txt'" in (s.get("with") or {}).get("key", "") for s in steps
               if (s.get("with") or {}).get("key", "").startswith("libs-")),
           "the libraries cache key hashes the dev/travas.txt")
@@ -599,7 +602,8 @@ def test_without_destination(flows):
     long_tests = set(testa_tudo.LONG_TESTS.values())
     check(not long_tests & set(testa_tudo.COMPLETO), "no long test is in the COMPLETO (it would run twice)")
     check(testa_tudo.SERIAL <= set(testa_tudo.COMPLETO) | long_tests, "every SERIAL test is in a list")
-    check("instalador/travas.txt" in testa_tudo.TODAS, "a change to instalador/travas.txt triggers every area")
+    check({"instalador/travas.txt", "dev/travas.txt"} <= set(testa_tudo.TODAS),
+          "a change to instalador/travas.txt or dev/travas.txt triggers every area")
 
 
 def main():

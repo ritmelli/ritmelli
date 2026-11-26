@@ -4,7 +4,7 @@
 # (.github/actions/python, instalador/monta.ps1).
 jsonschema==4.26.0
 jsonschema-specifications==2025.9.1
-ml-dtypes==0.7.0
+ml-dtypes==0.6.0
 onnx==1.23.2
 pillow==13.0.0
 referencing==0.37.0
