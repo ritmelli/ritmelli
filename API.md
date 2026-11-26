@@ -343,8 +343,8 @@ falha, os dois respondem 409 e o erro vai para o `error` do estado, se o prato s
 | com o primeiro tocando uma entrada que não toca | um Parar resolveu o avanço antes da falha | 409, com o erro no `error` do estado | 409 |
 | com o primeiro tocando uma entrada que não toca | um Parar e outro disco antes da falha | 409, sem erro no disco novo | 409 |
 
-O `dev/testa_comandos.py` confere cada linha desta tabela (nas duas últimas, o erro que a rota deixa passar, e que o
-servidor responde com 500, é o mesmo nos dois).
+O `dev/testa_comandos.py` confere cada linha desta tabela (na primeira das três da entrada que não toca, o erro que a
+rota deixa passar, e que o servidor responde com 500, é o mesmo nos dois).
 
 ## Pedal de troca de voz
 

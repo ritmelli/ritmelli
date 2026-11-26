@@ -356,7 +356,17 @@ def audio_version_entries(A, E):
             A.apply_audio_version("hhhhhhhhhhh", None)
         check(plain == {"youtube_id": "hhhhhhhhhhh", "title": "plain", "ordem": 2, "audio": True},
               f"with no audio version, the Mix entry only gets the mark that it was looked up ({plain})")
+        reserved = dict(entry, qid="reserved1", youtube_id="jjjjjjjjjjj")
+        with A.fila_lock:
+            A.change_queue(lambda: A.fila.append(reserved))
+            with E.state_section():
+                A.reserva = cmd.Reserva(*E.line(), reserved)
+        with A.fila_lock, mock.patch.object(A.automatico, "head_held", return_value=False):
+            A.apply_audio_version("jjjjjjjjjjj", v)
+        check(reserved == dict(entry, qid="reserved1", youtube_id="jjjjjjjjjjj"),
+              f"the entry a reservation in flight is playing, away from the head, keeps its version ({reserved})")
     finally:
+        A.reserva = None
         A.mix = mix0
         cmd.limpar_fila(A)
 

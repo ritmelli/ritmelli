@@ -1327,8 +1327,10 @@ class App:
         def swap_entries():
             switch = e.virou[2] if e.virou is not None else None
             kept = self.fila[0] if self.fila and self.automatico.head_held() else None
+            r = self.reserva
+            playing = r.x if r is not None and not r.feita.is_set() else None
             for x in self.fila:
-                if x.get("auto") and x is not kept and x["qid"] != switch and wants(x):
+                if x.get("auto") and x is not kept and x is not playing and x["qid"] != switch and wants(x):
                     x.update(with_audio_version(x, v))
         self.change_queue(swap_entries)
 
