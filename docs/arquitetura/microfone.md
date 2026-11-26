@@ -64,9 +64,16 @@ instalador (administrador, `ritmelli.exe --microfone instala-todos --tarefa`), q
 tarefa do Windows `\Ritmelli\Microfone`: roda como SYSTEM o mesmo `instala-todos` no exe da
 pasta de programas, e quem usa o PC só pode rodar a tarefa, não mudar. É por ela que o motor
 prepara, sem UAC, um microfone que apareceu depois, e só reabre o áudio quando a tarefa acaba: o filtro
-aparece no registro antes de ela reiniciar o áudio e conferir os aparelhos. Ao desinstalar, o original de todo
-microfone volta e a tarefa sai. A DLL e o log moram na `microfone\` da pasta do executável (pelo
-código, na `%ProgramW6432%\Ritmelli`), e tudo isso só vale com essa pasta protegida
+aparece no registro antes de ela reiniciar o áudio e conferir os aparelhos. Reabre mesmo quando quem usa trocou
+de microfone no meio: o reinício do áudio derrubou os streams de qualquer microfone. Quando a tarefa não prepara o
+microfone pedido, o `pede_tarefa` ainda espera ela acabar e o áudio voltar, e o motor reabre do mesmo jeito, sem
+mensagem própria: se o microfone recusado ainda é o ativo, a conferência que a reabertura abre pede para reinstalar
+(`server.mic.notReadyReinstall`). Ao desinstalar, o original de
+todo microfone volta, o `remove` tenta apagar a pasta do filtro (a DLL ainda presa no `audiodg` pode deixá-la para
+trás) e a tarefa, as vagas do hospedeiro e os mudos do registro saem, mesmo quando o reinício do áudio falha (o
+Audiosrv que não volta ou o AudioEndpointBuilder que não reinicia: o `remove` sai com o erro depois de limpar). A
+DLL e o log moram na `microfone\` da pasta do
+executável (pelo código, na `%ProgramW6432%\Ritmelli`), e tudo isso só vale com essa pasta protegida
 (`pastas.pasta_protegida`): o `instala` e o `instala-todos` conferem antes de tudo e recusam, e o
 `instala-todos` do executável, o da tarefa, ainda apaga as duas tarefas que rodam como SYSTEM (a da
 atualização e a dele), que só o setup completo cria de novo. Com a pasta reprovada, o `remove`
@@ -77,7 +84,18 @@ ativos e conta os quadros por 2 s (o que não entregou nada tem mais 4 s, numa s
 conferência inteira tem 30 s): o aparelho que abre e não entrega nada (a UMC 404HD da Behringer,
 até tirar o cabo, #136) vai para o registro e para o `--saida`, que o instalador mostra na página
 de concluído (`instalador/mudos.iss`), com o resumo da conferência no log do setup; o motor
-confere de novo, num processo à parte, e avisa quem usa. Na desinstalação não há conferência: não
+confere de novo, num processo à parte, e avisa quem usa. O `ok` do `--saida` decide o fim do setup: com o
+`instala-todos` em erro, ou sem o arquivo, o setup sai com 9 (o `GetCustomSetupExitCode` do `mudos.iss`), e a
+esteira reprova. O microfone que recusa o filtro também conta como erro: os outros recebem o filtro, e a conferência,
+quando o áudio reiniciou por causa deles ou da DLL nova, vai junto no `--saida`. Ficam de fora sem erro só o aparelho
+velho sem as propriedades no registro e o que não está presente (o `DeviceState` NOTPRESENT), não tem a chave
+`FxProperties` e em que o Windows nega criá-la até ao administrador (`LockedEndpointNotPresent`: um aparelho que já
+saiu do PC). Em outro estado (ativo, desativado, desconectado), no que não tem o estado legível, com a chave lá ou
+quando nem dá para saber se ela falta (a consulta da chave também falha), a recusa continua erro. O
+AudioEndpointBuilder que não reinicia também conta como erro (o Audiosrv volta do mesmo jeito), e o comando do
+Audiosrv que falha também, mesmo com o serviço rodando. O
+resultado é o `--saida` e o código de saída; o diagnóstico vai para o stderr, pelo `_log`, e some sem mudar o
+resultado quando não há console (o executável) ou quando o cano fechou. Na desinstalação não há conferência: não
 sobra app para avisar. O `remove` com a pasta reprovada também não confere. Só a DLL nova
 reinicia só o Audiosrv, sem desmontar os aparelhos. Os programas do Windows (`schtasks`, `regsvr32`, `icacls`,
 `powershell`, `sc`) vão pelo caminho completo da System32: pelo nome solto, o Windows procuraria
