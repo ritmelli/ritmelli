@@ -36,8 +36,9 @@ um texto que o UTF-8 não codifica não quebra a volta, que é montada uma vez p
   recebe nada dele (o YouTube às vezes responde 403), o leitor marca a espera do arquivo e passa pelo mesmo caminho do
   stream recusado (o `Engine.on_silent_stream`, que o App liga ao `_stream_refused`), enquanto essa espera ainda é a do
   prato (um pulo na barra depois dela começa um leitor novo, que fica): o prato fica carregando com o aviso e toca o
-  arquivo quando o download chega, com leitor novo mesmo perto do fim; se o download falhou, antes ou depois, o prato
-  para.
+  arquivo quando o download chega, com leitor novo sempre que o arquivo entra no lugar do stream (mesmo perto do fim, e
+  mesmo antes de o leitor do stream dizer que não deu áudio), e o aviso do stream sai com ele (outro aviso que veio
+  depois fica); se o download falhou, antes ou depois, o prato para.
 - Fila (A seguir): quando o disco do prato acaba, o primeiro da fila entra, do arquivo
   ou pelo stream. O que entra na fila sem estar na prateleira já começa a baixar. O
   Repetir manda (ligado, o disco não acaba), mas vale só para o disco do prato: outro

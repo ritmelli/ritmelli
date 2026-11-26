@@ -1239,6 +1239,7 @@ class Engine:
         # thread do leitor; sem ele (ou desistindo), o disco acaba e a fila segue, como antes
         self.religar_stream = None
         self._stream_silent = None
+        self._stream_warning = None
         # o volume automatico (sonoridade.py): as musicas mais baixas sobem ate o alvo, com o limitador na musica (a
         # musica sai sonoridade.LIMITE_ANTES amostras atrasada, sempre). O servidor diz a medida que ja tem de um disco
         # (sonoridade_de(disco) -> LUFS ou None) e guarda a que o motor mede (mediu(disco, LUFS)); sem os dois, a
@@ -3331,8 +3332,10 @@ class Engine:
                 dur = novo.get("duration") or 0
                 self.track = d.track = novo
                 d.ganho_alvo = alvo
-                self._error = None
-                if self._espera_arquivo != d.gen and (self.ended or d.eof_gen == d.gen or (dur and t >= dur - 2)):
+                if self._error is not None and self._error is self._stream_warning:
+                    self._error = None
+                to_file = str(atual.get("path")).startswith("http") and not str(novo.get("path") or "").startswith("http")
+                if self.ended or d.eof_gen == d.gen or (not to_file and dur and t >= dur - 2):
                     gen = None  # no fim (ou quase): o leitor de agora termina o disco
                 else:
                     d.gen += 1
@@ -3350,7 +3353,7 @@ class Engine:
         with self._qlock:
             if self.track is not track or (waiting and not self.esperando_arquivo()):
                 return False
-            self._error = message
+            self._error = self._stream_warning = message
             return True
 
     def esperando_arquivo(self):

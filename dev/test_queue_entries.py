@@ -89,7 +89,7 @@ def own_nodes(func, skip=frozenset()):
 class Entries:
     def __init__(self, modules, attrs=CONTAINERS, owner_only=False):
         self.modules, self.attrs, self.owner_only = modules, attrs, owner_only
-        self.params, self.cparams, self.walks, self.scopes = {}, {}, {}, {}
+        self.params, self.cparams, self.walks, self.scopes, self.returns = {}, {}, {}, {}, set()
 
     def walk(self, func):
         if id(func) not in self.walks:
@@ -156,6 +156,8 @@ class Entries:
         if isinstance(node, ast.Subscript) and not isinstance(node.slice, ast.Slice):
             return self.is_container(node.value, scope)
         if isinstance(node, ast.Call):
+            if called(node) in self.returns:
+                return True
             if isinstance(node.func, ast.Name) and node.func.id == "next" and node.args:
                 return self.is_container(node.args[0], scope)
             if isinstance(node.func, ast.Attribute) and node.func.attr == "pop":
@@ -178,7 +180,9 @@ class Entries:
         scope = Scope()
         if parent is not None:
             outer = self.scope_of(parent, (parents or {}).get(id(parent)), parents)
-            scope.containers, scope.entries = set(outer.containers), set(outer.entries)
+            own = set(self.param_names(func)) | {n.id for n in own_nodes(func)
+                                                 if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store)}
+            scope.containers, scope.entries = set(outer.containers) - own, set(outer.entries) - own
         scope.entries |= self.params.get(func.name, set())
         scope.containers |= self.cparams.get(func.name, set())
         for _ in range(4):
@@ -237,6 +241,18 @@ class Entries:
         funcs = self.functions()
         parents = {id(f): p for _, f, _, p in funcs}
         self.bind_params(funcs, parents)
+        changed = True
+        while changed:
+            changed = False
+            for _, func, _, parent in funcs:
+                if func.name in self.returns:
+                    continue
+                scope = self.scope_of(func, parent, parents)
+                if any(isinstance(n, ast.Return) and n.value is not None and self.is_entry(n.value, scope)
+                       for n in own_nodes(func)):
+                    self.returns.add(func.name)
+                    self.scopes.clear()
+                    changed = True
         allowed, skip = set(), set()
         for _, func, _, _ in funcs:
             names, lambdas = passed_to_change_queue(func)
@@ -447,12 +463,18 @@ ENTRY_FORMS = {
     "a tuple assignment to an entry": ({"case.py": "def f(A):\n    A.fila[0]['audio'], y = True, 1\n"}, 1),
     "the Automatico writing an entry of its own Mix in place": (
         {"automatico.py": "class Automatico:\n    def f(self):\n        for m in self._mix:\n            m['ordem'] = 1\n"}, 1),
-    "dict.update called on an entry of the Mix":({"case.py": "def f(A):\n    dict.update(A.mix[0], audio=True)\n"}, 1),
+    "an entry a helper returns": ({"case.py": "def head(A):\n    return A.fila[0]\n"
+                                              "def f(A):\n    head(A).update(a=1)\n"}, 1),
+    "a copy a helper returns": ({"case.py": "def head(A):\n    return dict(A.fila[0])\n"
+                                            "def f(A):\n    head(A).update(a=1)\n"}, 0),
+    "a name a nested function binds for itself": ({"case.py": "def f(A):\n    x = A.fila[0]\n    def g(x):\n"
+                                                              "        x['k'] = 1\n    g({})\n"}, 0),
+    "dict.update called on an entry of the Mix": ({"case.py": "def f(A):\n    dict.update(A.mix[0], audio=True)\n"}, 1),
     "an entry of a shallow copy of the queue": ({"case.py": "def f(A):\n    for x in A.fila.copy():\n"
                                                             "        x['fixa'] = True\n"}, 1),
     "a new dict made from an entry, then changed": ({"case.py": "def f(A):\n    y = dict(A.fila[0])\n"
                                                                 "    y['fixa'] = True\n"}, 0),
-    "an entry of the Mix from unpacking":({"case.py": "def f(A):\n    x, _ = A.mix[0], None\n    x.update(a=1)\n"}, 1),
+    "an entry of the Mix from unpacking": ({"case.py": "def f(A):\n    x, _ = A.mix[0], None\n    x.update(a=1)\n"}, 1),
     "a new dict from an entry":({"case.py": "def f(A):\n    for m in A.mix:\n        m = dict(m, ordem=1)\n"}, 0),
     "a dict that is no entry": ({"case.py": "def f(A):\n    d = {}\n    d['k'] = 1\n    d.update(a=1)\n"}, 0),
     "a helper that writes the entries of the Mix it gets": (

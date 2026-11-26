@@ -244,13 +244,14 @@ def silent_stream_then_a_seek(A, E, readers):
           f"the silent reader's hand-over, late after a seek whose reader has audio, leaves the platter to it ({tr})")
 
 
-def file_near_the_end_of_a_silent_stream(A, E, readers):
+def file_near_the_end_of_a_silent_stream(A, E, readers, device_warning=None):
     check(play(A, E, readers, "d1"), "d1 is on the platter, read")
-    target = "fffffffffff"
+    target = "fffffffffff" if device_warning is None else "fffffffff22"
     j = A.new_job("downloading", True, target)
     reader, ended = real_stream_reader(E, E._reader)
     meta = {"youtube_id": target, "title": "the short one", "channel": "c", "duration": 1.5}
-    item = {"id": "short1", "title": "the short one", "file": "short1.m4a", "duration": 1.5, "lufs": -14.0}
+    iid = "short1" if device_warning is None else "short3"
+    item = {"id": iid, "title": "the short one", "file": f"{iid}.m4a", "duration": 1.5, "lufs": -14.0}
     stream = StreamThread(A)
     with (contextlib.redirect_stderr(io.StringIO()), mock.patch.object(E, "_reader", reader),
           mock.patch.object(A, "stream_info", return_value=(dict(meta, url="https://stream.invalid/c", id=target), {})),
@@ -260,11 +261,39 @@ def file_near_the_end_of_a_silent_stream(A, E, readers):
         reason = (E.error or {}).get("params", {}).get("reason")
         check(isinstance(reason, dict) and reason.get("key") == "server.player.noAudio",
               f"while it still downloads, the warning gives the reason as a message for the screen ({E.error})")
+        if device_warning is not None:
+            E.set_error(device_warning)
         with mock.patch.object(A, "download", return_value=item):
             A.run_download(j, target)
     del A._abre_stream
-    check(readers.wait("short1"), "the file that arrives near the end of a silent stream gets a reader of its own")
-    check(E.error is None, f"and the warning that it would play once the download finished leaves ({E.error})")
+    check(readers.wait(iid), "the file that arrives near the end of a silent stream gets a reader of its own")
+    if device_warning is None:
+        check(E.error is None, f"and the warning that it would play once the download finished leaves ({E.error})")
+    else:
+        check(E.error is device_warning, f"and a device warning that came after the stream's stays ({E.error})")
+
+
+def file_before_the_silent_stream_reports(A, E, readers):
+    check(play(A, E, readers, "d1"), "d1 is on the platter, read")
+    target = "kkkkkkkkkkk"
+    j = A.new_job("downloading", True, target)
+    reading, go = threading.Event(), threading.Event()
+    reader, ended = real_stream_reader(E, E._reader)
+    meta = {"youtube_id": target, "title": "the early one", "channel": "c", "duration": 1.5}
+    item = {"id": "short2", "title": "the early one", "file": "short2.m4a", "duration": 1.5, "lufs": -14.0}
+    stream = StreamThread(A)
+    with (contextlib.redirect_stderr(io.StringIO()), mock.patch.object(E, "_reader", reader),
+          mock.patch.object(A, "stream_info", return_value=(dict(meta, url="https://stream.invalid/d", id=target), {})),
+          mock.patch.object(eng.subprocess, "Popen", lambda *a, **kw: SilentFfmpeg(reading, go))):
+        check(cmd.play_downloading(A, j, target, meta) and stream.ended.wait(WAIT_S) and reading.wait(WAIT_S),
+              "the early one's stream opened and its reader still reads it")
+        with mock.patch.object(A, "download", return_value=item):
+            A.run_download(j, target)
+        go.set()
+        ended[0].wait(WAIT_S)
+    del A._abre_stream
+    check(readers.wait("short2"), "the file that arrives near the end, before the silent stream's reader reports, gets a "
+                                  "reader of its own")
 
 
 def warning_after_another_record_took_the_platter(A, E, readers):
@@ -474,6 +503,9 @@ def main():
                 silent_stream_after_the_download_failed(A, E, readers)
                 silent_stream_then_a_seek(A, E, readers)
                 file_near_the_end_of_a_silent_stream(A, E, readers)
+                file_near_the_end_of_a_silent_stream(
+                    A, E, readers, server.i18n.msg("server.devices.notFound", "Couldn't find the device."))
+                file_before_the_silent_stream_reports(A, E, readers)
                 warning_after_another_record_took_the_platter(A, E, readers)
                 audio_version_during_a_pending_switch(A, E, readers)
                 audio_version_while_the_engine_switches(A, E, readers)

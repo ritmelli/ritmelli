@@ -159,11 +159,12 @@ posição do disco viram escolha não determinística, e os `qid` são simétric
   resolve, com justiça fraca.
 
 O `dev/test_tla.py` roda o TLC (o `tla2tools.jar` da versão fixada, conferido pelo sha256) nas duas, cada execução em
-menos de 60 s (a `Races211` em duas: o download, o stream e a troca, sem as trocas de lugar na fila; e as trocas de
-lugar, a preparação da passagem e a versão de áudio, sem o job), e roda também os mutantes: cada propriedade tem um que
-desfaz o que ela protege, e o mutante tem de ser pego. No PR, o job `tla` do `testa.yml` roda isso numa máquina ubuntu
-(`python dev/testa_tudo.py --passo tla`). No PC, precisa do Java no PATH; o `TLA2TOOLS` aponta para um `tla2tools.jar`
-já baixado. As duas corridas da #211 se repetem no App de verdade no `dev/test_races_211.py`, com os passos do
+menos de 60 s (a `Races211` em três: o download, o stream e a troca, sem as trocas de lugar na fila; as trocas de lugar,
+a reserva, a preparação da passagem e a versão de áudio, sem o job; e os dois juntos, com uma troca de lugar só e sem o
+tocar de outro disco, o esquecer e a reserva), e roda também os mutantes: cada propriedade tem um que desfaz o que ela
+protege, e o mutante tem de ser pego. No PR, o job `tla` do `testa.yml` roda isso numa máquina ubuntu (`python
+dev/testa_tudo.py --passo tla`). No PC, precisa do Java no PATH; o `TLA2TOOLS` aponta para um `tla2tools.jar` já
+baixado. As duas corridas da #211 se repetem no App de verdade no `dev/test_races_211.py`, com os passos do
 contraexemplo, um de cada vez.
 
 ## O que o servidor lê do motor

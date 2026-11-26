@@ -120,10 +120,13 @@ def hooks(trees):
             setters[f.name] = f.body[0].targets[0].attr
     out = {}
     for call in ast.walk(trees.get("server.py", ast.Module(body=[], type_ignores=[]))):
-        if (isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute) and call.func.attr in setters
-                and call.args and isinstance(call.args[0], ast.Lambda) and isinstance(call.args[0].body, ast.Call)
-                and isinstance(call.args[0].body.func, ast.Attribute)):
-            out[("engine.py", "Engine", setters[call.func.attr])] = ("server.py", "App", call.args[0].body.func.attr)
+        if not (isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute) and call.func.attr in setters
+                and call.args):
+            continue
+        f = call.args[0].body.func if isinstance(call.args[0], ast.Lambda) and isinstance(call.args[0].body,
+                                                                                            ast.Call) else call.args[0]
+        if isinstance(f, ast.Attribute):
+            out[("engine.py", "Engine", setters[call.func.attr])] = ("server.py", "App", f.attr)
     return out
 
 
@@ -639,6 +642,11 @@ def main():
     check(inside != sources["engine.py"] and any("_stream_refused" in b for b in bad),
           f"with the reader handing a silent stream to the App while it holds the _qlock, the check fails, through the "
           f"hook the App registers ({bad[:1]})")
+    named = re.sub(r"self\.engine\.on_silent_stream\(lambda tr: self\._stream_refused\(\s*tr, [^\n]*\)\)",
+                   "self.engine.on_silent_stream(self._stream_refused)", sources["server.py"])
+    bad, *_ = scan(dict(sources, **{"engine.py": inside, "server.py": named}), order, before)
+    check(named != sources["server.py"] and any("_stream_refused" in b for b in bad),
+          f"and so it does with the hook registered as a bound method ({bad[:1]})")
     callers = caller_failures(trees)
     check(not callers, f"whoever calls the change_queue, the close_switches and the concilia holds the fila_lock, also "
                        f"up the calls to the entry points ({callers})")
