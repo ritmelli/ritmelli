@@ -147,7 +147,7 @@ def condition_holds(condition, build, needs):
     text = bare(condition) or ""
     if re.fullmatch(r"(always|success)\(\)", text):
         return True
-    gate = re.fullmatch(r"needs\.monta\.outputs\.(\w+)\s*==\s*'true'", text)
+    gate = re.fullmatch(r"needs\.monta\.outputs\.(\w+)\s*==\s*'(?i:true)'", text)
     return bool(gate) and "monta" in needs and build.get(gate.group(1), False)
 
 
@@ -210,7 +210,7 @@ def contract_problems(doc):
     for required, output in GATED_JOBS.items():
         gated = [j for k, j in jobs.items() if display(k, j) == required or display(k, j).startswith(required + " (")]
         for job in gated:
-            if not re.fullmatch(rf"needs\.monta\.outputs\.{output}\s*==\s*'true'", bare(job.get("if", "")) or ""):
+            if not re.fullmatch(rf"needs\.monta\.outputs\.{output}\s*==\s*'(?i:true)'", bare(job.get("if", "")) or ""):
                 problems.append(f"the if: of {required} does not read the {output} output of the monta job")
     run_uploads = uploads(jobs)
     found = {name: [w for n, w, _ in run_uploads if n == name] for name in (SETUP, EXE)}
@@ -396,6 +396,10 @@ def main():
         run=source_step(d, "parcial")["run"].replace('"parcial=$($parcial.', '"parcial=$($Parcial.')))
     check('"parcial=$($Parcial.' in source_step(cased, "parcial")["run"] and contract_problems(cased) == [],
           "the parcial variable written in another case keeps the contract")
+    shouted = mutant(doc, lambda d: [shown(d, j).update({"if": shown(d, j)["if"].replace("'true'", "'TRUE'")})
+                                     for j in GATED_JOBS])
+    check(all("'TRUE'" in shown(shouted, j)["if"] for j in GATED_JOBS) and contract_problems(shouted) == [],
+          "the gated if: compared with 'TRUE' keeps the contract")
     migration_first = mutant(doc, lambda d: shown(d, "testa").update(
         needs=["monta", next(k for k, j in d["jobs"].items() if j is shown(d, "testa-migracao"))]))
     quoted_output = mutant(doc, lambda d: step_by_id(d["jobs"]["monta"], "congela").update(
