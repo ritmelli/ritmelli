@@ -1,8 +1,9 @@
 r"""Checks esticar_saida (engine.py), the outgoing track resampled to a new speed before an on-beat fade-out with both
 tracks stretched, on its own, through the real Rubber Band:
 
-  - position: under a strong steady tone (as in the tone pair of dev/testa_passagem.py, #197), every attack in the
-    output sits where the returned position (phi) says it came from in the input, to within POSITION_TOLERANCE_MS;
+  - position: under a strong steady tone (as in the tone pair of dev/testa_passagem.py, #197), the output has one frame
+    per position (phi), and every attack in it sits where phi says it came from in the input, to within
+    POSITION_TOLERANCE_MS;
   - pitch: after the ramp, at the constant speed, the steady tone is back at its own pitch, so the output did go
     through the Rubber Band;
   - level: on broadband noise, no LEVEL_WINDOW_MS window at the start of the output drops more than LEVEL_DROP_DB
@@ -96,6 +97,7 @@ def position(speed, rng):
     x, starts = attacks_input(rng)
     ramp = ramp_samples(speed)
     z, phi = engine.esticar_saida(x, speed, ramp)
+    check(z.shape == (len(phi), 2), f"output at speed {speed:.4f}: {z.shape} for {len(phi)} positions")
     xb, zb = band(x[:, 0], ATTACK_BAND), band(z[:, 0], ATTACK_BAND)
     attack, search = int(0.1 * SR), int(SEARCH_MS / 1000 * SR)
     errors = []
