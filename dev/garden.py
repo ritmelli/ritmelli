@@ -29,7 +29,7 @@ COMMENT_EXTENSIONS = (".py", ".js", ".css", ".ps1", ".yml", ".cpp", ".h", ".iss"
 GARDEN_FILES = ("dev/garden.py", "dev/test_garden.py")
 ISSUE = re.compile(r"#\d+\b|/issues/\d+\b")
 BLOCK_MARKER = re.compile(r"^\s*(?:[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-(?:INICIO|FIM)|[a-z]+:(?:inicio|fim))\b")
-KEPT_COMMENT = re.compile(r"^\s*(?:inline-script:|manual:|i18n-ok\b)")
+KEPT_COMMENT = re.compile(r"^\s*(?:manual:|i18n-ok\b)|^ inline-script: [\w-]+\.js $")
 GENERATED_MARKERS = {"molduras:inicio (gravado pelo dev/molduras.py: o desenho mora la, nao editar aqui)"}
 LICENSE = re.compile(r"SPDX-License-Identifier:|\bCopyright\b|\bLicensed under\b", re.I)
 ENCODING = re.compile(r"coding[:=]\s*[-\w.]+")
@@ -324,7 +324,7 @@ def lex_html(text):
     return out
 
 
-BLOCK_SCALAR = re.compile(r"^(\s*)(-\s+)?([\w.-]+):\s*[|>][-+]?\s*$")
+BLOCK_SCALAR = re.compile(r"^(\s*)(-\s+)?([\w.-]+):\s*[|>][-+]?\s*(?:#.*)?$")
 
 
 def indent_of(line):
@@ -346,9 +346,9 @@ def yaml_shell(lines, at):
         if k > start and line.strip() and (indent_of(line) < indent or lines[k].lstrip(" ").startswith("-")
                                            and indent_of(line) <= indent - 2):
             break
-        m = re.match(r"^\s*(?:-\s+)?shell:\s*(.+?)\s*$", line)
+        m = re.match(r"^\s*(?:-\s+)?shell:\s*(.+?)\s*$", lex_hash(line).code.get(1, line))
         if m and key_indent(line) == indent:
-            return m.group(1)
+            return m.group(1).strip("'\"")
     runs_on = next((m.group(1) for line in reversed(lines[:at]) if (m := re.match(r"^\s+runs-on:\s*(.+)$", line))),
                    "")
     return "pwsh" if "windows" in runs_on else "bash"
@@ -828,6 +828,9 @@ def retries(t):
         if tree is not None:
             items += [(p, n) for n in python_retries(tree)]
             items += [(p, n) for n, s in python_strings(t, p) if START_SLEEP.search(s) and powershell_retries(s)]
+    for p in t.paths(".yml"):
+        if p.startswith(".github/"):
+            items += [(p, offset + n) for offset, tree in workflow_python(t, p) for n in python_retries(tree)]
     for p in t.paths(".ps1", ".psd1", ".yml"):
         items += [(p, n) for n in powershell_retries(joined_code(t.lexed(p)))]
     for p in t.paths(".js", ".html"):

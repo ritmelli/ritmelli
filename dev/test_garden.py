@@ -83,6 +83,8 @@ CASES = {
         ("bat", {"a.bat": "@echo off\necho remove\n"}, {"a.bat": "@echo off\nrem why\n"}),
         ("bat double colon", {"a.bat": "echo a::b\n"}, {"a.bat": ":: why\necho a::b\n"}),
         ("html", {"a.html": "<!-- inline-script: a.js -->\n<p>x</p>\n"}, {"a.html": "<!-- why -->\n<p>x</p>\n"}),
+        ("an inline-script marker with prose", {"a.html": "<!-- inline-script: script-failed.js -->\n"},
+         {"a.html": "<!-- inline-script: script-failed.js and why it is here -->\n"}),
         ("html inline js and css", {"a.html": "<script>\nlet a = '//';\n</script>\n<style>\na {}\n</style>\n"},
          {"a.html": "<script>\nlet a = 1; // why\n</script>\n<style>\na {} /* why */\n</style>\n"}, 2),
         ("spec", {"a.spec": "a = Analysis(['x'])\n"}, {"a.spec": "# why\na = Analysis(['x'])\n"}),
@@ -174,6 +176,12 @@ CASES = {
         ("an outer loop around a retry", {"a.py": "import time\nfor a in b:\n    x = 1\n"},
          {"a.py": "import time\nfor a in b:\n    while True:\n        try:\n            f()\n        except OSError:\n"
                   "            time.sleep(1)\n"}),
+        ("a retry in a workflow's Python step",
+         {".github/workflows/w.yml": PY_STEP.replace("JOB", "monta").replace(
+             "time.sleep(1)\n", "for _ in range(3):\n              f()\n              time.sleep(1)\n")},
+         {".github/workflows/w.yml": PY_STEP.replace("JOB", "monta").replace(
+             "time.sleep(1)\n", "for _ in range(3):\n              try:\n                  f()\n                  break\n"
+                                "              except OSError:\n                  time.sleep(1)\n")}),
         ("powershell", {"a.ps1": "for ($i = 0; $i -lt 3; $i++) { Start-Sleep 1 }\n"},
          {"a.ps1": "for ($i = 0; $i -lt 3; $i++) { try { f } catch { }; Start-Sleep 1 }\n"}),
         ("powershell in a Python string", {"a.py": "ps = 'do{Start-Sleep 1}while($a)'\n"},
@@ -374,6 +382,17 @@ def test_string_lines():
     wide = "x = ('ação', 'Start-Sleep 1')\n"
     check(garden.COUNTERS["sleeps_app"](garden.Tree({"a.py": wide})) == [("a.py", 1)],
           "a string after a wide character is read whole")
+
+
+def test_workflow_python_lines():
+    quoted = WORKFLOW.replace("python3 {0}", '"python3 {0}"').replace("{handler}", "          except Exception:\n"
+                                                                                  "              pass\n")
+    found = garden.COUNTERS["broad_excepts"](garden.Tree({".github/workflows/w.yml": quoted}))
+    check(found == [(".github/workflows/w.yml", 13)], f"a quoted shell is still Python, at its line ({found})")
+    commented = WORKFLOW.replace("run: |", "run: |  # the check").replace(
+        "{handler}", "          except Exception:\n              pass\n")
+    found = garden.COUNTERS["broad_excepts"](garden.Tree({".github/workflows/w.yml": commented}))
+    check(found == [(".github/workflows/w.yml", 13)], f"a block with a comment on its header is still read ({found})")
 
 
 def test_known_misses():
@@ -710,6 +729,7 @@ def test_stdlib():
 test_counters()
 test_known_misses()
 test_string_lines()
+test_workflow_python_lines()
 test_check()
 test_acceptance()
 test_description()
