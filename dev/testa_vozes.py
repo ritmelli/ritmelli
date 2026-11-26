@@ -23,9 +23,9 @@ RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ))
 sys.path.insert(0, str(RAIZ / "dev"))
 sys.path.insert(0, str(RAIZ / "instalador"))
-import pistavoz  # noqa: E402
-import vozes  # noqa: E402
-import vozes_iss  # noqa: E402
+import pistavoz
+import vozes
+import vozes_iss
 
 M = json.loads((RAIZ / "vozes.json").read_text(encoding="utf-8"))
 
@@ -79,6 +79,32 @@ class Instalador(unittest.TestCase):
 
     def test_texto_da_licenca(self):
         self.assertEqual(vozes_iss.texto("# Titulo\n\n## 1. Parte\n- **Voz:** a Mina\n"), "Titulo\n\n1. Parte\n- Voz: a Mina\n")
+
+    def test_previous_voice_is_hashed_on_its_copy(self):
+        iss = (RAIZ / "instalador" / "ritmelli.iss").read_text(encoding="utf-8-sig")
+        body = re.search(r"^function CopyPreviousVoice\(.*?^end;$", iss, re.M | re.S).group(0)
+        self.assertEqual(hashed_outside_the_copy(body), [])
+        self.assertEqual(hashed_outside_the_copy(body.replace("GetSHA256OfFile(TmpCopy)", "GetSHA256OfFile(Source)")),
+                         ["Source"])
+
+    def test_previous_voice_has_no_except(self):
+        iss = (RAIZ / "instalador" / "ritmelli.iss").read_text(encoding="utf-8-sig")
+        body = re.search(r"^function CopyPreviousVoice\(.*?^end;$", iss, re.M | re.S).group(0)
+        self.assertFalse(swallows_errors(body))
+        self.assertTrue(swallows_errors("begin\n  try\n    X := F(Y);\n  except\n    X := 0;\n  end;\nend;"))
+        self.assertTrue(swallows_errors("begin\n  try X := F(Y); except X := 0; end;\nend;"))
+        self.assertFalse(swallows_errors("begin\n  Log('no except here'); // except\n  { except } (* except *)\nend;"))
+
+
+def swallows_errors(body):
+    code = re.sub(r"'[^']*'|//[^\n]*|\{[^}]*\}|\(\*.*?\*\)", " ", body, flags=re.S)
+    return re.search(r"\bexcept\b", code, re.I) is not None
+
+
+def hashed_outside_the_copy(body):
+    copies = set(re.findall(r"FileCopy\(\w+, (\w+),", body))
+    hashed = re.findall(r"GetSHA256OfFile\((\w+)\)", body)
+    return [h for h in hashed if h not in copies] if copies and hashed else ["(no FileCopy or no GetSHA256OfFile)"]
 
 
 class Baixa(unittest.TestCase):

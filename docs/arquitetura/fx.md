@@ -26,13 +26,16 @@ liga e desliga com o pedal; sem ele, o app é o mesmo de sempre. O contrato: o e
 `mina.Mina(engine)`, `liga()`, `desliga()`, `microfone(x)` (a voz crua de quem toca, só com
 a voz indo pro jogo) e `tocou(x)`; o módulo devolve a voz pelo `mina_voz` (a fila do jogo e
 do fone, com 0,1 s de folga de rede), cala pelo `mina_cala` e acha a API pela `porta` do
-engine. No `--mock` o pedal não liga.
+engine. Quando a construção ou o `liga()` levantam uma `i18n.Recusa`, a mensagem dela vai para
+a tela como veio; outro `ValueError` vira a `server.mina.notConfigured`, com o texto do erro no
+`{reason}` (o `dev/test_external_module.py` confere). No `--mock` o pedal não liga.
 
 Os ganchos do `engine.py` para o módulo opcional de fora do repo não crescem: nada de função,
 atributo ou chamada nova para ele, e o que ele precisar daqui em diante passa pelo contrato
 acima. Os que já existem ficam como estão. O `dev/testa_ganchos.py` conta esses ganchos (os
 nomes do `engine.py` com o nome do módulo, o que o engine lê dele e o que chama nele) contra
-um teto e falha quando a conta passa dele; quando um gancho sai, o teto desce no mesmo PR.
+o teto `engine_hooks` do `dev/garden.json`, que o `dev/garden.py` segura: falha quando a conta passa dele; quando um
+gancho sai, o teto desce no mesmo PR.
 Gancho com um nome que não lembra o módulo escapa da conta, e a regra vale igual.
 
 ## Filtro "Quest como SM58"

@@ -50,9 +50,9 @@ import permissao as perm
 import pastas
 import sonoridade
 from pastas import save_json
-from music import YT_ID, busca_de, chaves_musica, mesma_faixa, segundos, thumb
+from music import YT_ID, find_track, segundos, thumb, track_artists
 from versao import VERSAO
-from yt_erros import erro_do_video
+from yt_erros import erro_do_video, yt_msg
 
 HERE = Path(__file__).resolve().parent
 LIB = pastas.LIB  # audio baixado; library.json e config.json moram em --data-dir
@@ -119,9 +119,9 @@ def _laco_voz():
             continue
         try:
             fut.set_result(fn(arg))
-        except Exception as ex:  # noqa: BLE001 - o erro do modulo vai para quem pediu
+        except Exception as ex:  # o erro do modulo vai para quem pediu
             fut.set_exception(ex)
-        except BaseException as ex:  # noqa: BLE001 - um SystemExit do modulo, relancado no handler, parava o laco do servidor
+        except BaseException as ex:  # um SystemExit do modulo, relancado no handler, parava o laco do servidor
             fut.set_exception(RuntimeError(f"{type(ex).__name__}: {ex}"))
 
 
@@ -463,21 +463,30 @@ TRACK_FIELDS = TRACK_TEXTS + ("duration",)
 
 
 def check_track_fields(b, target, fields=TRACK_FIELDS):
-    """The title, channel, thumb and duration the body b brings about the video target, which is not on the shelf (the
-    POST /api/queue, and the POST /api/library with play; saving without play only uses the title, as the download's
-    label): one rule for both routes and every role, on the fields the path uses. The theme and the handoffs read the
-    texts as text (or null); the duration in seconds (or null, up to a day) wins over the one yt-dlp finds and sizes
-    the visualizer (engine.Onda allocates by it). The target and the texts go in valid Unicode (is_valid_unicode).
-    Raises ValueError, or the i18n.Recusa the theme can show for a duration longer than a day."""
+    """The title, channel, thumb and duration the body b brings about the video target, on the fields the path uses
+    (parse_target). Raises ValueError, or the i18n.Recusa the theme can show for a duration longer than a day."""
     texts = [k for k in TRACK_TEXTS if k in fields]
     dur = b.get("duration") if "duration" in fields else None
     if not (all(b.get(k) is None or isinstance(b[k], str) for k in texts)
-            and (dur is None or (isinstance(dur, (int, float)) and not isinstance(dur, bool) and dur >= 0))):
+            and (dur is None or (isinstance(dur, (int, float)) and not isinstance(dur, bool)
+                                 and (isinstance(dur, int) or math.isfinite(dur)) and dur >= 0))):
         raise ValueError("Send title, channel and thumb as text and duration as seconds (up to a day).")
-    if dur is not None and dur > QUEUE_DURATION_MAX_S:  # a search result can be this long: the theme shows it
+    if dur is not None and dur > QUEUE_DURATION_MAX_S:
         raise i18n.Recusa("server.queue.tooLong", "Ritmelli can't queue a video longer than a day.")
     if not is_valid_unicode(target, *(b.get(k) for k in texts)):
         raise ValueError("Send text in valid Unicode.")
+
+
+def parse_target(b, fields, search=False):
+    target = b.get("youtube_id") or b.get("url") or (b.get("query") if search else None) or ""
+    target = target.strip() if isinstance(target, str) else ""
+    if not target:
+        raise ValueError("Send a YouTube link, a video ID, or search text." if search
+                         else "Send the id of a record on the shelf, a video id or a YouTube link.")
+    m = YT_URL.search(target)
+    yid = m.group(1) if m else (target if YT_ID.match(target) else None)
+    check_track_fields(b, target, fields)
+    return target, yid
 
 
 def antes_das_parecidas(fila):
@@ -510,7 +519,7 @@ class Library:
         self.items = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
         self.version = 0
 
-    def _save(self):
+    def save(self):
         save_json(self.path, self.items)
         self.version += 1
 
@@ -523,14 +532,14 @@ class Library:
     def add(self, item):
         with self.lock:
             self.items = [x for x in self.items if x["id"] != item["id"]] + [item]
-            self._save()
+            self.save()
 
     def update(self, iid, **kw):
         with self.lock:
             it = self.get(iid)
             if it:
                 it.update(kw)
-                self._save()
+                self.save()
             return it
 
     def remove(self, iid):
@@ -540,7 +549,7 @@ class Library:
             if not it:
                 return None
             self.items.remove(it)
-            self._save()
+            self.save()
         return it
 
     def public(self):
@@ -549,10 +558,10 @@ class Library:
 
 class App:
     def __init__(self, port, data_dir, mock=False, metricas_teste=False, vigias=True, relogio=True, papel_local="pc"):
-        """vigias=False e relogio=False sao dos testes (dev/testa_comandos.py): sem as threads dos vigias (quem testa
-        chama cada volta, _volta_fila, _volta_passagem e _volta_auto, a mao) e, no --mock, sem o relogio de 10 ms do
-        MockEngine (quem testa chama o engine._mixa). papel_local="celular" e o --papel-local celular, so no --mock:
-        o Host 127.0.0.1:<porta> passa pelo pareamento como o celular da rede de casa (o guard do build)."""
+        """vigias=False and relogio=False are for the tests (dev/testa_comandos.py): no watcher threads (the test calls
+        each round by hand: _volta_fila, _volta_passagem and Automatico.auto_round) and, with --mock, no 10 ms clock in
+        the MockEngine (the test calls engine._mixa). papel_local="celular" is --papel-local celular, only with --mock:
+        the Host 127.0.0.1:<port> goes through pairing like the phone on the home network (the guard of build)."""
         if papel_local != "pc" and not mock:
             raise ValueError("papel_local only works with mock")
         self.port = port
@@ -589,30 +598,8 @@ class App:
         # os Proximos sobrepostos dividem um avanco so (comandos.pular): o em curso, ou None; muda sob a proximo_lock
         self.proximo = None
         self.proximo_lock = threading.Lock()  # antes do _qlock, e nunca com a fila_lock
-        # Automatico: a semente e o ultimo disco que o usuario escolheu; o mix, o Mix do YouTube ainda
-        # nao usado de mix_base (a semente, ou a ultima parecida quando o da semente acaba);
-        # fora, o que nao entra (tocou nesta sessao, ou o usuario tirou da fila). Vem ligado na instalacao nova; quem ja
-        # usava guardou o "auto" no config.json (o save_cfg grava a cada mudanca) e segue como estava
-        self.auto = bool(self.cfg.get("auto", True))
-        self.semente = None
-        self.mix, self.mix_base, self.ponte = None, None, None
-        self.mix_buscando, self.mix_falhou = False, 0.0
-        self.fora = set()
-        self.fora_musica = set()  # a mesma musica do que esta no fora, em outro video
-        self.mix_seq = 0  # cada parecida do Mix ganha um numero na ordem em que chegou (a ordem do Mix)
-        # o andamento do comeco e do fim de cada disco (andamento.py), medido uma vez so: a ordem das parecidas
-        self.andamentos_path = data_dir / "andamentos.json"
-        self.andamentos = (json.loads(self.andamentos_path.read_text(encoding="utf-8"))
-                           if self.andamentos_path.exists() else {})
-        self.andamentos_versao = 0
-        self.andamento_falhou = {}
-        # a versao so de audio de cada parecida que veio como video (id do video -> a faixa, ou None), procurada uma
-        # vez so: toca a faixa do album, que comeca na musica, e nao o clipe com intro
-        self.versoes_path = data_dir / "versoes_audio.json"
-        self.versoes = (json.loads(self.versoes_path.read_text(encoding="utf-8"))
-                        if self.versoes_path.exists() else {})
-        # a logica do Automatico (automatico.py), que le e muda este estado; o mix_do sai do App a cada chamada
-        self.automatico = automatico.Automatico(self, lambda yid: self.mix_do(yid))
+        self.automatico = automatico.Automatico(self, lambda yid: self.mix_do(yid), data_dir,
+                                                auto=bool(self.cfg.get("auto", True)))
         # o volume automatico: o LUFS de quem tocou sem estar na prateleira (o stream das parecidas), por youtube_id; o
         # da prateleira mora no library.json, em cada disco ("lufs")
         self.sonoridades_path = data_dir / "sonoridades.json"
@@ -662,9 +649,9 @@ class App:
         threading.Thread(target=self.metricas.vigia, args=(self.engine,), daemon=True, name="metricas").start()
         threading.Thread(target=self._vigia_fila, daemon=True).start()
         threading.Thread(target=self._conta_escuta, daemon=True).start()
-        threading.Thread(target=self.automatico._vigia_auto, daemon=True).start()
+        threading.Thread(target=self.automatico.run_auto_watcher, daemon=True).start()
         threading.Thread(target=self._vigia_passagem, daemon=True).start()
-        threading.Thread(target=self.automatico._vigia_andamento, daemon=True).start()
+        threading.Thread(target=self.automatico.run_tempo_watcher, daemon=True).start()
         # (#128) no --mock nada vai a rede sozinho: as capas do YouTube Music, as parecidas do Automatico (mix_do, e com
         # elas a versao de audio e o andamento pelo stream), o aquecimento do processo do YouTube (main, /api/aquece) e
         # a versao nova ficam de fora. A prateleira de quem testa nao vira busca no YouTube Music, e o dev/compara.py
@@ -700,7 +687,7 @@ class App:
             tr = None if tr is None else dict(tr)
             fora = virou[2] if virou is not None else None
             fila = [dict(x) for x in self.fila if x["qid"] != fora]
-            shuffle, auto, historico = self.fila_ordem is not None, self.auto, len(self.historico)
+            shuffle, auto, historico = self.fila_ordem is not None, self.automatico.auto, len(self.historico)
         snap = e.snapshot()
         snap.update(status=status, duration=None if tr is None else tr.get("duration"),
                     track=None if tr is None else self._com_bpm(  # o andamento ja medido, para o deck do tema
@@ -726,7 +713,7 @@ class App:
         try:
             e = dict(mod.estado() or {})
             cls._pedal_voz_erro = None
-        except Exception as ex:  # noqa: BLE001 - o modulo e de fora: o estado dele nao derruba o do app
+        except Exception as ex:  # o modulo e de fora: o estado dele nao derruba o do app
             msg = f"{type(ex).__name__}: {str(ex)[:120]}"
             if msg != cls._pedal_voz_erro:
                 cls._pedal_voz_erro = msg
@@ -743,7 +730,7 @@ class App:
 
     def _com_bpm(self, x):
         """A entrada da fila para a tela, com o andamento do comeco dela quando ja foi medido."""
-        t = self.tempo_of(x)
+        t = self.automatico.tempo_of(x)
         b = t and (t.get("ini") or t.get("fim"))
         return dict(x, bpm=round(b, 1)) if b else dict(x)
 
@@ -759,7 +746,7 @@ class App:
         e = self.engine
         self.grava_cfg(mic=e.devices["mic"], monitor=e.devices["monitor"],
                        vol=e.vol, mon_vol=e.mon_vol, monitor_on=e.monitor_on,
-                       voice_mon_vol=e.voice_mon_vol, auto=self.auto, volume_auto=e.volume_auto)
+                       voice_mon_vol=e.voice_mon_vol, auto=self.automatico.auto, volume_auto=e.volume_auto)
 
     def boas_vindas_pendentes(self):
         """As boas-vindas aparecem na primeira vez: prateleira vazia e nunca fechadas. Quem ja usava o app antes delas
@@ -826,7 +813,7 @@ class App:
         def faz():
             try:
                 ch = fora.pede("canal", yid=yid, limite=CANAL_LIMITE_S).get("channel")
-            except Exception as ex:  # noqa: BLE001 - fica sem o canal
+            except Exception as ex:  # fica sem o canal
                 print(f"stream: the channel of {yid} didn't come ({yt_msg(ex)})", file=sys.stderr, flush=True)
                 return
             if ch and not tr.get("channel"):
@@ -885,7 +872,7 @@ class App:
                 info = fora.pede("info", alvo=f"https://www.youtube.com/watch?v={yid}", opts={**YDL, "skip_download": True})
                 title = info.get("title") or title
                 channel = info.get("channel") or info.get("uploader")
-            except Exception:  # noqa: BLE001 - o mock segue com o rotulo
+            except Exception:  # o mock segue com o rotulo
                 pass
         item = dict(base, id=yid or f"mock-{j['id']}", title=title, youtube_id=yid,
                     channel=channel, thumb=thumb(yid),
@@ -922,7 +909,7 @@ class App:
             tr = self.engine.track
             if tr is not None and tr.get("job") == j["id"]:
                 self.engine.trocar_fonte(tr, dict(item, path=str(LIB / item["file"])))
-        except Exception as ex:  # noqa: BLE001 - o erro vai pra tela
+        except Exception as ex:  # o erro vai pra tela
             self.job_update(j, status="error", finished=time.time(),
                             error=i18n.msg("server.download.failed", "The download failed ({reason}). Check the "
                                            "link or try another video.", reason=yt_msg(ex)))
@@ -955,11 +942,11 @@ class App:
             it = self.lib.get(tr["id"])
             if it is None:
                 return
-            with e._qlock:
+            with e.state_section():
                 if pausa is not None and not e.pausa_vale(pausa):
                     return
                 it["last_pos"] = round(pos, 1)
-            self.lib._save()
+            self.lib.save()
 
     def play_item(self, item, start, loop=None, historico=True, extra=None, entrada=None, reserva=None,
                   anterior=False):
@@ -989,14 +976,14 @@ class App:
         def troca(depois):
             # a reserva e a entrada que ja nao valem nao chegam a tirar a passagem preparada de quem vale
             if reserva is not None:
-                with e._qlock:
+                with e.state_section():
                     if self.reserva is not reserva or not reserva.vale(e):
                         return None
             if not na_fila():
                 return None
             if anterior:
                 linha0, x0 = anterior
-                with e._qlock:
+                with e.state_section():
                     if not (self.historico and self.historico[-1] is x0 and e.on_line(linha0)):
                         return None  # o prato ou o historico mudou depois da escolha do Anterior
             self.close_switches()
@@ -1012,7 +999,7 @@ class App:
             if cap is None:
                 return None
             if reserva is not None:
-                with e._qlock:  # com o _lock na mao, a linha do prato nao muda desde o load
+                with e.state_section():  # with the _lock held, the platter's line hasn't changed since the load
                     reserva.publicada = e.line()
             if entrada is not None:
                 self.remove_from_queue(entrada)
@@ -1041,26 +1028,7 @@ class App:
         return True
 
     def with_engine(self, f):
-        """f(depois) com a fila_lock e o _lock do motor na mao, nessa ordem, sem esperar o _lock com a fila_lock segura:
-        a leitura do estado (o /api/state, no laco do servidor) pega a fila_lock, e o _lock pode ficar segundos com
-        outro (a troca de aparelho). Ocupado, solta a fila_lock, espera o _lock sozinho e tenta de novo; f roda uma vez
-        so e confere de novo o que precisa. O que o motor deixa em depois (o leitor que comeca, a onda, a medida) roda
-        com as duas travas soltas. Volta o que f volta."""
-        e = self.engine
-        depois = []
-        try:
-            while True:
-                with self.fila_lock:
-                    if e._lock.acquire(blocking=False):
-                        try:
-                            return f(depois)
-                        finally:
-                            e._lock.release()
-                with e._lock:
-                    pass
-        finally:
-            for g in depois:
-                g()
+        return self.engine.with_lock(self.fila_lock, f)
 
     def tocar_remoto(self, j, target, meta, historico=True, entrada=None, reserva=None, anterior=False):
         """Toca na hora pelo stream do YouTube enquanto o download do job segue por tras;
@@ -1097,7 +1065,7 @@ class App:
         info, hdr = fut.result()
         try:
             self.engine.preabre(info.get("url"), hdr)
-        except Exception as ex:  # noqa: BLE001 - sem o aberto antes, o leitor abre o dele como antes
+        except Exception as ex:  # sem o aberto antes, o leitor abre o dele como antes
             print(f"stream: the ffmpeg opened earlier failed ({str(ex)[:120]})", file=sys.stderr, flush=True)
 
     def adianta_da_busca(self, res, n):
@@ -1120,9 +1088,8 @@ class App:
         """O Future do endereco adiantado de yid (uma vez so), ou None."""
         with self._adi_lock:
             x = self._adiantados.pop(yid, None) if yid else None
-            if x is not None and x[0] is not None:  # a marca do usado: a busca que chega depois (a da LLM, a do
-                self._adiantados[yid] = (None, time.monotonic())  # lote) nao pede de novo o endereco do disco que ja
-                # toca (revisao da r12: um endereco e um ffmpeg orfao a cada uso da antecipada)
+            if x is not None and x[0] is not None:
+                self._adiantados[yid] = (None, time.monotonic())
         return x[0] if x and x[0] is not None and time.monotonic() - x[1] <= ADIANTA_S else None
 
     def _abre_stream(self, tr, target, tem_titulo):
@@ -1146,7 +1113,7 @@ class App:
                 else:
                     info, hdr = self.stream_info(target, formato)
                 break
-            except Exception as ex:  # noqa: BLE001 - o motivo vai para o log e para a tela
+            except Exception as ex:  # o motivo vai para o log e para a tela
                 motivo = yt_msg(ex)
                 print(f"stream: attempt {i + 1} of 3 failed for {target}: {motivo}", file=sys.stderr, flush=True)
                 if erro_do_video(ex):  # o video nao toca pra ninguem: tentar de novo so gasta ~2 s e o IP de casa
@@ -1173,10 +1140,9 @@ class App:
                     if e.stop(pode=para_se) is not None:
                         return
                 return
-            self.engine.error = i18n.msg("server.player.streamRefused", "YouTube didn't allow the audio to play "
-                                                                        "right away ({reason}). It will play as soon "
-                                                                        "as the download finishes.",
-                                         reason=motivo)
+            self.engine.set_error(i18n.msg("server.player.streamRefused", "YouTube didn't allow the audio to play "
+                                           "right away ({reason}). It will play as soon as the download finishes.",
+                                           reason=motivo))
             return
         yid = tr["youtube_id"] or info.get("id")
         novo = dict(tr, path=info["url"], headers=hdr, youtube_id=yid,
@@ -1203,7 +1169,7 @@ class App:
               file=sys.stderr, flush=True)
         try:
             info, hdr = self.stream_info(tr.get("youtube_id") or tr.get("alvo"))
-        except Exception as ex:  # noqa: BLE001 - sem endereco, o disco acaba como antes
+        except Exception as ex:  # sem endereco, o disco acaba como antes
             print(f"stream: the new address of {nome!r} failed ({yt_msg(ex)}): moving on to the next one",
                   file=sys.stderr, flush=True)
             desistir()
@@ -1283,7 +1249,7 @@ class App:
         Proximos ligados a ela. Uma vez so: a resolvida fica como esta."""
         if r.feita.is_set():
             return
-        with self.engine._qlock:  # o mesmo trecho em que um Proximo se liga a ela (Proximo.liga): nenhum fica de fora
+        with self.engine.state_section():  # the same stretch in which a Next joins it (Proximo.liga): none is left out
             if self.reserva is r:
                 self.reserva = None
             r.entrada = entrada
@@ -1304,8 +1270,8 @@ class App:
     def change_queue(self, change):
         """With fila_lock: change() changes the queue (and the order the user built) under the engine's _qlock, and the
         prepared passage is checked in that same stretch (_confere_preparo_sob), so the engine never switches to an
-        entry that is no longer first. Every queue change goes through here. Returns what change returns."""
-        with self.engine._qlock:
+        entry that is no longer first. Returns what change returns."""
+        with self.engine.state_section():
             r = change()
             self._confere_preparo_sob()
             return r
@@ -1342,12 +1308,6 @@ class App:
         if any(y is x for y in self.fila):
             self.remove_from_queue(x)
 
-    def _recusar(self, x):
-        """Com fila_lock: parecida que o usuario tirou da fila nao volta nesta sessao."""
-        if x.get("auto") and x.get("youtube_id"):
-            self.fora.add(x["youtube_id"])
-            self.fora_musica |= chaves_musica(x)
-
     def aleatorio(self, on):
         """Aleatorio do YouTube Music: ligar embaralha o A seguir (a ordem nova aparece na
         lista); desligar volta a ordem que o usuario montou, sem os que ja sairam. As parecidas do
@@ -1372,20 +1332,16 @@ class App:
         prateleira ou um video do YouTube, com a capa dele: nada de link de outro endereco para o PC baixar, nem de
         capa que o tema abriria."""
         iid = b.get("id")
-        it = self.lib.get(iid or "") if not remoto or isinstance(iid, str) else None
-        j = None
-        if not it:
-            target = b.get("youtube_id") or b.get("url") or ""
-            if not isinstance(target, str):
-                target = ""
-            target = target.strip()
-            if not target:
-                raise ValueError("Send the id of a record on the shelf, a video id or a YouTube link.")
-            m = YT_URL.search(target)
-            yid = m.group(1) if m else (target if YT_ID.match(target) else None)
+        by_id = isinstance(iid, str) and bool(iid)
+        target = yid = j = None
+        if not by_id or "youtube_id" in b or "url" in b:
+            target, yid = parse_target(b, TRACK_FIELDS)
             if remoto and not yid:
                 raise ValueError("A remote session can only queue a record on the shelf or a YouTube video.")
-            check_track_fields(b, target)  # every role, the PC included
+        it = self.lib.get(iid) if by_id else None
+        if not it:
+            if target is None:
+                target, yid = parse_target(b, TRACK_FIELDS)
             it = self.lib.by_youtube(yid) if yid else None
         if it:
             x = {"id": it["id"], "youtube_id": it.get("youtube_id"), "url": None, "title": it["title"],
@@ -1418,7 +1374,7 @@ class App:
             if x:
                 self.remove_from_queue(x)
                 if recusar:
-                    self._recusar(x)
+                    self.automatico.refuse(x)
             return x
 
     def esquecer(self, iid, yid):
@@ -1459,7 +1415,7 @@ class App:
     def limpar_fila(self):
         with self.fila_lock:
             for x in self.fila:
-                self._recusar(x)
+                self.automatico.refuse(x)
             self._replace_queue([], None if self.fila_ordem is None else [])
 
     def mover_na_fila(self, qid, to):
@@ -1587,7 +1543,7 @@ class App:
                 if self.fila and self.fila[0] is x:
                     e.preparar(novo, x["qid"], pode=pode, ganho=ganho, depois=depois)
             self.with_engine(publica)
-        except Exception as ex:  # noqa: BLE001 - sem a proxima pronta, ela toca no fim como antes
+        except Exception as ex:  # sem a proxima pronta, ela toca no fim como antes
             self.passagem_falhou = chave
             print(f"transition: couldn't prepare {x.get('title')!r}: {yt_msg(ex)}", file=sys.stderr, flush=True)
         finally:
@@ -1610,14 +1566,15 @@ class App:
         if v is not None:
             try:
                 cmd.avanca(self, virada=v)  # tira a virada do motor junto com a entrada dela da fila
-            except Exception as ex:  # noqa: BLE001
+            except Exception as ex:
                 print(f"transition: the switch didn't close the queue: {ex}", file=sys.stderr, flush=True)
         cap = e.captura()
         tr = cap.track
         with self.fila_lock:
             x = self.fila[0] if self.fila else None
-        if e.pronto_falhou is not None:
-            self.passagem_falhou, e.pronto_falhou = (id(tr), e.pronto_falhou), None
+        failed = e.take_prepare_failure()
+        if failed is not None:
+            self.passagem_falhou = (id(tr), failed)
         dur = tr.get("duration") if tr else None
         pode = (x is not None and dur and tr.get("path") and not e.loop
                 and cap.status in ("playing", "paused", "buffering"))
@@ -1643,7 +1600,7 @@ class App:
             if out:
                 return out
             motivo = "veio vazio"
-        except Exception as ex:  # noqa: BLE001 - sem o radio, o Mix do YouTube segura o Automatico
+        except Exception as ex:  # sem o radio, o Mix do YouTube segura o Automatico
             motivo = yt_msg(ex)
         print(f"auto: the YouTube Music radio of {yid} failed ({motivo}); using the YouTube Mix",
               file=sys.stderr, flush=True)
@@ -1658,7 +1615,7 @@ class App:
             eid, dur = t.get("videoId"), segundos(t.get("length"))
             if not eid or not YT_ID.match(eid) or eid == yid or not dur or not fits_auto(dur):
                 continue
-            artistas = ", ".join(a["name"] for a in t.get("artists") or [] if a.get("name"))
+            artistas = track_artists(t)
             tipo = (t.get("videoType") or "")[-3:]  # ATV: a faixa so de audio; OMV: o clipe; UGC: video de alguem
             out.append({"youtube_id": eid, "title": t.get("title") or eid, "duration": dur,
                         "channel": artistas or None, "thumb": thumb(eid), "tipo": tipo, "audio": tipo == "ATV"})
@@ -1681,24 +1638,6 @@ class App:
     def ligar_auto(self, on):
         return self.automatico.ligar_auto(on)
 
-    def _busca_mix(self, base):
-        return self.automatico._busca_mix(base)
-
-    def _volta_auto(self, visto=None, sinal=None):
-        return self.automatico._volta_auto(visto, sinal)
-
-    @staticmethod
-    def chave_andamento(x):
-        """Onde o andamento do disco fica guardado: o id do video, ou o do disco da prateleira sem video."""
-        if not x:
-            return None
-        return x.get("youtube_id") or (f"lib:{x['id']}" if x.get("id") else None)
-
-    def tempo_of(self, x):
-        """{"ini", "fim"} do disco, ou None ainda sem medida."""
-        c = self.chave_andamento(x)
-        return self.andamentos.get(c) if c else None
-
     @staticmethod
     def search_songs(q):
         return fora.pede("musicas", q=q)
@@ -1709,21 +1648,17 @@ class App:
                               errors="replace", timeout=timeout, cwd=str(HERE),
                               creationflags=eng.NO_WINDOW | ABAIXO_DO_NORMAL, startupinfo=eng.sem_cursor())
 
-    @staticmethod
-    def yt_error(ex):
-        return yt_msg(ex)
-
     # capa do album dos discos da prateleira ---------------------------
     @staticmethod
     def capa_musica(it):
         """A faixa do YouTube Music do disco da prateleira que veio de um video do YouTube, a da busca de musicas que e a
         mesma (mesma_faixa, a regra das parecidas): {"thumb": a capa do album ou None, "ytm_titulo": o nome da musica,
         "ytm_artista": os artistas}, ou None (musica so do YouTube, ou a busca so traz outras)."""
-        for r in fora.pede("musicas", q=busca_de(it)):
-            if r.get("videoId") and YT_ID.match(r["videoId"]) and mesma_faixa(it, r):
-                artistas = ", ".join(a["name"] for a in r.get("artists") or [] if a.get("name"))
-                return {"thumb": capa_da_musica(r), "ytm_titulo": r.get("title") or None, "ytm_artista": artistas or None}
-        return None
+        r = find_track(it, App.search_songs)
+        if r is None:
+            return None
+        return {"thumb": capa_da_musica(r), "ytm_titulo": r.get("title") or None,
+                "ytm_artista": track_artists(r) or None}
 
     def _vigia_capas(self):
         """(07/11, pedido do dono) A capa do album no lugar da miniatura do video nos discos da prateleira, como as
@@ -1740,7 +1675,7 @@ class App:
                 continue
             try:
                 v = self.capa_musica(alvo)
-            except Exception as ex:  # noqa: BLE001 - sem a busca, o disco fica com a miniatura e tenta de novo depois
+            except Exception as ex:  # sem a busca, o disco fica com a miniatura e tenta de novo depois
                 print(f"cover: couldn't look up {alvo.get('title')!r}: {yt_msg(ex)}", file=sys.stderr, flush=True)
                 time.sleep(60)
                 continue
@@ -1826,12 +1761,6 @@ class App:
                 self.lib.update(it["id"], plays=it.get("plays", 0) + 1)
 
 
-def yt_msg(ex):
-    """Erro do yt_dlp sem o prefixo 'ERROR:' nem o id entre colchetes."""
-    m = re.sub(r"^(ERROR:\s*)?(\[[^\]]+\]\s*)*", "", str(ex)).strip()
-    return m[:160] or type(ex).__name__
-
-
 class Voltas:
     """A publicacao do SSE: uma volta a cada intervalo, montada uma vez para todas as conexoes abertas. A volta e a
     captura (o state e o tick saem do mesmo App.leitura) com cada evento ja em bytes; a conexao manda dela o que mudou
@@ -1874,7 +1803,7 @@ class Voltas:
             pronta, self._nova = self._nova, asyncio.get_running_loop().create_future()
             try:
                 v = self.monta(self.volta)
-            except Exception as ex:  # noqa: BLE001 - vai para quem espera esta volta; a proxima conexao recomeca
+            except Exception as ex:  # vai para quem espera esta volta; a proxima conexao recomeca
                 self.volta = None
                 pronta.set_exception(ex)
                 pronta.exception()  # ninguem esperando: o asyncio nao reclama do erro sem leitor
@@ -2093,7 +2022,7 @@ def build(app_state):
             return j_err(i18n.msg("server.search.empty", "Type what you want to search for, or paste a YouTube link."))
         try:
             res = await loop_().run_in_executor(pool, A.search, q, n, start)
-        except Exception as ex:  # noqa: BLE001
+        except Exception as ex:
             return j_err(i18n.msg("server.search.failed", "The YouTube search failed ({reason}). Check your "
                                   "internet connection and try again.", reason=yt_msg(ex)), 502)
         for x in res:
@@ -2116,7 +2045,7 @@ def build(app_state):
         try:
             res = await loop_().run_in_executor(
                 pool_rapido, lambda: fora.pede("musica", q=q, n=n, limite=BUSCA_MUSICA_S))
-        except Exception as ex:  # noqa: BLE001
+        except Exception as ex:
             return j_err(i18n.so_texto(f"The YouTube Music search failed ({yt_msg(ex)})."), 502)
         for x in res:
             it = A.lib.by_youtube(x["youtube_id"])
@@ -2139,21 +2068,15 @@ def build(app_state):
     @r.post("/api/library")
     async def lib_add(request):
         b = await body(request)
-        target = b.get("youtube_id") or b.get("url") or b.get("query") or ""
-        target = target.strip() if isinstance(target, str) else ""
-        if not target:
-            return j_err(i18n.so_texto("Send a YouTube link, a video ID, or search text."))
-        m = YT_URL.search(target)
-        yid = m.group(1) if m else (target if YT_ID.match(target) else None)
+        try:
+            target, yid = parse_target(b, TRACK_FIELDS if b.get("play") else ("title",), search=True)
+        except ValueError as ex:
+            return j_err(getattr(ex, "msg", None) or i18n.so_texto(str(ex)))
         it = A.lib.by_youtube(yid) if yid else None
         if it:
             if b.get("play"):
                 cmd.play_shelf_record(A, it)
             return j_ok(item=it)
-        try:  # the queue's rule: with play, every field goes to the platter and the visualizer; without, the title
-            check_track_fields(b, target, TRACK_FIELDS if b.get("play") else ("title",))
-        except ValueError as ex:
-            return j_err(getattr(ex, "msg", None) or i18n.so_texto(str(ex)))
         alvo = yid or target
         j = A.job_rodando(alvo)  # ja baixando (da fila, ou um toque repetido): nao baixa de novo
         if j is None:
@@ -2374,7 +2297,7 @@ def build(app_state):
             preset.esquece()  # o filtro e o app montam o efeito do preset: o projetado com o fx.py velho sai
             efeitos[:] = fx.lista()
             E.set_effect(E.effect if fx.existe(E.effect) else "nenhum")  # o efeito que saiu da lista desliga
-        except Exception as ex:  # noqa: BLE001
+        except Exception as ex:
             return j_err(i18n.so_texto(f"Couldn't reload the effects ({str(ex)[:200]})."), 500)
         return j_ok(effects=len(efeitos), effect=E.effect)
 
@@ -2392,7 +2315,7 @@ def build(app_state):
             # o modulo travado nao prende a tela na voz clicada: no prazo, 504; o erro dele (qualquer um), 500
             if not await escolhe_voz(mod.escolhe, voz):
                 return j_err(i18n.so_texto("The voice changer pedal didn't answer."), 504)
-        except Exception as ex:  # noqa: BLE001 - o modulo e de fora: o erro dele vira a resposta
+        except Exception as ex:  # o modulo e de fora: o erro dele vira a resposta
             return j_err(i18n.so_texto(f"Couldn't change the voice ({str(ex)[:200]})."), 500)
         return j_ok(pedal_voz=A.pedal_voz())
 
@@ -2400,7 +2323,7 @@ def build(app_state):
         """O filtro no microfone em uso: {"filtro", "melhorias"} (null se nao deu para ler)."""
         try:
             m = filtro.do_microfone(E.active.get("mic"))
-        except Exception:  # noqa: BLE001 - sem ler o registro, a tela segue sem o estado do filtro
+        except Exception:  # sem ler o registro, a tela segue sem o estado do filtro
             return None
         return {"filtro": m["filtro"], "melhorias": m["melhorias"]} if m else None
 
@@ -2417,7 +2340,7 @@ def build(app_state):
             await loop_().run_in_executor(pool, lambda: E.set_devices(mic=b.get("mic"), monitor=b.get("monitor")))
         except i18n.Recusa as ex:  # a nossa: o aparelho que sumiu
             return j_err(ex.msg)
-        except Exception as ex:  # noqa: BLE001 - PortAudio fala ingles
+        except Exception as ex:  # PortAudio fala ingles
             return j_err(i18n.msg("server.devices.openFailed", "Ritmelli couldn't open that device ({reason}) and "
                                                                "went back to the previous one. Make sure that device "
                                                                "is connected and that no recording or audio editing "
@@ -2728,19 +2651,19 @@ def main():
     ap.add_argument("--metricas-teste", action="store_true",
                     help="with --mock: the usage data notice and choice work, but nothing is read from the installer "
                          "and nothing is sent (the events stay in memory)")
+    ap.add_argument("--stop-on-stdin-eof", action="store_true", help="with --mock: stop when stdin closes (dev/so_mock.py)")
     ap.add_argument("--version", action="version", version=f"Ritmelli {VERSAO}")
     a = ap.parse_args()
-    if a.metricas_teste and not a.mock:
-        sys.exit("--metricas-teste only works with --mock")
-    if a.papel_local is not None and not a.mock:
-        sys.exit("--papel-local only works with --mock")
-    dados = Path(a.data_dir) if a.data_dir else LIB
-    if a.mock:  # o download de mentira na pasta de quem usa virava disco falso na prateleira (#117)
-        dados = pastas.dados_do_mock(a.data_dir)
-        if dados is None:
-            sys.exit(f"--mock never uses the user's data ({a.data_dir}): pass another --data-dir, or none for a "
-                     "temporary copy")
+    mock_only = [f for f in ("metricas_teste", "papel_local", "stop_on_stdin_eof") if getattr(a, f) and not a.mock]
+    if mock_only:
+        sys.exit(f"--{mock_only[0].replace('_', '-')} only works with --mock")
+    dados = pastas.dados_do_mock(a.data_dir) if a.mock else Path(a.data_dir) if a.data_dir else LIB
+    if dados is None:
+        sys.exit(f"--mock never uses the user's data ({a.data_dir}): pass another --data-dir, or none for a "
+                 "temporary copy")
     A = App(a.port, dados, mock=a.mock, metricas_teste=a.metricas_teste, papel_local=a.papel_local or "pc")
+    if a.stop_on_stdin_eof:
+        pastas.call_when_stdin_ends(A.pede_desligar)
     if not a.mock:  # no --mock, o processo do YouTube so abre no primeiro pedido de quem testa (#128)
         threading.Thread(target=fora.aquece, daemon=True).start()  # o primeiro pedido ao YouTube ja acha o de reserva
     d = A.engine.active
@@ -2775,10 +2698,10 @@ def main():
 def roda(A, a):
     """O servidor ate desligar, e o audio fechado no fim. Com a janela, ela fecha junto."""
     try:
-        asyncio.run(servir(A, build(A), a.port, rede=not (a.so_local or a.mock)))
-    except (GracefulExit, KeyboardInterrupt):
-        pass
+        with contextlib.suppress(GracefulExit, KeyboardInterrupt):
+            asyncio.run(servir(A, build(A), a.port, rede=not (a.so_local or a.mock)))
     finally:
+        sonoridade.stop_measurements(eng.mata)
         A.metricas.fecha()  # o uso ate aqui e o que ficou na fila, antes de o audio fechar (no maximo 3 s sem rede)
         A.engine.close()
         if A.janela is not None:

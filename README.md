@@ -539,22 +539,24 @@ everything one by one).
 A new test is named `dev/test_*.py` (in English; the older ones are `dev/testa_*.py`). Either kind goes into one of
 the lists in `dev/testa_tudo.py` (`STDLIB`, `COMPLETO`, `LONG_TESTS`, `MICROFONE`, or `PASSOS` for a step of its own in
 `testa.yml`). A test or tool that only runs by hand says so in a comment at the top of the file, before the docstring:
-`# manual: <command> precisa de <device>`. `dev/testa_tudo.py` fails on a `dev/test_*.py` or `dev/testa_*.py` that runs
-nowhere, on a `manual:` file that runs in the check, and when `testa.yml` stops calling one of its modes.
+`# manual: <command> precisa de <device>`. `dev/testa_tudo.py` fails on a test of the `git ls-files`, in any folder, that
+runs nowhere (a `.ps1` test runs through its `PS1_TESTS` row, a `monta.yml` job and step), on a `manual:` file that runs in the checks, and when a mode of its
+`REQUIRED_MODES` leaves the required check (its job, step, command or condition in `testa.yml`).
 
 If you changed the interface, also run `dev/fitcheck.py` against the `--mock` server (see
 [Work on the interface without audio](#work-on-the-interface-without-audio)): every window and phone size it checks
 has to pass, as it does on `main`. If you changed the welcome screen, also run it with `--boas-vindas`.
 
 If you changed the audio engine, the server, the filter or the updates, also run the tests that cover your change.
-The description at the top of each file (in Portuguese) says exactly what it checks.
+The description at the top of each test file explains what it checks.
 
 - The audio engine (`engine.py`, `sonoridade.py`, `transicao.py`): `dev/testa_ganho.py`, `dev/testa_preabre.py`,
   `dev/testa_congela.py`, `dev/testa_microfone.py`, `dev/testa_passagens.py` (the week of transition records in
   `logs/passagens/`), `dev/testa_passagem.py` (synthetic pairs through the real engine, one per kind of transition;
   `--codigo <folder>` runs the same pairs against the engine of another checkout, such as the base of your PR),
   `dev/testa_transicao.py` (the transition math, `transicao.py`, on the engine's calls recorded from those pairs;
-  `--grava` records them again) and `dev/testa_anel.py`.
+  `--grava` records them again), `dev/test_stretch_outgoing.py` (`esticar_saida` through the real Rubber Band: where
+  the outgoing track plays and no gap at its start) and `dev/testa_anel.py`.
 - The server and YouTube access (`server.py`, `comandos.py`, `automatico.py`, `yt_fora.py`, `yt_erros.py`):
   `dev/testa_comandos.py`, `dev/testa_automatico.py`, `dev/testa_adianta.py`, `dev/testa_rapido.py`,
   `dev/testa_vivo.py` and `dev/testa_musica.py`.

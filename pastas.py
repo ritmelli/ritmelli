@@ -11,6 +11,7 @@ import ntpath
 import os
 import re
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -75,6 +76,14 @@ def migra():
         return False
     DADOS, LIB, LOGS = DADOS_NOVA, DADOS_NOVA / "library", DADOS_NOVA / "logs"
     return True
+
+
+def call_when_stdin_ends(fn):
+    def wait():
+        while os.read(0, 65536):
+            pass
+        fn()
+    threading.Thread(target=wait, daemon=True).start()
 
 
 def dados_do_mock(pedida=None):
@@ -235,19 +244,19 @@ def disarm(first, own):
     label, load = first
     try:
         tasks.append(load())
-    except Exception as ex:  # noqa: BLE001 - the running task is removed all the same
+    except Exception as ex:  # the running task is removed all the same
         errors.append(f"{label}: {type(ex).__name__}: {ex}")
     tasks.append(own)
     for name, delete, _ in tasks:
         try:
             delete()
-        except Exception as ex:  # noqa: BLE001 - the other task is removed all the same
+        except Exception as ex:  # the other task is removed all the same
             errors.append(f"{name}: {type(ex).__name__}: {ex}")
     for name, _, exists in tasks:
         try:
             if exists():
                 errors.append(f"the task {name} is still there")
-        except Exception as ex:  # noqa: BLE001
+        except Exception as ex:
             errors.append(f"{name}: {type(ex).__name__}: {ex}")
     return errors
 

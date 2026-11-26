@@ -5,10 +5,12 @@ nível dos blocos, a escolha entre fade e final seco, a entrada do próximo na p
 grades e fases já medidas (a velocidade de cada lado, a batida em que o próximo cai, a virada e a troca de grave). O
 motor lê o áudio, mede a fase antes e depois de esticar, estica, põe o eco, filtra o grave e monta os blocos. Quando
 a que sai acelera para casar com a próxima, o trecho em que a fase dela é medida começa mais cedo no disco, para durar
-pelo menos `FASE_MIN_S` na saída já acelerada (#196). O
-`dev/testa_transicao.py` roda o `transicao.py` sobre as chamadas que o motor gravou nos pares da banca das passagens e
-confere que esse trecho, com a que sai a `1 + SAI_MAX`, não entra na rampa dela (`FASE_MIN_S·(1+SAI_MAX) ≤
-FASE_ANTES_S + 0,5`, com a folga de 0,5 s lida do `transicao.rampa_saida`, #208).
+pelo menos `FASE_MIN_S` na saída já acelerada (#196): o começo dele é o `transicao.phase_excerpt_start`, que o motor
+chama. O `dev/testa_transicao.py` roda o `transicao.py` sobre as chamadas que o motor gravou nos pares da banca das
+passagens e roda o `phase_excerpt_start` com a que sai a `1 ± SAI_MAX`, conferindo que o trecho não entra na rampa
+dela (`transicao.rampa_saida`) e dura pelo menos `FASE_MIN_S` (#208). O JSON guarda uma impressão digital da banca
+(os tokens do `dev/testa_passagem.py`, sem comentários e docstrings), e o teste reprova quando a banca mudou desde a
+gravação: o `--grava` regrava.
 
 `engine.py`: mistura em WASAPI 48 kHz, blocos de 10 ms; ffmpeg decodifica; voz com no
 máximo ~80 ms de atraso; `MockEngine` sem áudio para teste (o relógio de 10 ms dele chama o `_mixa`; com o
@@ -40,10 +42,13 @@ na The Real Slim Shady), nunca passa por ele, e todas saem 2 ms atrasadas, sempr
 interpretador do áudio); o stream, no próprio leitor, com uma estimativa aos 8 s e aos 30 s e a
 medida inteira no fim da primeira vez que toca do começo ao fim. A medida fica no `library.json`
 (`lufs`) ou, sem o disco na prateleira, no `sonoridades.json` do `--data-dir`; o servidor mede
-a prateleira aos poucos. Na prateleira de 14/11, as músicas iam de -19,2 a -5,3 LUFS (mediana
+a prateleira aos poucos. Todo ffmpeg da medida passa pelo `mede_arquivo`, e o servidor, ao desligar, mata e espera
+os que ainda medem (`stop_measurements`): nenhum fica segurando um arquivo depois que ele sai (`dev/test_mock_stop.py`). Na prateleira de 14/11, as músicas iam de -19,2 a -5,3 LUFS (mediana
 -9,3); o alvo de -11 (o do modo "Alto" do Spotify, que também sobe com limitador) deixa o Sultans
 of Swing (+3,1 dB) com 0,2% do tempo acima de 3 dB de limitação, e em -10 seriam 2,7%.
-`dev/testa_ganho.py` testa a medida, o limitador e o motor sem som.
+`dev/testa_ganho.py` testa a medida, o limitador e o motor sem som; o custo do `_mixa` com o ganho e o limitador vale
+pela mediana de 400 blocos e pela média sem os 4 mais lentos (uma ou duas chamadas que a máquina segura por dezenas de
+ms mexem na média, não no custo de cada bloco; uma lentidão que volta a cada poucos blocos segue reprovando).
 
 O esticamento da passagem no tempo (o `esticar` e o `esticar_saida`, a velocidade como no vinil e o tom de volta pela
 Rubber Band do pedalboard) fica no processo do motor, na thread do planejador. Ele leva de 2 a 8 s por passagem, e a
@@ -86,6 +91,13 @@ medido (a decisão não depende disso, porque não houve seca a tirar). Nos PCs 
 evento "audio" da telemetria (o `secas_esticamento`, as secas com a Rubber Band em curso): com secas ali, a medida
 se repete, com a mesma ferramenta, num Windows de teste com um jogo.
 
+A saída da Rubber Band vem alinhada com a entrada, mas só soa depois de uns 45 ms: o `esticar_saida` não mede atraso
+nenhum, e os primeiros `RUBBER_BAND_WARMUP` (60 ms) dele são o próprio áudio reamostrado, que passa para o da Rubber
+Band em `RUBBER_BAND_CROSSFADE`. O `dev/test_stretch_outgoing.py` confere a posição dos ataques com um tom forte por
+baixo deles (#197), o tom de volta ao original depois da rampa, o nível sem buraco no começo, com ruído de banda
+larga, e a entrada mais curta que o aquecimento. O mesmo nível no começo do `esticar`, o lado da próxima, que ainda
+sai mudo, roda ali como falha conhecida da #264: passa a contar quando passar.
+
 ## O bloco e a linha de reprodução
 
 Cada `Deck` tem uma linha de reprodução, um contador que o `load`, o `stop`, o `seek` e o `resume` que recomeça do fim
@@ -118,7 +130,12 @@ linha do prato, os mesmos dois campos da `Captura`), e o `on_line(t)` diz, sob o
 de `t`. A virada que o motor fez sozinho sai pelo `take_switch` (sob o `_qlock`, só a que ainda é a pendente), a
 passagem preparada pelo `drop_prepared` (sob o `_qlock`; o `cancelar_pronto` pega a trava), o ganho medido antes das
 travas pelo `gain_for`, o nome novo do disco no prato pelo `update_track`, a faixa, a posição, o estado e a virada de
-uma leitura só pelo `platter_state` e os arquivos que o motor lê pelo `tracks_in_use`. O `snapshot` não traz o estado,
+uma leitura só pelo `platter_state` e os arquivos que o motor lê pelo `tracks_in_use`. Quem precisa do `_qlock` junto
+com o estado dele (o servidor e os comandos) o pega pelo `state_section()`, que segura a trava no corpo do `with` e
+não a entrega; o `_lock` vem pelo `with_lock(outer, f)`, que pega a trava de fora (a `fila_lock` do `App`) e nunca
+espera o `_lock` com ela na mão, na ordem de [As travas](comandos.md#as-travas). A falha de preparar a próxima sai
+pelo `take_prepare_failure` (lida e limpa sob o `_qlock`), e o erro da tela entra pelo `set_error`: o `error` só se
+lê. O `snapshot` não traz o estado,
 a faixa nem a duração: o servidor lê os três com a posição e a fila numa captura só (`App.leitura`).
 
 A pausa vale no limite entre blocos. O `pause` devolve uma `Pausa`: com um bloco do prato retirado e ainda não

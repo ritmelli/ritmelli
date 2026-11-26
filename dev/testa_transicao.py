@@ -10,6 +10,11 @@ transicao.py e o numpy. Toda funcao publica do transicao.py tem de ter ao menos 
 Regravar e para quando uma conta muda de proposito (o PR diz por que) ou quando a banca ganha par: a banca passa antes,
 e os casos novos saem do motor de verdade, nunca escritos a mao.
 
+The JSON keeps a fingerprint of the bench (its tokens, without comments and docstrings: unlike ast.dump, the same on
+Python 3.12 and 3.13), and the check fails when the bench changed since the recording: a pair that changed has to be
+recorded again. The fingerprint itself is checked on a small source (FINGERPRINT_CASES): docstring and comment edits
+keep it, and code edits, a statement on a docstring's line among them, change it.
+
 O nivel dos blocos (a lista (t0, quadros, rms) do leitor do motor) vai uma vez so, no "niveis", e cada chamada aponta
 para ele; as colunas dele (no "colunas", tambem uma vez cada) e os arrays vao em base64 dos bytes (zlib), para a volta
 ser exata.
@@ -20,10 +25,12 @@ import ast
 import base64
 import hashlib
 import inspect
+import io
 import json
 import math
 import runpy
 import sys
+import tokenize
 import zlib
 from pathlib import Path
 
@@ -32,7 +39,7 @@ import numpy as np
 DEV = Path(__file__).resolve().parent
 RAIZ = DEV.parent
 sys.path.insert(0, str(RAIZ))
-import transicao  # noqa: E402
+import transicao
 
 CASOS = DEV / "testa_transicao.json"
 BANCA = DEV / "testa_passagem.py"
@@ -110,6 +117,36 @@ class Gravador:
         setattr(transicao, nome, gravado)
 
 
+def _docstring_starts(source):
+    lines = source.split("\n")
+    return {(v.lineno, len(lines[v.lineno - 1].encode()[:v.col_offset].decode())) for n in ast.walk(ast.parse(source))
+            if isinstance(n, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and n.body
+            and isinstance(n.body[0], ast.Expr) and isinstance(v := n.body[0].value, ast.Constant)
+            and isinstance(v.value, str)}
+
+
+def bench_fingerprint(path=BANCA):
+    return source_fingerprint(path.read_text(encoding="utf-8"))
+
+
+def source_fingerprint(source):
+    docstrings = _docstring_starts(source)
+    skip = {tokenize.COMMENT, tokenize.NL, tokenize.ENCODING, tokenize.ENDMARKER}
+    kept, in_docstring = [], False
+    for t in tokenize.generate_tokens(io.StringIO(source).readline):
+        if t.type in skip:
+            continue
+        if t.type == tokenize.STRING and (in_docstring or t.start in docstrings):
+            in_docstring = True
+            continue
+        if in_docstring:
+            in_docstring = False
+            if t.type == tokenize.NEWLINE or t.exact_type == tokenize.SEMI:
+                continue
+        kept.append(f"{tokenize.tok_name[t.type]} {t.string}")
+    return hashlib.sha1("\n".join(kept).encode()).hexdigest()
+
+
 def grava():
     g = Gravador()
     for nome in _publicas():
@@ -134,7 +171,7 @@ def grava():
         return 1
     dados = {"sobre": "gerado por: python dev/testa_transicao.py --grava (as chamadas do motor ao transicao.py nos "
                       "pares da banca das passagens)",
-             "colunas": g.colunas, "niveis": g.niveis, "casos": g.casos}
+             "bench": bench_fingerprint(), "colunas": g.colunas, "niveis": g.niveis, "casos": g.casos}
     CASOS.write_text(json.dumps(dados, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     por_fn = {}
     for c in g.casos:
@@ -175,41 +212,72 @@ def _igual(a, b):
     return a == b
 
 
-def engine_constant_from_its_text(name):
+FINGERPRINT_BASE = 'r"""Module."""\n\n\ndef f(rms):\n    """Doc."""\n    return rms\n'
+FINGERPRINT_CASES = (
+    ("a docstring edited", True, ('"""Doc."""', '"""Other doc."""')),
+    ("a function's docstring removed", True, ('    """Doc."""\n', "")),
+    ("a comment added", True, ("return rms\n", "return rms  # note\n")),
+    ("two U+2028 in the module docstring", True, ("Module.", "Mod\u2028\u2028ule.")),
+    ("a statement on the docstring's line", False, ('"""Doc."""', '"""Doc."""; rms *= 0.5')),
+    ("a code edit", False, ("return rms", "return rms * 2")),
+)
+
+
+def fingerprint_ignores_only_docstrings_and_comments():
+    base = source_fingerprint(FINGERPRINT_BASE)
+    failures = []
+    for what, same, (old, new) in FINGERPRINT_CASES:
+        if (source_fingerprint(FINGERPRINT_BASE.replace(old, new)) == base) != same:
+            failures.append(f"the bench fingerprint {'changed' if same else 'stayed the same'} with {what}")
+    return failures
+
+
+def engine_takes_the_excerpt_from_transicao():
     tree = ast.parse((RAIZ / "engine.py").read_text(encoding="utf-8"))
-    for node in tree.body:
-        if (isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
-                and node.targets[0].id == name):
-            try:
-                return ast.literal_eval(node.value)
-            except ValueError:
-                break
-    raise LookupError(f"engine.py has no top-level {name} written as a literal")
+    plan = next((n for c in tree.body if isinstance(c, ast.ClassDef) and c.name == "Engine" for n in c.body
+                 if isinstance(n, ast.FunctionDef) and n.name == "_plano_dois"), None)
+    if plan is None:
+        return ["engine.py has no Engine._plano_dois"]
+    expected = {"i2": "saida_a(swap)", "i1": "transicao.phase_excerpt_start(saida_a(virar - FASE_ANTES_S), i2)"}
+    stores = {name: [] for name in expected}
+    for node in ast.walk(plan):
+        if isinstance(node, ast.Name) and node.id in stores and not isinstance(node.ctx, ast.Load):
+            stores[node.id].append(node)
+    failures = []
+    for name, source in expected.items():
+        values = [n.value for n in ast.walk(plan) if isinstance(n, ast.Assign) and len(n.targets) == 1
+                  and isinstance(n.targets[0], ast.Name) and n.targets[0].id == name]
+        want = ast.dump(ast.parse(source, mode="eval").body)
+        if len(stores[name]) != 1 or len(values) != 1 or ast.dump(values[0]) != want:
+            failures.append(f"Engine._plano_dois sets {name} only as {name} = {source} "
+                            f"({[ast.unparse(v) for v in values]}, {len(stores[name])} store(s))")
+    return failures
 
 
 def phase_excerpt_stays_after_the_outgoing_ramp():
-    try:
-        fase_min_s = engine_constant_from_its_text("FASE_MIN_S")
-    except LookupError as ex:
-        return [str(ex)]
     virar = 100.0
-    falhas = []
+    failures = []
     for sa in (1 + transicao.SAI_MAX, 1 - transicao.SAI_MAX):
-        n_ra, ramp_start = transicao.rampa_saida(sa, virar)
-        disc_seconds_in_ramp = n_ra * (1 + sa) / 2 / transicao.SR
-        ramp_margin = virar - transicao.FASE_ANTES_S - (ramp_start + disc_seconds_in_ramp)
-        excerpt_from_switch = max(transicao.FASE_ANTES_S, fase_min_s * sa)
-        constant_speed_from_switch = transicao.FASE_ANTES_S + ramp_margin
-        exceeds = excerpt_from_switch > constant_speed_from_switch + 1e-9
-        print(f"sa {sa:.2f}: max(FASE_ANTES_S, FASE_MIN_S * sa) = {excerpt_from_switch:.2f} s "
-              f"{'>' if exceeds else '<='} FASE_ANTES_S + the ramp margin ({ramp_margin:.2f} s) = "
-              f"{constant_speed_from_switch:.2f} s")
-        if exceeds:
-            falhas.append(f"with the outgoing track at {sa:.2f}, FASE_MIN_S ({fase_min_s} s) of its output goes back "
-                          f"{excerpt_from_switch:.2f} s of disc from the switch, into its speed ramp, which ends "
-                          f"{constant_speed_from_switch:.2f} s before it "
-                          f"(FASE_MIN_S * (1 + SAI_MAX) <= FASE_ANTES_S + {ramp_margin:.2f})")
-    return falhas
+        n_ra, ideal_start = transicao.rampa_saida(sa, virar)
+        ramp_start = ideal_start + transicao.BLOCK / transicao.SR
+        ramp_end = ramp_start + n_ra * (1 + sa) / 2 / transicao.SR
+
+        def output_at(t):
+            return n_ra + round((t - ramp_end) * transicao.SR / sa)
+        swap = output_at(virar)
+        start = transicao.phase_excerpt_start(output_at(virar - transicao.FASE_ANTES_S), swap)
+        start_on_disc = ramp_end + (start - n_ra) * sa / transicao.SR
+        length = (swap - start) / transicao.SR
+        print(f"sa {sa:.2f}: the phase excerpt starts at {start_on_disc:.2f} s of the disc and lasts {length:.2f} s "
+              f"of output; the speed ramp ends at {ramp_end:.2f} s, the swap is at {virar:.2f} s")
+        if start < n_ra:
+            failures.append(f"with the outgoing track at {sa:.2f}, the phase excerpt (transicao.phase_excerpt_start) "
+                            f"starts at {start_on_disc:.2f} s of the disc, inside its speed ramp (until "
+                            f"{ramp_end:.2f} s)")
+        if length < transicao.FASE_MIN_S:
+            failures.append(f"with the outgoing track at {sa:.2f}, the phase excerpt (transicao.phase_excerpt_start) "
+                            f"lasts {length:.2f} s of output, less than FASE_MIN_S ({transicao.FASE_MIN_S} s)")
+    return failures
 
 
 def confere():
@@ -236,7 +304,11 @@ def confere():
     sem = [n for n in _publicas() if n not in por_fn]
     if sem:
         falhas.append(f"funcao publica do transicao.py sem caso gravado: {', '.join(sem)}")
-    falhas += phase_excerpt_stays_after_the_outgoing_ramp()
+    if dados.get("bench") != bench_fingerprint():
+        falhas.append(f"the bench ({BANCA.name}) changed since {CASOS.name} was recorded: python dev/testa_transicao.py "
+                      "--grava")
+    falhas += (phase_excerpt_stays_after_the_outgoing_ramp() + engine_takes_the_excerpt_from_transicao()
+               + fingerprint_ignores_only_docstrings_and_comments())
     for f in falhas:
         print(f"FALHA {f}")
     print("ok" if not falhas else f"{len(falhas)} falha(s)")

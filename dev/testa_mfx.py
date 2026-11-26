@@ -19,8 +19,8 @@ from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import pastas  # noqa: E402
-from microfone import microfone as mf  # noqa: E402
+import pastas
+from microfone import microfone as mf
 
 
 class RegistroFalso:
@@ -48,42 +48,42 @@ class RegistroFalso:
         base = raiz.caminho if isinstance(raiz, self.Chave) else raiz
         return f"{base}\\{sub}".lower()
 
-    def OpenKey(self, raiz, sub, reservado=0, acesso=0):  # noqa: N802 - o nome do winreg
+    def OpenKey(self, raiz, sub, reservado=0, acesso=0):  # o nome do winreg
         c = self._caminho(raiz, sub)
         if c not in self.chaves:
             raise FileNotFoundError(c)
         return self.Chave(self, c)
 
-    def CreateKeyEx(self, raiz, sub, reservado=0, acesso=0):  # noqa: N802
+    def CreateKeyEx(self, raiz, sub, reservado=0, acesso=0):
         c = self._caminho(raiz, sub)
         partes = c.split("\\")
         for i in range(2, len(partes) + 1):  # como no registro de verdade, os pais nascem junto
             self.chaves.setdefault("\\".join(partes[:i]), {})
         return self.Chave(self, c)
 
-    def QueryValueEx(self, chave, nome):  # noqa: N802
+    def QueryValueEx(self, chave, nome):
         v = self.chaves[chave.caminho].get(nome.lower())
         if v is None:
             raise FileNotFoundError(nome)
         return v[1], v[2]
 
-    def SetValueEx(self, chave, nome, reservado, tipo, valor):  # noqa: N802
+    def SetValueEx(self, chave, nome, reservado, tipo, valor):
         self.chaves[chave.caminho][nome.lower()] = (nome, list(valor) if tipo == self.REG_MULTI_SZ else valor, tipo)
 
-    def DeleteValue(self, chave, nome):  # noqa: N802
+    def DeleteValue(self, chave, nome):
         if self.chaves[chave.caminho].pop(nome.lower(), None) is None:
             raise FileNotFoundError(nome)
 
-    def DeleteKey(self, raiz, sub):  # noqa: N802
+    def DeleteKey(self, raiz, sub):
         del self.chaves[self._caminho(raiz, sub)]
 
-    def EnumValue(self, chave, i):  # noqa: N802
+    def EnumValue(self, chave, i):
         vs = list(self.chaves[chave.caminho].values())
         if i >= len(vs):
             raise OSError("sem mais valores")
         return vs[i]
 
-    def EnumKey(self, chave, i):  # noqa: N802
+    def EnumKey(self, chave, i):
         base = chave.caminho + "\\"
         subs = sorted({c[len(base):].split("\\")[0] for c in self.chaves if c.startswith(base)})
         if i >= len(subs):
@@ -158,7 +158,7 @@ class Base(unittest.TestCase):
 class TestaMfx(Base):
     def test_notebook(self):
         antes = self.notebook()
-        self.assertTrue(mf._pendura(EP))  # noqa: SLF001
+        self.assertTrue(mf._pendura(EP))
         self.assertEqual(self.le(mf.EFX_LISTA), [EFX_FM, mf.CLSID])
         self.assertEqual(self.le(mf.MFX_LISTA), [HOST0], "o hospedeiro no lugar do MFX da Fortemedia")
         self.assertEqual(self.vaga(0), MFX_FM, "a vaga 0 carrega a Fortemedia")
@@ -171,9 +171,9 @@ class TestaMfx(Base):
         k = self.reg.OpenKey("HKLM", f"{mf.CAPTURA}\\{EP}\\FxProperties")
         self.assertTrue(mf.nosso(k))
         self.assertTrue(mf.no_mfx(k))
-        self.assertFalse(mf._pendura(EP), "pendurar de novo mudou algo")  # noqa: SLF001
+        self.assertFalse(mf._pendura(EP), "pendurar de novo mudou algo")
         self.assertEqual(self.le(mf.MFX_LISTA), [HOST0])
-        self.assertTrue(mf._devolve(EP))  # noqa: SLF001
+        self.assertTrue(mf._devolve(EP))
         self.assertEqual(self.reg.valores(fx_de(EP)), antes, "o devolver nao deixou as vagas como eram")
 
     def test_dois_mfx_do_fabricante(self):
@@ -181,54 +181,54 @@ class TestaMfx(Base):
         r = self.reg
         antes = self.microfone({mf.MFX_LISTA: ([MFX_OUTRO, MFX_FM], r.REG_MULTI_SZ),
                                 mf.MODOS_MFX: (list(MODOS), r.REG_MULTI_SZ)})
-        mf._pendura(EP)  # noqa: SLF001
+        mf._pendura(EP)
         self.assertEqual(self.le(mf.MFX_LISTA), [MFX_OUTRO, HOST0])
         self.assertEqual(self.vaga(0), MFX_FM)
-        mf._devolve(EP)  # noqa: SLF001
+        mf._devolve(EP)
         self.assertEqual(self.reg.valores(fx_de(EP)), antes)
 
     def test_mfx_simples(self):
         r = self.reg
         antes = self.microfone({mf.EFX: (EFX_FM, r.REG_SZ), mf.MFX: (MFX_FM, r.REG_SZ),
                                 mf.MODOS_MFX: ([mf.MODO_PADRAO, mf.MODO_RAW], r.REG_MULTI_SZ)})
-        mf._pendura(EP)  # noqa: SLF001
+        mf._pendura(EP)
         self.assertEqual(self.le(mf.MFX_LISTA), [HOST0])
         self.assertIsNone(self.le(mf.MFX), "o MFX simples ficou junto com a lista")
-        self.assertFalse(mf._pendura(EP))  # noqa: SLF001
-        mf._devolve(EP)  # noqa: SLF001
+        self.assertFalse(mf._pendura(EP))
+        mf._devolve(EP)
         self.assertEqual(self.reg.valores(fx_de(EP)), antes)
 
     def test_sem_raw(self):
         """MFX do fabricante que nao cobre o RAW: o raw pula o MFX e ficaria sem musica, entao fica tudo no EFX."""
         antes = self.notebook(modos=[mf.MODO_PADRAO])
-        mf._pendura(EP)  # noqa: SLF001
+        mf._pendura(EP)
         self.assertEqual(self.le(mf.MFX_LISTA), [MFX_FM])
         self.assertIsNone(self.vaga(0))
         k = self.reg.OpenKey("HKLM", f"{mf.CAPTURA}\\{EP}\\FxProperties")
         self.assertFalse(mf.no_mfx(k))
-        mf._devolve(EP)  # noqa: SLF001
+        mf._devolve(EP)
         self.assertEqual(self.reg.valores(fx_de(EP)), antes)
 
     def test_sem_mfx(self):
         """Interface de audio sem processamento do fabricante: nada na lista de MFX."""
         antes = self.microfone({})
-        mf._pendura(EP)  # noqa: SLF001
+        mf._pendura(EP)
         self.assertIsNone(self.le(mf.MFX_LISTA))
         self.assertTrue(mf.nosso(self.reg.OpenKey("HKLM", f"{mf.CAPTURA}\\{EP}\\FxProperties")))
-        mf._devolve(EP)  # noqa: SLF001
+        mf._devolve(EP)
         self.assertEqual(self.reg.valores(fx_de(EP)), antes)
 
     def test_vagas_por_fabricante(self):
         """Dois microfones com o mesmo MFX dividem a vaga; outro fabricante pega a seguinte."""
         self.notebook()
         self.notebook(EP2, mfx=MFX_OUTRO)
-        mf._pendura(EP)  # noqa: SLF001
-        mf._pendura(EP2)  # noqa: SLF001
+        mf._pendura(EP)
+        mf._pendura(EP2)
         self.assertEqual(self.le(mf.MFX_LISTA, EP2), [HOST1])
         self.assertEqual((self.vaga(0), self.vaga(1)), (MFX_FM, MFX_OUTRO))
         ep3 = "{99999999-0000-4000-8000-000000000003}"
         self.notebook(ep3)
-        mf._pendura(ep3)  # noqa: SLF001
+        mf._pendura(ep3)
         self.assertEqual(self.le(mf.MFX_LISTA, ep3), [HOST0])
         self.assertIsNone(self.vaga(2))
 
@@ -239,27 +239,27 @@ class TestaMfx(Base):
         for n in range(len(mf.HOSPEDES)):
             r.SetValueEx(raiz, f"_hospede{n}", 0, r.REG_SZ, f"{{0000000{n}-0000-4000-8000-000000000000}}")
         self.notebook()
-        mf._pendura(EP)  # noqa: SLF001
+        mf._pendura(EP)
         self.assertEqual(self.le(mf.MFX_LISTA), [MFX_FM])
 
     def test_modos_perderam_o_raw(self):
         """Um driver novo tirou o RAW dos modos do MFX: o hospedeiro sai e a Fortemedia volta para a lista."""
         self.notebook()
-        mf._pendura(EP)  # noqa: SLF001
+        mf._pendura(EP)
         r = self.reg
         r.SetValueEx(r.OpenKey("HKLM", f"{mf.CAPTURA}\\{EP}\\FxProperties"), mf.MODOS_MFX, 0, r.REG_MULTI_SZ,
                      [mf.MODO_PADRAO])
-        self.assertTrue(mf._pendura(EP))  # noqa: SLF001
+        self.assertTrue(mf._pendura(EP))
         self.assertEqual(self.le(mf.MFX_LISTA), [MFX_FM])
 
     def test_driver_reescreveu(self):
         """Um driver novo reescreveu a lista com outro MFX: o hospedeiro passa a carregar o novo, em outra vaga."""
         self.notebook()
-        mf._pendura(EP)  # noqa: SLF001
+        mf._pendura(EP)
         r = self.reg
         r.SetValueEx(r.OpenKey("HKLM", f"{mf.CAPTURA}\\{EP}\\FxProperties"), mf.MFX_LISTA, 0, r.REG_MULTI_SZ,
                      [MFX_OUTRO])
-        self.assertTrue(mf._pendura(EP))  # noqa: SLF001
+        self.assertTrue(mf._pendura(EP))
         self.assertEqual(self.le(mf.MFX_LISTA), [HOST1])
         self.assertEqual(self.vaga(1), MFX_OUTRO)
 
@@ -279,17 +279,153 @@ class TestaMfx(Base):
         r.SetValueEx(salvo, "_sem_melhorias", 0, r.REG_DWORD, 0)
         r.SetValueEx(fx, mf.EFX_LISTA, 0, r.REG_MULTI_SZ, [EFX_FM, mf.CLSID])
         r.SetValueEx(fx, mf.LFX, 0, r.REG_SZ, mf.CLSID)
-        self.assertTrue(mf._pendura(EP))  # noqa: SLF001
+        self.assertTrue(mf._pendura(EP))
         self.assertEqual(self.le(mf.MFX_LISTA), [HOST0])
         self.assertEqual(r.QueryValueEx(salvo, "_versao")[0], mf.VERSAO_SALVO)
-        mf._devolve(EP)  # noqa: SLF001
+        mf._devolve(EP)
         self.assertEqual(self.reg.valores(fx_de(EP)), antes)
 
     def test_esquece_hospedes(self):
         self.notebook()
-        mf._pendura(EP)  # noqa: SLF001
-        mf._esquece_hospedes()  # noqa: SLF001
+        mf._pendura(EP)
+        mf._esquece_hospedes()
         self.assertIsNone(self.vaga(0))
+
+
+class TestEndpointWithoutFxProperties(Base):
+    def _endpoint(self, state, fx_properties=False):
+        r = self.reg
+        props = r.CreateKeyEx(r.HKEY_LOCAL_MACHINE, f"{mf.CAPTURA}\\{EP}\\Properties")
+        r.SetValueEx(props, mf.SEM_MELHORIAS, 0, r.REG_DWORD, 0)
+        if state is not None:
+            r.SetValueEx(r.OpenKey(r.HKEY_LOCAL_MACHINE, f"{mf.CAPTURA}\\{EP}"), "DeviceState", 0, r.REG_DWORD, state)
+        if fx_properties:
+            r.CreateKeyEx(r.HKEY_LOCAL_MACHINE, f"{mf.CAPTURA}\\{EP}\\FxProperties")
+        real_create = r.CreateKeyEx
+        self.create_error = PermissionError(13, "Access is denied")
+
+        def create(root, sub, reserved=0, access=0):
+            if sub.lower().endswith("\\fxproperties"):
+                raise self.create_error
+            return real_create(root, sub, reserved, access)
+        self.enterContext(mock.patch.object(r, "CreateKeyEx", create))
+
+    def test_a_device_not_present_is_left_out_untouched(self):
+        self._endpoint(0x31000004)
+        with self.assertRaises(mf.LockedEndpointNotPresent):
+            mf._pendura(EP)
+        self.assertNotIn(f"HKLM\\{mf.SALVO}\\{EP}".lower(), self.reg.chaves, "nothing saved for it")
+
+    def test_an_active_endpoint_still_fails(self):
+        for state in (1, 0x10000001):
+            with self.subTest(state=hex(state)):
+                self._endpoint(state)
+                with self.assertRaises(PermissionError) as caught:
+                    mf._pendura(EP)
+                self.assertIs(caught.exception, self.create_error)
+
+    def test_a_device_still_in_the_pc_still_fails(self):
+        for state in (0x10000002, 0x20000008):
+            with self.subTest(state=hex(state)):
+                self._endpoint(state)
+                with self.assertRaises(PermissionError) as caught:
+                    mf._pendura(EP)
+                self.assertIs(caught.exception, self.create_error)
+
+    def test_a_state_of_another_type_still_fails(self):
+        self._endpoint(None)
+        r = self.reg
+        r.SetValueEx(r.OpenKey(r.HKEY_LOCAL_MACHINE, f"{mf.CAPTURA}\\{EP}"), "DeviceState", 0, r.REG_SZ, "4")
+        with self.assertRaises(PermissionError) as caught:
+            mf._pendura(EP)
+        self.assertIs(caught.exception, self.create_error)
+
+    def test_a_missing_state_still_fails(self):
+        self._endpoint(None)
+        with self.assertRaises(PermissionError) as caught:
+            mf._pendura(EP)
+        self.assertIs(caught.exception, self.create_error)
+
+    def test_a_state_that_cannot_be_read_still_fails(self):
+        self._endpoint(4)
+        real_query = self.reg.QueryValueEx
+
+        def query(key, name):
+            if name == "DeviceState":
+                raise PermissionError(13, "Access is denied")
+            return real_query(key, name)
+        with mock.patch.object(self.reg, "QueryValueEx", query), self.assertRaises(PermissionError) as caught:
+            mf._pendura(EP)
+        self.assertIs(caught.exception, self.create_error)
+
+    def test_a_key_that_cannot_be_looked_up_still_fails(self):
+        self._endpoint(0x31000004)
+        real_open = self.reg.OpenKey
+
+        def open_key(root, sub, reserved=0, access=0):
+            if sub.lower().endswith("\\fxproperties"):
+                raise PermissionError(13, "Access is denied")
+            return real_open(root, sub, reserved, access)
+        with mock.patch.object(self.reg, "OpenKey", open_key), self.assertRaises(PermissionError) as caught:
+            mf._pendura(EP)
+        self.assertIs(caught.exception, self.create_error)
+
+    def test_a_denied_key_that_is_there_still_fails(self):
+        self._endpoint(4, fx_properties=True)
+        with self.assertRaises(PermissionError) as caught:
+            mf._pendura(EP)
+        self.assertIs(caught.exception, self.create_error)
+
+
+class FailedListWriteAfterTheSingleEffect:
+    failing_list = None
+
+    def setUp(self):
+        super().setUp()
+        r = self.reg
+        self.microfone({mf.EFX: (EFX_FM, r.REG_SZ), mf.MFX: (MFX_FM, r.REG_SZ),
+                        mf.MODOS_MFX: ([mf.MODO_PADRAO, mf.MODO_RAW], r.REG_MULTI_SZ)})
+        real_set_value, refused = r.SetValueEx, []
+
+        def set_value(key, name, reserved, kind, value):
+            if name.lower() == self.failing_list.lower() and not refused:
+                refused.append(name)
+                raise OSError("the list write was refused")
+            real_set_value(key, name, reserved, kind, value)
+        with mock.patch.object(r, "SetValueEx", set_value), self.assertRaises(OSError):
+            mf._pendura(EP)
+        self.assertEqual(refused, [self.failing_list])
+        self.assertIsNone(self.le(mf.ASSOCIACAO), "the first run stopped before the association")
+        self.second_run_changed = mf._pendura(EP)
+
+    def test_the_second_run_finishes_the_install(self):
+        self.assertTrue(self.second_run_changed)
+        self.assertEqual((self.le(mf.EFX_LISTA)[-1], self.le(mf.LFX), self.le(mf.ASSOCIACAO)),
+                         (mf.CLSID, mf.CLSID, mf.KSNODETYPE_ANY))
+
+
+class TestFailedEfxListWrite(FailedListWriteAfterTheSingleEffect, Base):
+    failing_list = mf.EFX_LISTA
+
+    def test_the_mfx_list_gets_the_host(self):
+        self.assertEqual((self.le(mf.MFX_LISTA), self.le(mf.MFX), self.vaga(0)), ([HOST0], None, MFX_FM))
+
+    def test_the_maker_efx_survives(self):
+        with self.assertRaises(AssertionError, msg="passed, but it is a known failure (#261): if the fix is on "
+                                                   "purpose, the case leaves the known failures in the same PR"):
+            self.assertEqual((self.le(mf.EFX_LISTA), self.le(mf.EFX)), ([EFX_FM, mf.CLSID], None))
+
+
+class TestFailedMfxListWrite(FailedListWriteAfterTheSingleEffect, Base):
+    failing_list = mf.MFX_LISTA
+
+    def test_the_efx_list_keeps_the_maker(self):
+        self.assertEqual(self.le(mf.EFX_LISTA), [EFX_FM, mf.CLSID])
+
+    def test_the_maker_mfx_survives(self):
+        with self.assertRaises(AssertionError, msg="passed, but it is a known failure (#261): if the fix is on "
+                                                   "purpose, the case leaves the known failures in the same PR"):
+            self.assertEqual((self.le(mf.MFX_LISTA), self.le(mf.MFX), self.vaga(0)), ([HOST0], None, MFX_FM))
 
 
 class Gravador:
@@ -382,7 +518,7 @@ class TestaPastaProtegida(Base):
         self.aprova = False
         self.falsos()
         with self.assertRaises(SystemExit):
-            mf._prepara_dll(r"C:\x\micfx.dll")  # noqa: SLF001
+            mf._prepara_dll(r"C:\x\micfx.dll")
         self.assertEqual(self.vistas, [os.path.join(raiz, "Ritmelli")])
         self.nada_mexido()
 
@@ -394,7 +530,7 @@ class TestaPastaProtegida(Base):
         self.aprova = False
         self.falsos()
         with self.assertRaises(SystemExit):
-            mf._prepara_dll(r"C:\x\micfx.dll")  # noqa: SLF001
+            mf._prepara_dll(r"C:\x\micfx.dll")
         self.assertEqual(self.vistas, [r"C:\Program Files\Ritmelli-2"])
         self.nada_mexido()
 
@@ -449,7 +585,7 @@ class TestaPastaProtegida(Base):
         k = r.CreateKeyEx("HKLM", rf"SOFTWARE\Classes\CLSID\{mf.CLSID}\InprocServer32")
         r.SetValueEx(k, "", 0, r.REG_SZ, r"C:\Program Files\Ritmelli\microfone\micfx.dll")
         antes = self.notebook()
-        mf._pendura(EP)  # noqa: SLF001
+        mf._pendura(EP)
         guardado = r.valores(f"HKLM\\{mf.SALVO}\\{EP}")
         self.falsos(existe=[r"C:\x\micfx.dll"])
         mf.instala_todos(r"C:\x\micfx.dll")
@@ -464,7 +600,7 @@ class TestaPastaProtegida(Base):
         self.falsos(existe=[r"C:\x\micfx.dll", destino])
         mf.instala_todos(r"C:\x\micfx.dll")
         self.assertEqual(self.cmd.de("reinicia"), [], "de novo, com a DLL ja registrada aqui: o audio reiniciou")
-        mf._devolve(EP)  # noqa: SLF001
+        mf._devolve(EP)
         self.assertEqual(r.valores(fx_de(EP)), antes)
 
     def com_dois(self):
@@ -472,8 +608,8 @@ class TestaPastaProtegida(Base):
         r = self.reg
         self.notebook(EP)
         self.notebook(EP2)
-        mf._pendura(EP)  # noqa: SLF001
-        mf._pendura(EP2)  # noqa: SLF001
+        mf._pendura(EP)
+        mf._pendura(EP2)
         for c in mf.NOSSOS:
             r.CreateKeyEx("HKLM", rf"SOFTWARE\Classes\CLSID\{c}")
             k = r.CreateKeyEx("HKLM", rf"SOFTWARE\Classes\CLSID\{c}\InprocServer32")

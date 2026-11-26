@@ -11,6 +11,10 @@ O `--mock` sobe só no `127.0.0.1`, sem a porta da rede de casa. Para o tema ver
 aparelho, o `--papel-local celular` (só junto do `--mock`) faz o `do_pc` do `build` tirar o papel do PC de quem pede
 pelo Host `127.0.0.1:<porta>`: ele passa pelo cookie do pareamento como o celular da rede de casa, e o
 `localhost:<porta>` segue o PC. Nesse modo, o `GET /api/pareamento` gera o código com o endereço do `127.0.0.1`.
+O `--stop-on-stdin-eof` (também só com o `--mock`) desliga o servidor como o Desligar quando a entrada padrão dele fecha.
+O `dev/so_mock.py` sobe todo servidor de teste com ele e segura a outra ponta, que nenhum outro processo tem:
+o papel do celular, que o `POST /api/shutdown` recusa, desliga assim, sem pedido. Um `server.py` mais velho, sem o
+`--stop-on-stdin-eof` (a base de um `compara`), sobe sem ele e desliga pelo `POST /api/shutdown`.
 
 A regra dos comandos de música (tocar, enfileirar, pular, pausar, parar, a fila e o volume) mora no
 [`comandos.py`](comandos.md), e o avanço da fila é uma operação só, dele: a rota do comando lê o corpo, chama o
@@ -18,9 +22,13 @@ comando e monta a resposta. O tocar da prateleira (`POST /api/library` com `play
 (`PATCH /api/library/{id}`) e o volume da música do `POST /api/settings` também passam pelos comandos; o resto
 dessas rotas (a prateleira, os downloads, as outras configurações do som) chama os métodos do `App` e do motor. A
 ordem das travas está no [`comandos.md`](comandos.md#as-travas).
-O `check_track_fields` confere os campos que o corpo traz de um vídeo fora da prateleira (`title`, `channel`,
-`thumb`, `duration` e o alvo) do mesmo jeito para todo papel, na fila (`App.enfileirar`) e no `POST /api/library`
-com `play` (sem ele, só o alvo e o título), e o `PATCH /api/library` recusa o nome em Unicode inválido. O SSE manda o JSON só em ASCII:
+O `parse_target` lê o alvo do corpo e confere os campos que ele traz do vídeo (`title`, `channel`, `thumb`,
+`duration` e o alvo, pelo `check_track_fields`) do mesmo jeito para todo papel e antes de olhar a prateleira, na fila
+(`App.enfileirar`) e no `POST /api/library` com `play` (sem ele, só o alvo e o título), e o `PATCH /api/library`
+recusa o nome em Unicode inválido. O corpo de toda rota se lê só pelo `body()`, na própria rota: o `dev/testa_mock.py` acha pelo fonte cada rota
+cujo corpo chega a esses campos e manda a ela os corpos ruins, e falha com a rota que lê o corpo por outro caminho
+(`request.json`, `post`, `text`, `read`, `multipart` ou `content`, nela ou numa função a que ela passa o `request`, ou o
+`body()` chamado nessa função). O SSE manda o JSON só em ASCII:
 um texto que o UTF-8 não codifica não quebra a volta, que é montada uma vez para todas as conexões.
 
 - Tocar um vídeo que não está na prateleira começa na hora pelo stream do YouTube (o
@@ -110,15 +118,19 @@ um texto que o UTF-8 não codifica não quebra a volta, que é montada uma vez p
   participante, sozinho e junto do artista). As parecidas tocam só pelo
   stream, sem encher a prateleira; o ⊕ da busca, na ponta da linha do canal do disco no prato, baixa a que agradar (o ✓ tira de novo).
   Contrato no `API.md`. A lógica mora no `automatico.py` (a classe `Automatico`, em `App.automatico`): o vigia das
-  parecidas, a ordem por andamento, a versão só de áudio e o vigia da medida. O estado (a semente, o Mix, o que fica
-  de fora, os andamentos e as versões) e a busca de rede (o `mix_do`) seguem no `App`, e o `App` repassa o
-  `ligar_auto`, o `_busca_mix` e a `_volta_auto()` a ele. As constantes do Automático (`AUTO_FILA`, `AUTO_JANELA_S`,
+  parecidas, a ordem por andamento, a versão só de áudio e o vigia da medida. O estado mora nele: se está ligado
+  (`auto`, que vem do `config.json` e começa ligado na instalação nova), a semente, o Mix e a base dele, o que fica de
+  fora (o que tocou nesta sessão e a parecida que o usuário tirou da fila, pelo `refuse`, com a mesma música em outro
+  vídeo), os andamentos medidos e as versões só de áudio (com o `andamentos.json` e o `versoes_audio.json` em que são
+  gravados). O `App` guarda a busca de rede (o `mix_do`), repassa o `ligar_auto` a ele, sobe os dois vigias pelo
+  `run_auto_watcher` e pelo `run_tempo_watcher` e lê o `auto` e o `tempo_of` dele. As constantes do Automático (`AUTO_FILA`, `AUTO_JANELA_S`,
   `ANDAMENTO_APOS_S` e as outras) moram no `automatico.py`, e as funções puras de música que ele e o servidor usam
   (`chaves_musica`, `autores`, `mesma_faixa`, `busca_de`, `segundos`, `thumb`) no `music.py`, onde também mora a
-  expressão regular `YT_ID`. A pasta da prateleira (`LIB`) e o `save_json` ele importa do `pastas.py`; o que ainda é
-  do servidor (o processo do YouTube, o processo auxiliar e o texto do erro) chega pela interface pública do `App`
-  (`search_songs`, `run_helper`, `yt_error`), como as mudanças da fila (`change_queue`, `remove_from_queue`) e o
-  andamento medido (`tempo_of`). O `dev/testa_automatico.py` confere a fila montada no `App` de verdade, com um
+  expressão regular `YT_ID`. A busca da faixa do YouTube Music que é a mesma música de um vídeo (a versão só de áudio
+  da parecida e a capa do álbum do disco da prateleira) é uma só, o `music.find_track` (o `dev/test_music.py` falha se
+  outro módulo volta a casar a faixa por conta própria). A pasta da prateleira (`LIB`) e o `save_json` ele importa do
+  `pastas.py`, e o texto do erro do YouTube (`yt_msg`) do `yt_erros.py`; o que ainda é do servidor (o processo do
+  YouTube e o processo auxiliar) chega pela interface pública do `App` (`search_songs`, `run_helper`), como as mudanças da fila (`change_queue`, `remove_from_queue`). O `dev/testa_automatico.py` confere a fila montada no `App` de verdade, com um
   `mix_do` falso e andamentos conhecidos.
 - Versão só de áudio: o rádio traz de tudo, inclusive o que só existe no
   YouTube, mas a parecida que veio como vídeo (clipe com intro, vídeo com letra) toca a faixa

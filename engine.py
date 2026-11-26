@@ -36,7 +36,7 @@ from microfone import preset  # o preset do efeito no filtro: importado aqui, nu
 from microfone import voz  # o mesmo motor de efeitos do filtro, para a voz com efeito que sai pelo app
 # as contas da passagem sem audio (o nivel, o fade ou o final seco, a entrada da proxima e os tempos) moram no
 # transicao.py; o motor, e quem le daqui (o andamento.py), segue com os mesmos nomes
-from transicao import (BLOCK, FADE_MIN_S, FASE_ANTES_S, FOLGA_S, RAMPA_MAX_S, RAMPA_MIN_S, RAMPA_TAXA,  # noqa: F401
+from transicao import (BLOCK, FADE_MIN_S, FASE_ANTES_S, FASE_MIN_S, FOLGA_S, RAMPA_MAX_S, RAMPA_MIN_S, RAMPA_TAXA,
                        SAI_MAX, SR, TEMPO_MAX, TRANS_MAX_S, TRANS_SECO_S, _niveis, medir_fim, medir_inicio)
 
 try:  # o pedal da mina: modulo de fora deste repo, posto ao lado do codigo so onde ela roda
@@ -132,12 +132,8 @@ NIVEIS_MAX = PRONTO_AHEAD + 1500  # o nivel dos ultimos 90 s de cada deck: cobre
 # a batida na passagem: como o DJ, a proxima entra no tempo
 BATIDA_S = 20.0            # o trecho de cada lado medido para achar a grade de batidas
 BATIDA_MIN_S = 12.0        # com menos que isso de um lado, a passagem segue sem alinhar
-FASE_MIN_S = 4.0           # a fase sai do trecho onde as duas soam juntas, de pelo menos isso
 NOTA_MIN = 3.0             # o pente da fase nesse trecho tem de cair nos ataques pelo menos isso acima da media
 SAI_FOLGA_S = 12.0         # a rampa da que sai so vale se ainda falta isso para ela comecar quando o plano comeca
-# a rede (compasso.py) quando o batida.py nao firma: com ela, 35% das passagens da prateleira no tempo em vez de 28%
-REDE_ATRASO = 0.038        # as batidas da rede caem ~38 ms depois das nossas (mediana de 9853 batidas, 21/10)
-REDE_REGULAR = 0.9         # firme pela rede: 90% dos intervalos a 8% da mediana
 GRAVE_HZ = 180.0           # a troca de grave: abaixo disso, um disco de cada vez
 # a passagem como a de um DJ (a entrada da proxima, o DJ_BATIDAS e o corpo dela, no transicao.py)
 DJ_SAI_BATIDAS = 4         # depois da troca, a que sai some nisso de batidas dela
@@ -339,6 +335,8 @@ def _catmull(x, phi):
 # as chamadas a Rubber Band (o esticar e o esticar_saida), de qualquer thread: a janela do evento "audio" conta quantas
 # comecaram, o tempo com alguma em curso e as secas do anel no meio delas (o metricas.SaudeAudio)
 RUBBER_BAND = metricas.EmCurso()
+RUBBER_BAND_WARMUP = int(0.06 * SR)
+RUBBER_BAND_CROSSFADE = int(0.02 * SR)
 PASSAGEM_DEPOIS_S = 5.0  # a seca ate isso depois da virada ainda conta como da passagem (secas_passagem)
 
 
@@ -380,28 +378,23 @@ def esticar(x, s, n_sob, n_rampa, alvo):
 
 
 def esticar_saida(x, s, n_rampa):
-    """A que sai indo para a velocidade s antes da sobreposicao: x (n x 2) de 1 a s em n_rampa (meio cosseno) e
-    em s ate o fim de x, como no esticar (vinil e o tom de volta pela Rubber Band). O atraso da Rubber Band sai
-    pela correlacao no comeco, onde a velocidade ainda e 1, e os primeiros 20 ms sao o proprio x, que emenda no
-    que ja tocou sem degrau. Devolve (saida, a posicao em x de cada amostra de saida)."""
-    c = 0.5 * (1 - np.cos(np.linspace(0.0, np.pi, n_rampa, endpoint=False)))  # 0 -> 1
-    resto = len(x) - 2 - (n_rampa + (s - 1) * c.sum())  # o que sobra de x depois da rampa, em amostras de x
+    """The outgoing track going to speed s before the overlap: x (n x 2) from 1 to s over n_rampa (half cosine) and
+    at s to the end of x, as in esticar (vinyl, and the pitch back through the Rubber Band). The Rubber Band output
+    is aligned with its input but silent for its first tens of ms: the first RUBBER_BAND_WARMUP samples are x itself,
+    resampled, crossfading into the Rubber Band output over RUBBER_BAND_CROSSFADE, which joins what already played
+    without a step. Returns (output, the position in x of each output sample)."""
+    c = 0.5 * (1 - np.cos(np.linspace(0.0, np.pi, n_rampa, endpoint=False)))
+    resto = len(x) - 2 - (n_rampa + (s - 1) * c.sum())
     vel = np.concatenate([1 + (s - 1) * c, np.full(max(0, int(resto / s)), s)])
     phi = np.concatenate([[0.0], np.cumsum(vel)[:-1]])
     y = _catmull(x, phi)
-    z = _rubber_band(y, vel)
-    m, janela = len(y), SR // 2
-    busca = min(SR // 10, len(z) - janela)
-    d = 0
-    if busca > 0:
-        cor = signal.correlate(z[:janela + busca, 0], y[:janela, 0], mode="valid", method="fft")
-        d = int(np.argmax(cor))
-    z = z[d:d + m]
-    if len(z) < m:
-        z = np.concatenate([z, y[len(z):]])
-    w = int(0.02 * SR)
-    g = np.linspace(0.0, 1.0, w, dtype=np.float32)[:, None]
-    z[:w] = y[:w] * (1 - g) + z[:w] * g
+    m = len(y)
+    z = _rubber_band(y, vel)[:m]
+    a = min(m, RUBBER_BAND_WARMUP)
+    b = min(m, a + RUBBER_BAND_CROSSFADE)
+    g = np.linspace(0.0, 1.0, RUBBER_BAND_CROSSFADE, dtype=np.float32)[:b - a, None]
+    z[:a] = y[:a]
+    z[a:b] = y[a:b] * (1 - g) + z[a:b] * g
     return np.ascontiguousarray(z, np.float32), phi
 
 
@@ -423,63 +416,6 @@ def _esticar_comeco(blocos_b, ini, s, n_sob):
     n_rampa = max(int(RAMPA_MIN_S * SR), n_rampa + int(round((alvo - (alvo_t - ini) * SR) / ((1 + s) / 2))))
     z, phi = esticar(xs, s, n_sob, n_rampa, alvo)
     return (z, phi, ate, n_rampa), None
-
-
-def _regular(bt):
-    """Os intervalos entre as batidas da rede e se sao regulares (REDE_REGULAR deles a 8% da mediana)."""
-    ibi = np.diff(bt)
-    if len(ibi) < 4:
-        return ibi, False
-    m = float(np.median(ibi))
-    return ibi, bool(np.mean(np.abs(ibi / m - 1) <= 0.08) >= REDE_REGULAR)
-
-
-def _grade_rede(x):
-    """A Grade do trecho x pela rede, para quando o batida.py nao firma (None sem o modelo ou com as batidas
-    irregulares): o andamento pelo ajuste de reta nas batidas (o numero de cada uma pela soma dos intervalos: pela
-    distancia ao comeco dividida pela mediana, que vem presa nos quadros de 20 ms dela, a 40a virava a 41a), na
-    oitava lenta do batida.py, com o lado pelos 1 dela (a grade lenta cai no 1 e no 3) e REDE_ATRASO antes."""
-    r = compasso.uns(x, SR)
-    if r is None or len(r[0]) < 8:
-        return None
-    bt, ut = r
-    ibi, ok = _regular(bt)
-    if not ok:
-        return None
-    k = np.r_[0, np.cumsum(np.maximum(np.round(ibi / np.median(ibi)), 1))]
-    p, c = np.polyfit(k, bt, 1)
-    P = float(p)
-    while 60 / P >= 2 * batida.LENTA:
-        P *= 2
-    while 60 / P < batida.LENTA:
-        P /= 2
-    ancora = float(ut[0]) if len(ut) else float(bt[0])
-    f = (float(c + np.round((ancora - c) / p) * p) - REDE_ATRASO) % P
-    # entre a batida e o contratempo quem decide e o bumbo, como no batida.py (o Overdose, 21/10): na intro falada
-    # da NWA a rede pos a batida no meio tempo do bumbo, e ela entrava no contratempo do Stay With Me
-    mono = x.mean(axis=1) if x.ndim > 1 else x
-    fps = SR / batida.HOP
-    meios = np.array([f, (f + P / 2) % P]) * fps
-    ng = batida._notas(batida._suave(batida.ataques(np.asarray(mono, np.float32), SR, batida.GRAVE_HZ)), P * fps, meios)
-    virou = bool(ng[1] > ng[0] and ng[0] <= batida.GRAVE_DECIDE * ng[1])
-    if virou:
-        f = (f + P / 2) % P
-    return batida.Grade(60 / P, P, f, True, f"by the network: {60 / float(p):.1f} BPM{', the kick flipped the side' if virou else ''}")
-
-
-def _fase_rede(x, periodo, perto):
-    """A fase (s desde o comeco de x) da grade de periodo dado pelas batidas da rede em x, perto de perto: a
-    mediana do desvio das batidas que caem a menos de um quarto de periodo da grade (as do meio tempo ficam de
-    fora); None sem batidas regulares ou sem nenhuma na grade."""
-    r = compasso.uns(x, SR)
-    if r is None:
-        return None
-    bt = r[0] - REDE_ATRASO
-    if not _regular(bt)[1]:
-        return None
-    d = (bt - perto + periodo / 2) % periodo - periodo / 2
-    d = d[np.abs(d) < periodo / 4]
-    return float((perto + np.median(d)) % periodo) if len(d) >= 3 else None
 
 
 def _golpe_final(blocos, b1, pa, queda):
@@ -523,7 +459,7 @@ def _batida_tocada(x, reserva):
     r = compasso.uns(x, SR) if x is not None and len(x) >= 0.8 * ECO_MEDE_S * SR else None
     if r is None or len(r[0]) < 6:
         return reserva
-    ibi, ok = _regular(r[0])
+    ibi, ok = batida.network_intervals(r[0])
     return float(np.median(ibi)) if ok else reserva
 
 
@@ -718,9 +654,9 @@ def list_devices_live():
     do PortAudio."""
     try:
         _com_init()
-        import winvol  # noqa: PLC0415 - comtypes so em thread MTA (ver _winvol_loop)
+        import winvol  # comtypes so em thread MTA (ver _winvol_loop)
         return winvol.dispositivos()
-    except Exception:  # noqa: BLE001
+    except Exception:
         return list_devices()
 
 
@@ -728,8 +664,8 @@ def _rescan():
     """Rele a lista do PortAudio, para abrir o que conectou depois de ele subir. Reiniciar o
     PortAudio derruba todo stream aberto: so com o motor fechado."""
     _com_init()
-    sd._terminate()  # noqa: SLF001 - o sounddevice nao tem releitura publica
-    sd._initialize()  # noqa: SLF001
+    sd._terminate()  # o sounddevice nao tem releitura publica
+    sd._initialize()
 
 
 def _mic_padrao(d):
@@ -816,16 +752,13 @@ def _aviso_reserva(faltou):
                                                            "headphones until they're reconnected.", chosen=fone)
 
 
-def _erro_da_tarefa(r, mic):
+def _erro_da_tarefa(r):
     """A mensagem da tela quando a tarefa que prepara o microfone nao deu (o motivo do pede_tarefa, em
     microfone/microfone.py)."""
     motivo = r.get("motivo")
     if motivo == "sem_tarefa":
         return i18n.msg("server.mic.noTask", "The Ritmelli component that prepares microphones is missing. "
                         "Reinstall Ritmelli.")
-    if motivo == "nao_pronto":
-        return i18n.msg("server.mic.notReady", "Couldn't prepare the microphone \"{name}\" for Ritmelli, so the "
-                                               "music can't reach it. Close and reopen Ritmelli to try again.", name=mic)
     if motivo == "audio":
         return i18n.msg("server.mic.audioSlow", "Windows audio didn't restart in time. Close and reopen Ritmelli to "
                                                 "try again.")
@@ -848,7 +781,7 @@ def _confere_fora(nomes=None):
         p = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60,
                            creationflags=NO_WINDOW, startupinfo=sem_cursor())
         return json.loads(p.stdout.strip().splitlines()[-1])
-    except Exception as ex:  # noqa: BLE001 - sem a conferencia, nenhum aviso: nunca um aviso falso
+    except Exception as ex:  # sem a conferencia, nenhum aviso: nunca um aviso falso
         motivo = p.stderr.strip()[-300:] if p is not None and p.stderr.strip() else f"{type(ex).__name__}: {ex}"
         print(f"devices: not checked ({motivo})")
         return None
@@ -857,7 +790,7 @@ def _confere_fora(nomes=None):
 def _aviso_mudos(mudos):
     """A mensagem da tela com os aparelhos que abrem e nao entregam som (#136): um nome por aparelho, o que se tira do
     cabo ("BEHRINGER UMC 404HD 192k", e nao cada entrada e saida dele)."""
-    from microfone import microfone as filtro  # noqa: PLC0415
+    from microfone import microfone as filtro
     return i18n.msg("server.devices.silent", "Windows stopped receiving sound from the device \"{name}\". Unplug its "
                                              "USB cable and plug it back in.",
                     name="\", \"".join(filtro.aparelhos_de(mudos)))
@@ -867,9 +800,9 @@ def _do_microfone(mic):
     """O estado do filtro no microfone (o item do microfone.estado_dados: guid, filtro, melhorias), ou None se nao deu
     para ler ou o Windows nao conhece esse nome."""
     try:
-        from microfone import microfone as filtro  # noqa: PLC0415 - le o registro do Windows
+        from microfone import microfone as filtro  # le o registro do Windows
         return filtro.do_microfone(mic)
-    except Exception:  # noqa: BLE001
+    except Exception:
         return None
 
 
@@ -1050,7 +983,7 @@ class Injetor:
                 m.pulso(False)  # a voz volta na hora, sem esperar o pulso vencer
                 m.alvo(0)       # e nenhum filtro mexe mais no som
                 m.fecha()
-            except Exception:  # noqa: BLE001, S110 - fechando: o filtro devolve a voz sozinho em 1 s
+            except Exception:  # fechando: o filtro devolve a voz sozinho em 1 s
                 pass
 
     def _abre(self):
@@ -1058,7 +991,7 @@ class Injetor:
         if self.m is not None or time.monotonic() - self._tentou < 1.0:
             return self.m
         self._tentou = time.monotonic()
-        from microfone import injeta  # noqa: PLC0415 - so no Windows
+        from microfone import injeta  # so no Windows
         try:
             self.m = injeta.Microfone()
         except injeta.SemFiltro:
@@ -1069,28 +1002,28 @@ class Injetor:
         """O preset do efeito escolhido no anel (na taxa do microfone alvo) e o estado do filtro com ele: roda
         (efeito_no_filtro), ainda nao respondeu (_fx_pendente: a voz crua segue) ou recusou (a voz vai pelo app)."""
         mo = self.motor
-        eid = mo._fx_id  # noqa: SLF001
+        eid = mo._fx_id
         taxa = self.voz_taxa = int(m.a.voz_taxa)
         chave = (eid, taxa, preset.geracao())
         if chave != self._preset:
             dados = preset.pede(eid, taxa) if eid and taxa else None
             if dados is preset.PENDENTE:  # o projeto roda a parte (ate ~70 ms): a voz crua segue ate ficar pronto
                 self.efeito_no_filtro = False
-                mo._fx_filtro, mo._fx_pendente = False, True  # noqa: SLF001
+                mo._fx_filtro, mo._fx_pendente = False, True
                 return
             self._preset_seq = m.preset(dados or b"")
             self._preset, self._preset_ok, self._preset_em = chave, dados is not None, time.monotonic()
         feito, erro = m.preset_estado()
         respondeu = feito == self._preset_seq
         self.efeito_no_filtro = self._preset_ok and respondeu and erro == 0
-        mo._fx_filtro = self.efeito_no_filtro  # noqa: SLF001
-        mo._fx_pendente = (self._preset_ok and not respondeu  # noqa: SLF001
+        mo._fx_filtro = self.efeito_no_filtro
+        mo._fx_pendente = (self._preset_ok and not respondeu
                            and time.monotonic() - self._preset_em < PRESET_ESPERA_S)
 
     def _solta_efeito(self):
         self.efeito_no_filtro = False
-        self.motor._fx_filtro = self.motor._fx_pendente = False  # noqa: SLF001
-        self.motor._pista_viva = False  # noqa: SLF001
+        self.motor._fx_filtro = self.motor._fx_pendente = False
+        self.motor._pista_viva = False
         self._preset = None
         self.voz_taxa = 0  # o anel que vier depois diz a dele
 
@@ -1102,18 +1035,18 @@ class Injetor:
             y = np.concatenate([self._resto_fx, self._para48k_fx(y, taxa_fx)])
             n = len(y) // BLOCK * BLOCK
             for k in range(0, n, BLOCK):
-                self.motor._push_voz_fx(y[k:k + BLOCK])  # noqa: SLF001
+                self.motor._push_voz_fx(y[k:k + BLOCK])
             self._resto_fx = y[n:]
         # a pista da voz no comando (um processo converte a voz e o filtro poe no lugar da do microfone): o fone e o
         # medidor levam a voz dela, que e o que o jogo ouve, e nao a crua
         p = m.pista_le()  # sempre le: a posicao anda junto com o escritor
         viva = m.pista_viva()
-        self.motor._pista_viva = viva  # noqa: SLF001
+        self.motor._pista_viva = viva
         if viva and len(p):
             p = np.concatenate([self._resto_pista, p])
             n = len(p) // BLOCK * BLOCK
             for k in range(0, n, BLOCK):
-                self.motor._push_voz_fx(p[k:k + BLOCK])  # noqa: SLF001
+                self.motor._push_voz_fx(p[k:k + BLOCK])
             self._resto_pista = p[n:]
         elif not viva:
             self._resto_pista = self._resto_pista[:0]
@@ -1123,9 +1056,9 @@ class Injetor:
         x = np.concatenate([self._resto, self._para48k(x, taxa)])
         n = len(x) // BLOCK * BLOCK
         for k in range(0, n, BLOCK):
-            self.motor._push_mic(x[k:k + BLOCK])  # noqa: SLF001
+            self.motor._push_mic(x[k:k + BLOCK])
         self._resto = x[n:]
-        self.motor._voz_anel_em = time.monotonic()  # noqa: SLF001
+        self.motor._voz_anel_em = time.monotonic()
 
     def _loop(self):
         winmm = ctypes.WinDLL("winmm")
@@ -1143,7 +1076,7 @@ class Injetor:
                 try:
                     m = self._abre()
                     if m is not None:
-                        m.alvo(self.motor._alvo)  # noqa: SLF001
+                        m.alvo(self.motor._alvo)
                         self._efeito(m)
                         m.pulso(self.motor.voz_pelo_app())
                         self._voz(m)
@@ -1167,7 +1100,7 @@ class Injetor:
                         for _ in range(INJ_FOLGA):
                             if not self._vai or fila > (INJ_FOLGA - 1) * BLOCK:
                                 break
-                            m.escreve(self.motor._mixa(BLOCK))  # noqa: SLF001
+                            m.escreve(self.motor._mixa(BLOCK))
                             fila = m.na_fila()
                         servidos = donos
                         prox = time.perf_counter() + BLOCK / SR
@@ -1178,14 +1111,12 @@ class Injetor:
                         if agora - prox > 0.2:  # voltou de um leitor, ou a thread atrasou: nao corre atras
                             prox = agora
                         while self._vai and agora >= prox:
-                            self.motor._mixa(BLOCK)  # noqa: SLF001 - o fone e o relogio da musica seguem
+                            self.motor._mixa(BLOCK)  # o fone e o relogio da musica seguem
                             prox += BLOCK / SR
-                except Exception as ex:  # noqa: BLE001 - a thread nao morre calada: o erro vai pra tela
-                    self.motor.error = i18n.msg("server.mic.outputFailed", "Couldn't send audio to the microphone "
-                                                                           "({reason}). If the music doesn't come "
-                                                                           "back through the microphone, close and "
-                                                                           "reopen Ritmelli.",
-                                                reason=str(ex)[:160])
+                except Exception as ex:  # a thread nao morre calada: o erro vai pra tela
+                    self.motor.set_error(i18n.msg("server.mic.outputFailed", "Couldn't send audio to the microphone "
+                                                  "({reason}). If the music doesn't come back through the "
+                                                  "microphone, close and reopen Ritmelli.", reason=str(ex)[:160]))
                     # o anel que falhou fecha (o mapa e o handle nao ficam abertos ate o app sair) e o _abre tenta um
                     # novo; o estado do efeito zera mesmo se o fechamento falhar
                     falhou, self.m = self.m, None
@@ -1194,7 +1125,7 @@ class Injetor:
                     try:
                         if falhou is not None:
                             falhou.fecha()
-                    except Exception:  # noqa: BLE001, S110 - o erro que vale ja esta na tela
+                    except Exception:  # o erro que vale ja esta na tela
                         pass
                     finally:
                         self._solta_efeito()
@@ -1260,7 +1191,7 @@ class Engine:
         self.paused = False
         self.ended = False
         self.pos = 0.0
-        self.error = None
+        self._error = None
         self._espera_arquivo = None  # o _gen do stream que falhou com o download a caminho (esperando_arquivo)
         # o primeiro som do disco que entrou no prato (09/11, a latencia do pedido falado): espera e load marcam
         # (id, hora do relogio), o _mixa troca pelo (titulo, stream?, entrou, soou) no primeiro bloco dele, e o
@@ -1297,7 +1228,7 @@ class Engine:
         self.reserva_quadros = 0  # os quadros da voz que vieram do microfone de reserva (o _mic_cb), idem
         self._virou_em = -1e9    # monotonic da ultima virada (a seca logo depois dela e da passagem)
         self.periodo_saida = None  # a batida do que sai na saida (s), pelo plano no tempo: a regua dos testes (dev/)
-        self.pronto_falhou = None  # a tag da proxima que nao decodificou: o servidor nao prepara de novo
+        self._prepare_failure_tag = None
         # o servidor religa a parecida do Automatico cujo stream caiu: religar_stream(disco, onde parou, desistir), na
         # thread do leitor; sem ele (ou desistindo), o disco acaba e a fila segue, como antes
         self.religar_stream = None
@@ -1440,9 +1371,9 @@ class Engine:
         self._stack = st
         self._injetor = inj
         if faltou:
-            self._aviso = self.error = _aviso_reserva(faltou)
-        elif self._aviso is not None and self.error == self._aviso:
-            self.error = None  # o aparelho escolhido voltou: sai so o aviso, nunca um erro de tocar
+            self._aviso = self._error = _aviso_reserva(faltou)
+        elif self._aviso is not None and self._error == self._aviso:
+            self._error = None  # the chosen device came back: only the warning leaves, never a playback error
         threading.Thread(target=self._confere_filtro, args=(self.active["mic"],), daemon=True).start()
 
     def _confere_filtro(self, mic):
@@ -1453,51 +1384,50 @@ class Engine:
         _com_init()
         st = _do_microfone(mic)
         if st and st["filtro"] and st["melhorias"]:
-            from microfone import injeta  # noqa: PLC0415
+            from microfone import injeta
             if self.active.get("mic") == mic:
                 self._alvo = injeta.hash_microfone(st["guid"])
                 with self._lock:  # o dos mudos fica: ele acabou de sair desta pilha e sai quando o audio reabre
-                    if (self._aviso is not None and self.error == self._aviso
+                    if (self._aviso is not None and self._error == self._aviso
                             and self._aviso.get("key") != "server.devices.silent"):
-                        self.error = None
+                        self._error = None
             with self._lock:  # uma vez, so os que o instalador ou a tarefa acharam mudos: abrir todos a cada partida
                 ver = not self._mudos_vistos  # incomodaria
                 self._mudos_vistos = True
             if ver:
-                from microfone import microfone as filtro  # noqa: PLC0415
+                from microfone import microfone as filtro
                 mudos = filtro.le_mudos()
                 if mudos:
                     self._confere_mudos(mudos)
             return
         if mic in self._preparados:
             if self.active.get("mic") == mic:
-                self._aviso = self.error = i18n.msg("server.mic.notReadyReinstall", "Couldn't prepare the microphone "
+                self._aviso = self._error = i18n.msg("server.mic.notReadyReinstall", "Couldn't prepare the microphone "
                                                                                     "\"{name}\" for Ritmelli, so the "
                                                                                     "music can't reach it. Try "
                                                                                     "reinstalling Ritmelli.", name=mic)
             return
         self._preparados.add(mic)
-        from microfone import microfone as filtro  # noqa: PLC0415
+        from microfone import microfone as filtro
         self.preparando = mic
         # o som do PC some enquanto o Windows reinicia o audio: a tela diz por que
-        prep = self._aviso = self.error = i18n.msg("server.mic.preparing", "Preparing the microphone \"{name}\" for "
+        prep = self._aviso = self._error = i18n.msg("server.mic.preparing", "Preparing the microphone \"{name}\" for "
                                                    "Ritmelli: the computer's sound will cut out for a few seconds.", name=mic)
         try:
             r = filtro.pede_tarefa(mic)
         finally:
             self.preparando = None
-        if not r.get("ok"):
-            self._aviso = self.error = _erro_da_tarefa(r, mic)
+        if not r.get("ok") and not r.get("reopen"):
+            self._aviso = self._error = _erro_da_tarefa(r)
             return
-        if self.error == prep:
-            self._aviso = self.error = None
-        with self._lock:  # o audio do Windows reiniciou: os streams daqui morreram
+        if self._error == prep:
+            self._aviso = self._error = None
+        with self._lock:
             if self._fechado:
                 return
             # os do registro entram nesta, e antes do _reabre: o _confere_filtro que ele abre nao confere junto
             self._mudos_vistos = True
-            if self.active.get("mic") == mic:
-                self._reabre()
+            self._reabre()
         self._confere_mudos()  # todos: o reinicio do audio pode ter deixado qualquer aparelho mudo
 
     def _confere_mudos(self, nomes=None):
@@ -1521,7 +1451,7 @@ class Engine:
             if self._stack is None:  # o audio caiu durante a conferencia: os do registro, para quando ele voltar
                 self._mudos_vistos = False
             elif mudos and not self._fechado and self._stack is pilha:
-                self._aviso = self.error = _aviso_mudos(mudos)
+                self._aviso = self._error = _aviso_mudos(mudos)
 
     def liga(self):
         """A partida do servidor. Se o audio nao abre (sem microfone, aparelho que recusa), o servidor sobe mesmo
@@ -1530,7 +1460,7 @@ class Engine:
         with self._lock:
             try:
                 self.start(reserva=True)
-            except Exception as ex:  # noqa: BLE001
+            except Exception as ex:
                 self._sem_audio(ex)
 
     def close(self):
@@ -1567,7 +1497,7 @@ class Engine:
                 continue
             try:
                 d = list_devices_live()
-            except Exception:  # noqa: BLE001 - leitura falhou: tenta na volta
+            except Exception:  # leitura falhou: tenta na volta
                 continue
             a = (tuple(d["inputs"]), tuple(d["outputs"]), d["default_input"], d["default_output"])
             if a != assin:
@@ -1639,14 +1569,14 @@ class Engine:
             _rescan()
             self.start(reserva=True)
             self._caiu_no_vigia = False
-        except Exception as ex:  # noqa: BLE001 - tenta de novo na volta, dentro do VIGIA_TENTATIVAS
+        except Exception as ex:  # tenta de novo na volta, dentro do VIGIA_TENTATIVAS
             self._sem_audio(ex)
 
     def _sem_audio(self, ex):
         """O audio nao abriu: o erro fica na tela e o vigia pode tentar de novo. A mesma frase na partida e na
         reabertura: a partida que falha tambem passa pelo vigia logo depois."""
         self._caiu_no_vigia = True
-        self._aviso = self.error = i18n.msg("server.audio.openFailed", "Couldn't start the audio ({reason}). Make "
+        self._aviso = self._error = i18n.msg("server.audio.openFailed", "Couldn't start the audio ({reason}). Make "
                                                                        "sure the microphone and headphones are "
                                                                        "connected. If the problem continues, close "
                                                                        "and reopen Ritmelli.",
@@ -1667,7 +1597,7 @@ class Engine:
         _com_init()
         # o comtypes inicia o COM de quem importa: aqui, em MTA (a thread principal ja e STA
         # pelo sounddevice, e la o import quebraria)
-        import winvol  # noqa: PLC0415
+        import winvol
         ep, nome = None, None
         while True:
             try:
@@ -1682,7 +1612,7 @@ class Engine:
                     ep = winvol.volume_do(nome)
                 if ep is None:
                     if v is not None:
-                        self.error = i18n.msg("server.devices.micVolumeMissing", "Couldn't find the Windows volume "
+                        self._error = i18n.msg("server.devices.micVolumeMissing", "Couldn't find the Windows volume "
                                                                                  "control for the microphone "
                                                                                  "\"{name}\".", name=nome)
                     continue
@@ -1692,7 +1622,7 @@ class Engine:
                 lido = winvol.ler(ep)
                 if n == self._wv_n:  # pedido novo no meio da leitura: a barra fica com ele
                     self.mic_vol = lido
-            except Exception:  # noqa: BLE001 - mic desconectado: procura de novo na volta
+            except Exception:  # mic desconectado: procura de novo na volta
                 ep, nome = None, None
 
     def set_devices(self, mic=None, monitor=None):
@@ -1741,14 +1671,14 @@ class Engine:
         if f is not None:
             try:
                 x = f(x)  # o motor do filtro (voz.h) pelo voz.dll, a 48 kHz
-            except Exception as ex:  # noqa: BLE001 - efeito quebrado nao pode calar a voz
+            except Exception as ex:  # efeito quebrado nao pode calar a voz
                 self._fx_id, self._fx, self.effect = None, None, "nenhum"
-                self.error = i18n.msg("server.effect.failed", "The voice effect failed ({reason}). You're back to "
+                self._error = i18n.msg("server.effect.failed", "The voice effect failed ({reason}). You're back to "
                                                               "your natural voice.", reason=str(ex)[:120])
         elif self._fx_id is not None and not self._fx_pendente and not self._fx_falta_dito:
             # o efeito sairia daqui e o voz.dll nao carregou: a voz segue crua, e o aviso sai uma vez por efeito
             self._fx_falta_dito = True
-            self.error = i18n.msg("server.effect.noVozDll", "Ritmelli's voz.dll file is missing, so voice effects "
+            self._error = i18n.msg("server.effect.noVozDll", "Ritmelli's voz.dll file is missing, so voice effects "
                                                             "won't work on this microphone. Your voice still reaches "
                                                             "the game as usual. Reinstall Ritmelli.")
         self._mic.append(x)
@@ -1807,7 +1737,7 @@ class Engine:
                 return
             try:
                 pv.liga(ligado)
-            except Exception as ex:  # noqa: BLE001 - o modulo e de fora: o erro dele nao derruba a troca de efeito
+            except Exception as ex:  # o modulo e de fora: o erro dele nao derruba a troca de efeito
                 print(f"pedal_voz: liga() failed ({str(ex)[:120]})", file=sys.stderr, flush=True)
 
     def _pedal_voz_fecha(self):
@@ -1843,26 +1773,14 @@ class Engine:
     def _mina_liga(self):
         if not self.mina_permitida or mina is None:
             return
-        if self._mina is None:
-            self._mina = mina.Mina(self)
         try:
+            if self._mina is None:
+                self._mina = mina.Mina(self)
             self._mina.liga()
-        except ValueError as ex:  # sem a chave: o pedal fica aceso e o aviso sai na interface
-            self.error = self._mina_sem_chave(ex)
-
-    def _mina_sem_chave(self, ex):
-        """O aviso da mina que nao liga por falta da chave, na lingua de quem olha. O mina.py (do ritmelli-server) so
-        diz em portugues, num texto: aqui ele sai pela chave, com os mesmos arquivos que o mina.py procura no
-        pastas.DADOS. Outro erro (sem o estado "erro" dele, que vem junto com a falta da chave) sai como veio."""
-        if getattr(self._mina, "estado", None) != "erro":
-            return i18n.so_texto(str(ex))
-        if getattr(self._mina, "_motor", None) == "eleven":
-            return i18n.msg("server.mina.noElevenKey", "Mina DJ on ElevenAgents needs an ElevenLabs API key (in the "
-                                                       "ELEVENLABS_API_KEY environment variable or the {keyFile} "
-                                                       "file) and the agent ID (in the {agentFile} file).",
-                            keyFile=str(pastas.DADOS / "eleven_key.txt"), agentFile=str(pastas.DADOS / "eleven_agente.txt"))
-        return i18n.msg("server.mina.noOpenAiKey", "Mina DJ needs an OpenAI API key: set it in the OPENAI_API_KEY "
-                                                   "environment variable or in the {keyFile} file.", keyFile=str(pastas.DADOS / "openai_key.txt"))
+        except i18n.Recusa as ex:
+            self._error = ex.msg
+        except ValueError as ex:
+            self._error = i18n.msg("server.mina.notConfigured", "This effect isn't configured ({reason}).", reason=str(ex))
 
     def mina_voz(self, x):
         """A voz dela, float32 48 kHz mono, na fila do jogo. Volta em quantos segundos ela comeca a tocar (a gravacao
@@ -1882,21 +1800,15 @@ class Engine:
             return (len(b) - n) / SR
 
     def mina_cala(self):
-        """Interromperam a mina (ElevenAgents, mina.CEDE_EL): a voz dela que ainda nao tocou sai da fila."""
         with self._mina_lock:
             self._mina_buf = self._mina_buf[:0]
             self._mina_int_n = 0
 
     def mina_interjeicao(self, x):
-        """A interjeicao dela (mina.py), float32 48 kHz mono, na hora em que quem fala com ela parou: so entra com a
-        fila so de silencio (a resposta do GPT-Live ainda nao chegou; quando chega, toca logo depois dela) e nao
-        conta como a voz dela pro guarda, que segue mandando o jogo pro GPT-Live. Volta se entrou."""
         with self._mina_lock:
             b = self._mina_buf
             if len(b) and float(np.max(np.abs(b))) >= mina.QUIET_RMS:  # a voz da resposta ja esta na fila
                 return False
-            # o que estava na fila e o silencio que o GPT-Live manda sem parar com a sessao aberta (a fila vazia,
-            # como era a condicao, nunca acontecia: no jogo de 01/11 nenhuma interjeicao entrou)
             self._mina_buf = np.asarray(x, np.float32)
             self._mina_int_n = len(self._mina_buf)
         return True
@@ -2221,6 +2133,39 @@ class Engine:
         and linha); None never is."""
         return token is not None and self._deck is token.deck and self._deck.linha == token.linha
 
+    @property
+    def error(self):
+        return self._error
+
+    def set_error(self, message):
+        self._error = message
+
+    def take_prepare_failure(self):
+        with self._qlock:
+            tag, self._prepare_failure_tag = self._prepare_failure_tag, None
+            return tag
+
+    @contextlib.contextmanager
+    def state_section(self):
+        with self._qlock:
+            yield
+
+    def with_lock(self, outer, f):
+        after = []
+        try:
+            while True:
+                with outer:
+                    if self._lock.acquire(blocking=False):
+                        try:
+                            return f(after)
+                        finally:
+                            self._lock.release()
+                with self._lock:
+                    pass
+        finally:
+            for g in after:
+                g()
+
     def take_switch(self, switch):
         """With _qlock: the switch the engine already made on its own (virou, the DJ transition) leaves the engine and
         comes back, only if the pending one is still switch; None otherwise. Whoever takes it reconciles it with the
@@ -2435,11 +2380,11 @@ class Engine:
         nome = track.get("title") or "?"
         quando = f"{int(t // 60)}:{int(t % 60):02d}"
         if track.get("stream"):
-            self.error = i18n.msg("server.player.streamStopped", "YouTube stopped sending the audio of \"{title}\" "
+            self._error = i18n.msg("server.player.streamStopped", "YouTube stopped sending the audio of \"{title}\" "
                                                                  "at {time}. Play it again, or wait for the download "
                                                                  "to the shelf to finish.", title=nome, time=quando)
         else:
-            self.error = i18n.msg("server.player.readFailedAt", "Couldn't read the audio of \"{title}\" from {time} "
+            self._error = i18n.msg("server.player.readFailedAt", "Couldn't read the audio of \"{title}\" from {time} "
                                                                 "on. The file may be corrupted. Delete the record "
                                                                 "and download it again.", title=nome,
                                   time=quando)
@@ -2476,8 +2421,8 @@ class Engine:
                     self._sobre_cache.popitem(last=False)
             else:
                 self._sobre_cache.move_to_end(chave)
-        except Exception:  # noqa: BLE001 - som por cima quebrado nao derruba o resto
-            self.error = i18n.msg("server.player.readFailed", "Couldn't read the audio of \"{title}\". The file may "
+        except Exception:  # som por cima quebrado nao derruba o resto
+            self._error = i18n.msg("server.player.readFailed", "Couldn't read the audio of \"{title}\". The file may "
                                                               "be corrupted. Delete the record and download it "
                                                               "again.", title=track.get("title") or "?")
             return
@@ -2526,7 +2471,7 @@ class Engine:
             self._limitador_zera = True
             self.pos = start
             self.ended = False
-            self.error = None
+            self._error = None
             if nova_linha:
                 self._solta_pausa()
         if not tr.get("path"):  # sem caminho, o disco ainda espera o stream abrir: sem leitor
@@ -2654,7 +2599,7 @@ class Engine:
         if not cabeca:  # a proxima nao decodificou: o servidor toca ela no fim, como antes
             with self._qlock:
                 if self._pronto is prox:
-                    self.pronto_falhou = self.pronto_tag
+                    self._prepare_failure_tag = self.pronto_tag
                     self._cancela_passagem()
             return
         fim, queda, baixo = medir_fim(cauda)
@@ -2663,7 +2608,7 @@ class Engine:
         try:
             plano, motivo = (self._plano_batida(atual, prox, fade, fim, queda, baixo, ini, virar, sobrepor)
                              if queda is not None else (None, "no drop at the end"))
-        except Exception as ex:  # noqa: BLE001 - a passagem no tempo e um extra: sem ela, a de volume
+        except Exception as ex:  # a passagem no tempo e um extra: sem ela, a de volume
             plano, motivo = None, f"error: {ex!r}"
         with self._qlock:
             if self._pronto is not prox or self._deck is not atual:
@@ -2762,7 +2707,7 @@ class Engine:
                           file=sys.stderr, flush=True)
             with open(pasta / (hoje + ".jsonl"), "a", encoding="utf-8") as f:
                 f.write(json.dumps(reg, ensure_ascii=False) + "\n")
-        except Exception as ex:  # noqa: BLE001 - o registro e so estudo: falhando, a passagem segue igual
+        except Exception as ex:  # o registro e so estudo: falhando, a passagem segue igual
             print(f"transition: the end record failed: {ex!r}", file=sys.stderr, flush=True)
 
     def _plano_batida(self, atual, prox, fade, fim, queda, baixo, ini, virar, sobrepor):
@@ -2790,11 +2735,11 @@ class Engine:
             # Despacito media 90,0 em vez de 89,0, e 1% em 14 s de sobreposicao e mais de 100 ms)
             antes = queda if fade else fim
             t_r, xr = _junta(blocos_a, antes - BATIDA_S, antes)
-            g = _grade_rede(xr) if xr is not None and len(xr) >= BATIDA_MIN_S * SR else None
+            g = batida.network_beat_grid(xr, SR) if xr is not None and len(xr) >= BATIDA_MIN_S * SR else None
             if g is not None:
                 ga, t_a = g, t_r
         if not gb.firme:
-            g = _grade_rede(xb)
+            g = batida.network_beat_grid(xb, SR)
             if g is not None:
                 gb = g
         if not ga.firme:
@@ -2823,7 +2768,7 @@ class Engine:
                 return None, f"too little of {quem} for the phase"
             f, nota = batida.fase(x, SR, periodo, (longa - t) % periodo)
             if nota < NOTA_MIN:  # sem ataque claro para o pente (violao, piano, fala): as batidas da rede
-                f = _fase_rede(x, periodo, (longa - t) % periodo)
+                f = batida.network_phase(x, SR, periodo, (longa - t) % periodo)
                 if f is None:
                     return None, f"{quem} has no clear beat where both play together (comb {nota:.1f}, nor by the network)"
             return t + f, None
@@ -2997,12 +2942,13 @@ class Engine:
                   f"before the swap", file=sys.stderr, flush=True)
         return nb, comeco
 
-    def _plano_dois(self, blocos_a, blocos_b, ga, gb, s, sa, a_longa, b_longa, virar, sobrepor, baixo, ini, fase_em):
+    def _plano_dois(self, blocos_a, blocos_b, ga, gb, s, sa, a_longa, b_longa, virar, sobrepor, swap, ini, fase_em):
         """O fade-out no tempo com os andamentos a mais de TEMPO_MAX: a que sai vai devagar (RAMPA_TAXA) para a
         velocidade sa antes da sobreposicao, e a proxima entra esticada em TEMPO_MAX no andamento a que ela
         chegou. Os blocos deste a partir da rampa sao trocados pelos reamostrados, com a posicao do disco no
-        rotulo (a tela e a virada leem a posicao); a batida deste na sobreposicao sai do audio ja mudado (pega o
-        atraso da Rubber Band), e a virada e a troca de grave se contam em amostras da saida dele."""
+        rotulo (a tela e a virada leem a posicao). The outgoing beat during the overlap is measured on the stretched
+        audio, which captures the Rubber Band drift over the ramp. The switch and the bass swap use sample positions
+        in that output."""
         pa, pb = ga.periodo, gb.periodo
         sb = s * sa  # a velocidade da proxima: a grade dela cai na deste ja mudada
         # a rampa acaba antes do trecho onde a fase deste e medida: ali a velocidade ja e constante
@@ -3021,11 +2967,8 @@ class Engine:
             return int(np.searchsorted(phi_a, (t - t_r) * SR))
 
         P = pa / sa * SR  # o periodo deste na saida, em amostras
-        # the phase excerpt: from FASE_ANTES_S of the disc before the switch, and at least FASE_MIN_S of this one's
-        # output (#196): sped up (sa > 1), that is more of the disc, and still after its speed ramp, which ends 0.5 s
-        # before FASE_ANTES_S of the disc (transicao.rampa_saida), with sa at most SAI_MAX from 1
-        i2 = saida_a(baixo)  # baixo aqui e a troca (o fim do corpo)
-        i1 = min(saida_a(virar - FASE_ANTES_S), i2 - int(FASE_MIN_S * SR))
+        i2 = saida_a(swap)
+        i1 = transicao.phase_excerpt_start(saida_a(virar - FASE_ANTES_S), i2)
         perto = (saida_a(a_longa + round((virar - a_longa) / pa) * pa) - i1) / SR
         f, motivo = fase_em(None, 0.0, None, P / SR, "the end of this one (already changed)", perto, x=z_a[i1:i2])
         if f is None:
@@ -3049,7 +2992,7 @@ class Engine:
             return None, "the on-beat switch fell after the end of the file"
         v = t_r + phi_a[j * BLOCK] / SR
         # a troca de grave na batida deste mais perto da troca, em amostras da saida dele
-        tm, w0, w1 = transicao.troca_grave(a0, P, saida_a(baixo), t0, pad, sr=1)
+        tm, w0, w1 = transicao.troca_grave(a0, P, saida_a(swap), t0, pad, sr=1)
         segura, entra = w0, w0
         sai = segura + int(DJ_SAI_BATIDAS * P)
         corte = min(len(z), w1 - pad + SR // 2)
@@ -3070,7 +3013,7 @@ class Engine:
         vb, sob, rampa, kr = _visor_rampa(ini, ate, sb, n_sob, n_rampa)
         visor = {"no_tempo": True, "v": v, "t0": disco_a(t0), "ini": ini, "va": sa, "vb": vb, "sob": sob,
                  "rampa": rampa, "k": kr, "sai": sai / SR, "entra": entra / SR, "segura": segura / SR,
-                 "nivel": DJ_NIVEL_ANTES, "cheia": w1 / SR, "grave": [w0 / SR, w1 / SR], "grade_de": _visor_grade(ga, disco_a(a0), a_longa - ga.fase, baixo),
+                 "nivel": DJ_NIVEL_ANTES, "cheia": w1 / SR, "grave": [w0 / SR, w1 / SR], "grade_de": _visor_grade(ga, disco_a(a0), a_longa - ga.fase, swap),
                  "grade_para": _visor_grade(gb, ini + sb * tau, ini, ini + BATIDA_S)}
         return {"cabeca": cabeca, "ate": ate, "virar": v, "silencio": 0, "sai": sai, "entra": entra, "segura": segura,
                 "nivel": DJ_NIVEL_ANTES, "cheia": w1, "grave": (w0, w1), "sai_q": (t_r, novos), "periodo_saida": P / SR,
@@ -3163,7 +3106,7 @@ class Engine:
             try:
                 if self._onda_viva(iid):
                     self._onda_arquivo(iid, path, dur)
-            except Exception as ex:  # noqa: BLE001 - sem a onda, o visor fica so com a linha do meio
+            except Exception as ex:  # sem a onda, o visor fica so com a linha do meio
                 print(f"waveform: couldn't read the waveform of {iid}: {ex!r}", file=sys.stderr, flush=True)
             finally:
                 with self._olock:
@@ -3255,7 +3198,7 @@ class Engine:
         if self.sonoridade_de is not None:
             try:
                 v = self.sonoridade_de(track)
-            except Exception:  # noqa: BLE001 - sem a medida guardada, mede de novo
+            except Exception:  # sem a medida guardada, mede de novo
                 v = None
             if v is not None:
                 return float(v), True
@@ -3322,7 +3265,7 @@ class Engine:
         if inteira and self.mediu is not None:
             try:
                 self.mediu(track, float(lufs))
-            except Exception as ex:  # noqa: BLE001 - sem guardar, mede de novo na proxima vez
+            except Exception as ex:  # sem guardar, mede de novo na proxima vez
                 print(f"volume: nao guardei a medida de {track.get('title')!r}: {ex}", file=sys.stderr, flush=True)
 
     # comandos -------------------------------------------------------------
@@ -3531,7 +3474,7 @@ class Engine:
                 self.loop = False  # o Repetir vale para o disco do prato, e ele saiu
                 self.paused = False
                 self.ended = False
-                self.error = None
+                self._error = None
                 self.pos = 0.0
                 self._solta_pausa()
         self.calar_sobre()  # parar cala os sons por cima tambem
@@ -3617,7 +3560,7 @@ class Engine:
             # o microfone que o Windows esta preparando agora (null fora disso)
             "microfone": dict(self._injetor.estado() if self._injetor is not None and self._stack is not None
                               else {"anel": False, "leitores": 0}, preparando=self.preparando),
-            "error": self.error,
+            "error": self._error,
             "mina": self._mina.estado if self._mina is not None else "desligada",
             "visor": {"ondas": self._ondas_versao,
                       "passagens": [p for p in (self._visor_feita, self._visor_pas) if p is not None]},
@@ -3738,7 +3681,7 @@ class MockEngine(Engine):
             if self._pronto is not prox or self._deck is not atual:
                 return
             if not prox.q or not dur:
-                self.pronto_falhou = self.pronto_tag
+                self._prepare_failure_tag = self.pronto_tag
                 self._cancela_passagem()
                 return
             ini = prox.q[0][0]

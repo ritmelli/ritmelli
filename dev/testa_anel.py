@@ -23,8 +23,8 @@ from unittest import mock
 
 os.environ["MICFX_MAPA"] = f"Local\\RitmelliTesteAnel-{os.getpid()}"  # o k32 e falso, mas nunca o nome de verdade
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import engine as eng  # noqa: E402
-from microfone import injeta  # noqa: E402
+import engine as eng
+from microfone import injeta
 
 ALVO = injeta.hash_microfone("{11111111-2222-3333-4444-555555555555}")
 HANDLE = 0x5A5A
@@ -42,29 +42,29 @@ class K32Falso:
         self.vista, self.aberturas, self.falha_unmap = vista, aberturas, falha_unmap
         self.abertos, self.vistas, self.unmaps, self.closes = 0, 0, [], []
 
-    def OpenFileMappingW(self, acesso, herda, nome):  # noqa: N802
+    def OpenFileMappingW(self, acesso, herda, nome):
         if self.abertos >= self.aberturas:
             return None
         self.abertos += 1
         return HANDLE
 
-    def MapViewOfFile(self, h, acesso, alto, baixo, n):  # noqa: N802
+    def MapViewOfFile(self, h, acesso, alto, baixo, n):
         if not self.vista:
             return None
         self.vistas += 1
         return self.p
 
-    def UnmapViewOfFile(self, p):  # noqa: N802
+    def UnmapViewOfFile(self, p):
         self.unmaps.append(p)
         if self.falha_unmap:
             raise OSError("UnmapViewOfFile falso falhou")
         return 1
 
-    def CloseHandle(self, h):  # noqa: N802
+    def CloseHandle(self, h):
         self.closes.append(h)
         return 1
 
-    def GetTickCount64(self):  # noqa: N802
+    def GetTickCount64(self):
         return 10_000
 
 
@@ -80,6 +80,9 @@ class MotorFalso:
 
     def voz_pelo_app(self):
         return False
+
+    def set_error(self, message):
+        self.error = message
 
     def totais_saude(self):  # a janela do evento "audio" (metricas.SaudeAudio)
         return 0, 0.0

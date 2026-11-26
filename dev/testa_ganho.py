@@ -27,8 +27,8 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import engine as eng  # noqa: E402
-import sonoridade as so  # noqa: E402
+import engine as eng
+import sonoridade as so
 
 SR, B, D = so.SR, eng.BLOCK, so.LIMITE_ANTES
 
@@ -296,9 +296,12 @@ class TestaMotor(unittest.TestCase):
             self.e._mixa(B)
             ts.append(time.perf_counter() - t0)
         ms = np.array(ts) * 1000
-        print(f"\n  _mixa com ganho e limitador: {ms.mean():.3f} ms em media, {np.percentile(ms, 99):.3f} no p99",
-              file=sys.stderr)
-        self.assertLess(float(ms.mean()), 0.3)  # a media: o p99 sobe com o PC ocupado (so se mostra)
+        median, trimmed = float(np.median(ms)), float(np.sort(ms)[:-4].mean())
+        print(f"\n  _mixa with gain and limiter: median {median:.3f} ms, mean without the 4 slowest {trimmed:.3f}, "
+              f"mean {ms.mean():.3f}, p99 {np.percentile(ms, 99):.3f}", file=sys.stderr)
+        # Trimming four samples tolerates isolated stalls and still checks the cost of the remaining calls.
+        self.assertLess(median, 0.15)
+        self.assertLess(trimmed, 0.3)
 
 
 if __name__ == "__main__":

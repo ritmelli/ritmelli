@@ -33,6 +33,7 @@ Sai 1 se algum tamanho reprovar.
 import argparse
 import asyncio
 import base64
+import enum
 import itertools
 import json
 import os
@@ -43,12 +44,14 @@ import tempfile
 import time
 import urllib.parse
 import urllib.request
+from pathlib import Path
 
 import websockets
+from websockets.exceptions import ConnectionClosed
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import so_mock  # noqa: E402
-from so_mock import free_port  # noqa: E402,F401 - o compara, o perfcheck e o texturas pegam daqui
+import so_mock
+from so_mock import free_port  # o compara, o perfcheck e o texturas pegam daqui
 
 CHROME = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 SIZES = ("1024x600,1280x650,1280x720,1366x657,1366x768,1436x765,1440x900,1536x730,"
@@ -112,18 +115,186 @@ PRONTA = ("(() => { try { return " + " && ".join(js for _, js in READY_CONDITION
           "; } catch (e) { return false; } })()")
 PRONTA_S = 20.0
 JS_WAIT_S = 1.5
+CDP_GONE = (ConnectionClosed, ConnectionError)
+DIAGNOSTIC_DOMAINS = ("Page", "Runtime", "Network", "Log")
 
 
-async def espera_pronta(cmd, barrados):
-    """Waits up to PRONTA_S for the PRONTA of the page. cmd: the CDP command of the caller. False when it did not get
-    ready, or when the page tried to leave for another origin (barrados)."""
-    fim = time.monotonic() + PRONTA_S
-    while time.monotonic() < fim and not barrados:
-        r = await cmd("Runtime.evaluate", expression=PRONTA, returnByValue=True)
+class Ready(enum.Enum):
+    READY = "ready"
+    TIMED_OUT = "timed out"
+    LEFT = "left for another origin"
+    CHROME_GONE = "chrome gone"
+
+
+async def wait_ready(cmd, expr, blocked, timeout_s):
+    deadline = time.monotonic() + timeout_s
+    while not blocked:
+        if (left := deadline - time.monotonic()) <= 0:
+            return Ready.TIMED_OUT
+        try:
+            r = await asyncio.wait_for(cmd("Runtime.evaluate", expression=expr, returnByValue=True), left)
+        except CDP_GONE:
+            return Ready.CHROME_GONE
+        except (RuntimeError, TimeoutError):
+            r = {}
+        if blocked:
+            return Ready.LEFT
+        if time.monotonic() > deadline:
+            return Ready.TIMED_OUT
+        if r.get("result", {}).get("value") is True:
+            return Ready.READY
+        await asyncio.sleep(min(0.1, max(0.0, deadline - time.monotonic())))
+    return Ready.LEFT
+
+
+async def navigate_and_wait(cmd, url, expr, blocked, timeout_s):
+    try:
+        await cmd("Page.navigate", url=url)
+    except CDP_GONE:
+        return Ready.CHROME_GONE
+    return await wait_ready(cmd, expr, blocked, timeout_s)
+
+
+async def wait_for_state(events, reader, timeout_s):
+    deadline = time.monotonic() + timeout_s
+    while events.state_at is None:
+        events.state_changed.clear()
+        waiter = asyncio.ensure_future(events.state_changed.wait())
+        done, _ = await asyncio.wait({waiter, reader}, timeout=max(0.0, deadline - time.monotonic()),
+                                     return_when=asyncio.FIRST_COMPLETED)
+        waiter.cancel()
+        if reader in done:
+            return Ready.CHROME_GONE
+        if not done:
+            return Ready.TIMED_OUT
+    return Ready.READY
+
+
+async def wait_notice(cmd, deadline):
+    while (left := deadline - time.monotonic()) > 0:
+        try:
+            r = await asyncio.wait_for(cmd("Runtime.evaluate", expression=NOTICE_OPEN, returnByValue=True), left)
+        except TimeoutError:
+            return False
+        except CDP_GONE:
+            return None
+        if time.monotonic() > deadline:
+            return False
         if r.get("result", {}).get("value") is True:
             return True
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(min(0.1, max(0.0, deadline - time.monotonic())))
     return False
+
+
+async def calibrate_clock(cmd, events):
+    await cmd("Performance.enable")
+    before = time.monotonic()
+    metrics = (await cmd("Performance.getMetrics")).get("metrics", [])
+    after = time.monotonic()
+    ticks = next((m["value"] for m in metrics if m.get("name") == "Timestamp"), None)
+    if ticks is None:
+        raise RuntimeError("Performance.getMetrics gave no Timestamp to set the CDP clock against")
+    events.mono_minus_ticks = (before + after) / 2 - ticks
+
+
+class PageEvents:
+    def __init__(self, origin=None):
+        self.page_errors, self.browser_errors, self.failed_responses = [], [], []
+        self.state_changed, self.origin, self.mono_minus_ticks = asyncio.Event(), origin, None
+        self.new_load()
+
+    def new_load(self):
+        self.browser_errors.clear()
+        self.failed_responses.clear()
+        self.state_requests, self.state_ok, self.state_done, self.loads = {}, set(), {}, {}
+        self.loader = None
+
+    def monotonic_of(self, ticks):
+        if ticks is None or self.mono_minus_ticks is None:
+            return None
+        return ticks + self.mono_minus_ticks
+
+    @property
+    def state_at(self):
+        return self.monotonic_of(self.state_done.get(self.loader))
+
+    @property
+    def load_at(self):
+        return self.monotonic_of(self.loads.get(self.loader))
+
+    def is_state(self, url):
+        u = urllib.parse.urlsplit(url)
+        return u.path == "/api/state" and (self.origin is None or f"{u.scheme}://{u.netloc}" == self.origin)
+
+    def take(self, m):
+        method, params = m.get("method"), m.get("params", {})
+        request_id = params.get("requestId")
+        if e := erro_da_pagina(m):
+            self.page_errors.append(e)
+        elif method == "Log.entryAdded" and params["entry"].get("level") == "error":
+            entry = params["entry"]
+            self.browser_errors.append(f"{entry.get('text', '')} {entry.get('url', '')}".strip())
+        elif method == "Network.requestWillBeSent":
+            request = params.get("request", {})
+            self.state_ok.discard(request_id)
+            if request.get("method") == "GET" and self.is_state(request.get("url", "")):
+                self.state_requests[request_id] = params.get("loaderId")
+            else:
+                self.state_requests.pop(request_id, None)
+        elif method == "Network.responseReceived":
+            response = params["response"]
+            if response.get("status", 0) >= 400:
+                self.failed_responses.append(f"{response['status']} {response.get('url', '')}")
+            elif (200 <= response.get("status", 0) < 300 and request_id in self.state_requests
+                  and self.is_state(response.get("url", ""))):
+                self.state_ok.add(request_id)
+        elif method == "Network.loadingFinished" and request_id in self.state_requests.keys() & self.state_ok:
+            self.state_done.setdefault(self.state_requests[request_id], params.get("timestamp"))
+            self.state_changed.set()
+        elif method == "Page.lifecycleEvent" and params.get("name") == "load":
+            self.loads.setdefault(params.get("loaderId"), params.get("timestamp"))
+
+
+def diagnostic_js(conditions):
+    parts = [*conditions,
+             ("document.readyState", "document.readyState"), ("document.fonts.status", "document.fonts.status"),
+             ("images not complete", "[...document.images].filter(i => !i.complete).map(i => i.src.slice(0, 120))"),
+             ("scripts not loaded", "[...document.scripts].filter(s => s.src && "
+                                    "!performance.getEntriesByName(s.src).length).map(s => s.src)")]
+    body = ", ".join(f"{json.dumps(name)}: c(() => {js})" for name, js in parts)
+    return ("(() => { const c = f => { try { return f(); } catch (e) { return 'error: ' + e.message; } }; "
+            f"return {{{body}}}; }})()")
+
+
+async def report_not_ready(cmd, label, outcome, conditions, events, timeout_s, shot=None):
+    if outcome is Ready.CHROME_GONE:
+        verdict = (f"{label}: the Chrome DevTools connection closed before the theme was ready: the browser went "
+                   "away, so the theme was not judged")
+    elif outcome is Ready.LEFT:
+        verdict = f"{label}: the page tried to leave for another origin before it was ready"
+    else:
+        verdict = f"{label}: the theme was not ready in {timeout_s:.0f} s"
+    print(f"{verdict}; what the page showed:", flush=True)
+    if outcome is not Ready.CHROME_GONE:
+        try:
+            r = await cmd("Runtime.evaluate", expression=diagnostic_js(conditions), returnByValue=True)
+            for name, value in (r.get("result", {}).get("value") or {}).items():
+                print(f"  {name}: {json.dumps(value, ensure_ascii=False)}", flush=True)
+        except (RuntimeError, TimeoutError, *CDP_GONE) as ex:
+            print(f"  (the conditions did not come: {type(ex).__name__} {ex})", flush=True)
+    for kind, found in (("console", events.page_errors), ("browser", events.browser_errors),
+                        ("response", events.failed_responses)):
+        for e in found or ["(none)"]:
+            print(f"  {kind}: {e}", flush=True)
+    if shot is not None and outcome is not Ready.CHROME_GONE:
+        try:
+            png = base64.b64decode((await cmd("Page.captureScreenshot", format="png"))["data"])
+            shot.parent.mkdir(parents=True, exist_ok=True)
+            shot.write_bytes(png)
+            print(f"  print: {shot}", flush=True)
+        except (RuntimeError, TimeoutError, KeyError, OSError, *CDP_GONE) as ex:
+            print(f"  (the print did not come: {type(ex).__name__} {ex})", flush=True)
+    return verdict
 
 
 def conecta_cdp(ws_url):
@@ -147,7 +318,7 @@ async def le_cdp(ws, pend, evento):
                     f.set_result(m)
             else:
                 evento(m)
-    except Exception as ex:  # noqa: BLE001 - the connection closed, or a message that broke the reading
+    except Exception as ex:  # the connection closed, or a message that broke the reading
         motivo = str(ex) or type(ex).__name__
     for f in pend.values():
         if not f.done():
@@ -288,15 +459,16 @@ async def run(a):
                 tabs = json.load(urllib.request.urlopen(f"http://127.0.0.1:{port}/json"))
                 ws_url = next(t["webSocketDebuggerUrl"] for t in tabs if t["type"] == "page")
                 break
-            except Exception:  # noqa: BLE001 - subindo
+            except Exception:  # subindo
                 time.sleep(0.1)
         async with conecta_cdp(ws_url) as ws:
-            seq, pend, barrados, erros = [0], {}, [], []
+            seq, pend, barrados, events = [0], {}, [], PageEvents()
+            erros = events.page_errors
             fetch = barra_outra_origem(ws, base, barrados)
 
             def evento(m):
-                if not fetch(m) and (e := erro_da_pagina(m)):
-                    erros.append(e)
+                if not fetch(m):
+                    events.take(m)
 
             tarefa = asyncio.create_task(le_cdp(ws, pend, evento))
 
@@ -307,23 +479,36 @@ async def run(a):
                 await ws.send(json.dumps({"id": seq[0], "method": method, "params": params}))
                 return (await asyncio.wait_for(f, 30)).get("result", {})
 
-            await cmd("Page.enable")
-            await cmd("Runtime.enable")  # as excecoes e o console.error da pagina
+            for domain in DIAGNOSTIC_DOMAINS:
+                await cmd(f"{domain}.enable")
             await cmd("Fetch.enable", patterns=so_mock.DOCUMENTOS)
             for sz in a.sizes.split(","):
                 w, h = map(int, sz.split("x"))
-                await cmd("Emulation.setDeviceMetricsOverride", width=w, height=h,
-                          deviceScaleFactor=1, mobile=w < 600)
+                try:
+                    await cmd("Emulation.setDeviceMetricsOverride", width=w, height=h,
+                              deviceScaleFactor=1, mobile=w < 600)
+                except CDP_GONE:
+                    verdict = await report_not_ready(cmd, f"{sz:>10}", Ready.CHROME_GONE, READY_CONDITIONS, events,
+                                                     PRONTA_S)
+                    print(f"FALHA  {verdict}; nothing more checked")
+                    falhas += 1
+                    break
                 try:
                     so_mock.confere(a.url)  # antes de cada navegacao: a porta pode ter mudado de dono
                     erros.clear()
-                    await cmd("Page.navigate", url=a.url)
-                    pronta = await espera_pronta(cmd, barrados)
-                    await confere_pagina(cmd, a.url, barrados)  # a page that left for another origin is refused here
-                    if not pronta:
-                        print(f"FALHA  {sz:>10}  the page was not ready in {PRONTA_S:.0f} s")
+                    events.new_load()
+                    ready = await navigate_and_wait(cmd, a.url, PRONTA, barrados, PRONTA_S)
+                    if ready is not Ready.READY:
+                        shot = Path(a.shots) / f"not-ready_{sz}.png" if a.shots else None
+                        verdict = await report_not_ready(cmd, f"{sz:>10}", ready, READY_CONDITIONS, events, PRONTA_S,
+                                                         shot)
                         falhas += 1
-                        continue
+                        if ready is Ready.TIMED_OUT:
+                            print(f"FALHA  {verdict}")
+                            continue
+                        print(f"FALHA  {verdict}; nothing more checked")
+                        break
+                    await confere_pagina(cmd, a.url, barrados)
                     await asyncio.sleep(a.wait)
                     await confere_pagina(cmd, a.url, barrados)
                     if a.js:
@@ -386,6 +571,7 @@ SITUACOES = [
 ]
 BOTOES = {"esc": "o Esc", "nao": "o Nao enviar", "sim": "o Enviar", "ligar": "o Comecar a enviar do Microfone e fone"}
 AVISO_ESPERA_S = 6.0
+NOTICE_OPEN = "!!document.querySelector('#dlg-metricas')?.open"
 
 
 def armadilha():
@@ -416,17 +602,19 @@ def armadilha():
 
 
 async def aviso_no_chrome(base, botao):
-    """Abre o tema do mock em base num Chrome sem tela e espera o #dlg-metricas. Aberto, aperta o botao (esc, nao ou
-    sim); no "ligar", aperta o Comecar a enviar do Microfone e fone e, se o aviso abre, o Enviar dele. Volta {"abriu",
-    "ao_ligar" (o aviso abriu pelo Comecar a enviar), "foco" (o value ou id do que tinha o foco no aviso), "fechou",
-    "reabriu" (so no esc: a pagina de novo abre o aviso de novo), "erros"}."""
+    """Opens the theme of the mock at base in a headless Chrome and waits for the #dlg-metricas. Open, it presses the
+    button (esc, nao or sim); with "ligar", it presses the Comecar a enviar of Microfone e fone and, if the notice
+    opens, its Enviar. Returns {"abriu", "ao_ligar" (the notice opened from Comecar a enviar), "foco" (the value or id
+    of what had the focus in the notice), "fechou", "reabriu" (esc only: the page opened again shows the notice again),
+    "erros", "not_ready" (the verdict when the page never got its state) and "load_to_state_s" (from the load event
+    to the end of the page's GET /api/state)}."""
     url = f"{base}/t/ritmelli/?lang=pt_BR"
     port, prof = free_port(), tempfile.mkdtemp(prefix="sbfit_")
     chrome = subprocess.Popen([CHROME, "--headless=new", f"--remote-debugging-port={port}", f"--user-data-dir={prof}",
                                "--no-first-run", "--no-default-browser-check", "about:blank"],
                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     r = {"abriu": False, "ao_ligar": None, "antes_do_enviar": None, "foco": None, "fechou": None, "reabriu": None,
-         "erros": []}
+         "erros": [], "not_ready": [], "load_to_state_s": None}
     try:
         ws_url = None
         for _ in range(100):
@@ -434,15 +622,16 @@ async def aviso_no_chrome(base, botao):
                 tabs = json.load(urllib.request.urlopen(f"http://127.0.0.1:{port}/json"))
                 ws_url = next(t["webSocketDebuggerUrl"] for t in tabs if t["type"] == "page")
                 break
-            except Exception:  # noqa: BLE001 - subindo
+            except Exception:  # subindo
                 time.sleep(0.1)
         async with conecta_cdp(ws_url) as ws:
-            seq, pend, barrados = [0], {}, []
+            seq, pend, barrados, events = [0], {}, [], PageEvents(base)
+            events.page_errors = r["erros"]
             fetch = barra_outra_origem(ws, base, barrados)
 
             def evento(m):
-                if not fetch(m) and (e := erro_da_pagina(m)):
-                    r["erros"].append(e)
+                if not fetch(m):
+                    events.take(m)
             tarefa = asyncio.create_task(le_cdp(ws, pend, evento))
 
             async def cmd(method, **params):
@@ -455,58 +644,79 @@ async def aviso_no_chrome(base, botao):
             async def js(expr):
                 return (await cmd("Runtime.evaluate", expression=expr, returnByValue=True)).get("result", {}).get("value")
 
-            async def espera_aviso(espera=AVISO_ESPERA_S):
-                fim = time.monotonic() + espera
-                while time.monotonic() < fim:
-                    if await js("!!document.querySelector('#dlg-metricas')?.open"):
-                        return True
-                    await asyncio.sleep(0.1)
+            async def load_and_wait_notice():
+                so_mock.confere(url)
+                events.new_load()
+                try:
+                    events.loader = (await cmd("Page.navigate", url=url)).get("loaderId")
+                    ready = await wait_for_state(events, tarefa, PRONTA_S)
+                except CDP_GONE:
+                    ready = Ready.CHROME_GONE
+                if ready is Ready.READY:
+                    seen = await wait_notice(cmd, events.state_at + AVISO_ESPERA_S)
+                    if seen is not None:
+                        return seen
+                    ready = Ready.CHROME_GONE
+                r["not_ready"].append(await report_not_ready(cmd, "notice", ready, READY_CONDITIONS, events, PRONTA_S))
                 return False
 
             foco = "(e => e && (e.value || e.id || e.tagName))(document.activeElement)"
-            await cmd("Page.enable")
-            await cmd("Runtime.enable")
+            for domain in DIAGNOSTIC_DOMAINS:
+                await cmd(f"{domain}.enable")
+            await cmd("Page.setLifecycleEventsEnabled", enabled=True)
+            await calibrate_clock(cmd, events)
             await cmd("Fetch.enable", patterns=so_mock.DOCUMENTOS)
-            so_mock.confere(url)
-            await cmd("Page.navigate", url=url)
-            r["abriu"] = await espera_aviso()
-            await confere_pagina(cmd, url, barrados)
-            if botao == "ligar" and not r["abriu"]:
-                # o Microfone e fone aberto pelo botao dele, e o Comecar a enviar da linha dos dados de uso
-                await js("document.querySelector('#b-disp').click()")
-                for _ in range(50):
-                    if await js("document.querySelector('#dlg-disp').open && !document.querySelector('#dd-met').hidden"):
-                        break
-                    await asyncio.sleep(0.1)
-                await js("document.querySelector('#dd-met-btn').click()")
-                r["ao_ligar"] = await espera_aviso(3.0)
-                if r["ao_ligar"]:
+            r["abriu"] = await load_and_wait_notice()
+            if events.load_at is not None and events.state_at is not None:
+                r["load_to_state_s"] = events.state_at - events.load_at
+            if r["not_ready"]:
+                tarefa.cancel()
+                return r
+            async def interact():
+                await confere_pagina(cmd, url, barrados)
+                if botao == "ligar" and not r["abriu"]:
+                    # o Microfone e fone aberto pelo botao dele, e o Comecar a enviar da linha dos dados de uso
+                    await js("document.querySelector('#b-disp').click()")
+                    for _ in range(50):
+                        if await js("document.querySelector('#dlg-disp').open && "
+                                    "!document.querySelector('#dd-met').hidden"):
+                            break
+                        await asyncio.sleep(0.1)
+                    await js("document.querySelector('#dd-met-btn').click()")
+                    r["ao_ligar"] = await wait_notice(cmd, time.monotonic() + 3.0)
+                    if r["ao_ligar"] is None:
+                        raise ConnectionError("the DevTools connection ended during the wait for the notice")
+                    if r["ao_ligar"]:
+                        r["foco"] = await js(foco)
+                        # com o aviso na tela, nada foi gravado ainda: a escolha sai do Enviar dele
+                        r["antes_do_enviar"] = (await cmd("Runtime.evaluate", awaitPromise=True, returnByValue=True,
+                                                          expression="fetch('/api/metricas').then(r => r.json())")
+                                                ).get("result", {}).get("value")
+                        await js("document.querySelector('#dlg-metricas button[value=sim]').click()")
+                    # o POST sai do close do aviso: o Chrome fica ate a linha do Microfone e fone mostrar a escolha nova
+                    for _ in range(50):
+                        if await js("!document.querySelector('#dlg-metricas').open && "
+                                    "document.querySelector('#dd-met-btn').dataset.ligar === '0'"):
+                            break
+                        await asyncio.sleep(0.1)
+                elif r["abriu"] and botao:
                     r["foco"] = await js(foco)
-                    # com o aviso na tela, nada foi gravado ainda: a escolha sai do Enviar dele
-                    r["antes_do_enviar"] = (await cmd("Runtime.evaluate", awaitPromise=True, returnByValue=True,
-                                                      expression="fetch('/api/metricas').then(r => r.json())")
-                                            ).get("result", {}).get("value")
-                    await js("document.querySelector('#dlg-metricas button[value=sim]').click()")
-                # o POST sai do close do aviso: o Chrome fica ate a linha do Microfone e fone mostrar a escolha nova
-                for _ in range(50):
-                    if await js("!document.querySelector('#dlg-metricas').open && "
-                                "document.querySelector('#dd-met-btn').dataset.ligar === '0'"):
-                        break
-                    await asyncio.sleep(0.1)
-            elif r["abriu"] and botao:
-                r["foco"] = await js(foco)
-                if botao == "esc":
-                    for tipo in ("keyDown", "keyUp"):
-                        await cmd("Input.dispatchKeyEvent", type=tipo, key="Escape", code="Escape",
-                                  windowsVirtualKeyCode=27, nativeVirtualKeyCode=27)
-                else:
-                    await js(f"document.querySelector('#dlg-metricas button[value={botao}]').click()")
-                await asyncio.sleep(1.0)
-                r["fechou"] = not await js("document.querySelector('#dlg-metricas').open")
-                if botao == "esc":  # o Esc nao escolhe: na proxima abertura, o aviso de novo
-                    so_mock.confere(url)
-                    await cmd("Page.navigate", url=url)
-                    r["reabriu"] = await espera_aviso()
+                    if botao == "esc":
+                        for tipo in ("keyDown", "keyUp"):
+                            await cmd("Input.dispatchKeyEvent", type=tipo, key="Escape", code="Escape",
+                                      windowsVirtualKeyCode=27, nativeVirtualKeyCode=27)
+                    else:
+                        await js(f"document.querySelector('#dlg-metricas button[value={botao}]').click()")
+                    await asyncio.sleep(1.0)
+                    r["fechou"] = not await js("document.querySelector('#dlg-metricas').open")
+                    if botao == "esc":  # o Esc nao escolhe: na proxima abertura, o aviso de novo
+                        r["reabriu"] = await load_and_wait_notice()
+
+            try:
+                await interact()
+            except CDP_GONE:
+                r["not_ready"].append(await report_not_ready(cmd, "notice", Ready.CHROME_GONE, READY_CONDITIONS,
+                                                             events, PRONTA_S))
             tarefa.cancel()
     finally:
         fecha_chrome(chrome, prof)
@@ -578,6 +788,7 @@ def cenario_metricas():
                 o_que = f"{nome}{', ' + BOTOES[botao] if botao else ''}"
                 diz(r["abriu"] == abre, f"{o_que}: o aviso {'abre' if r['abriu'] else 'nao abre'} ao carregar")
                 diz(not r["erros"], f"{o_que}: sem erro na pagina ({r['erros'][:2]})")
+                diz(not r["not_ready"], f"{o_que}: the page got ready before the wait for the notice ({r['not_ready']})")
                 if botao == "ligar":
                     texto2 = cfg.get("metricas_texto") == 2
                     diz(r["ao_ligar"] is (not texto2),

@@ -24,30 +24,52 @@ da prateleira), o `maleta-tit.js` (o título da placa da maleta) e o `mesa-topo.
 mesa em largura par). O `dj-visor.js` (o visor de DJ: a onda do disco que corre sob o ponto fixo do play), o
 `voice-effects.js` (os efeitos de voz: o seletor no receptor e a gaveta de teclas), o `dj-desk.js` (os dois decks da
 mesa de DJ, que se revezam como num set, no computador largo), o `search.js` (a busca e os resultados), o `queue.js` (a
-fila, o A seguir) e o `ui-events.js` (os ouvintes de clique, de tecla e de ponteiro das partes que ainda moram no
-`index.html`: o palco, a prateleira, o teclado) saíram do script principal da página, que é estrito: o arquivo tirado
+fila, o A seguir) e o `ui-events.js` (o ponto que chama os binders das partes, e os ouvintes da página toda, como o
+teclado e o voltar) saíram do script principal da página, que é estrito: o arquivo tirado
 dele começa com `'use strict'`, como o script inline que segue depois do `<script src>` dele. Depois do `transporte.js`
 vêm o `desk-scale.js` (a escala do palco da mesa: o `PALCO`, o `ajustarPalco()` e o `rectP()`), o `api.js` (o `api()`
 e o texto das mensagens do servidor), o `notice.js` (o aviso rápido), o `covers.js` (as capas), o `tonearm.js` (o braço
 do toca-discos), o `turntable.js` (o prato e a faixa, com os botões de tocar e a barra do tempo) e, depois do
-`dj-visor.js`, o `receiver.js` (o receptor: os volumes, o Cortar e o Nivelar). Inline ficam o `I18N` do `<head>` e a
+`dj-visor.js`, o `receiver.js` (o receptor: os volumes, o Cortar e o Nivelar). Depois do `voice-effects.js` vêm o
+`stage.js` (o palco do celular e a barra de baixo) e o `disc-page.js` (a página do disco no computador), e depois do
+`dj-desk.js`, o `shelf.js` (a prateleira, com o arrastar de um disco até um toca-discos na mesa) e o `commands.js` (o
+`tocar()`, o `cmd()`, o `alternar()` e o `ajustar()`). Depois do `search.js` vem o `options.js` (as opções de um
+disco ou de um resultado), e depois do `queue.js`, o `dialogs.js` (o confirmar, o apagar, o renomear e o Sons rápidos
+de um disco), o `metrics.js` (a linha dos dados de uso e erros no Microfone e fone e o aviso deles), o `devices.js` (o
+Microfone e fone e o desligar), o `phone.js` (o QR, o código e os celulares conectados), o `update.js` (a versão
+nova), o `caps.js` (o que a página pode, pelo caps do servidor), o `connection.js` (a conexão e o aviso de fora do ar),
+o `pairing.js` (o pareamento do celular) e o `welcome.js` (as boas-vindas). Depois do `ui-events.js` vêm o
+`desk-buttons.js` (os botões da mesa de DJ) e o `start.js` (a partida: monta a página e, no `DOMContentLoaded`,
+carrega e conecta), que o servidor põe inline na página (o `inline-script`): eles rodam logo depois do `ui-events.js`,
+sem esperar a rede, como o script em que moravam, e o pareamento aceito no meio da carga já acha o `carregar()`. Os únicos scripts escritos no próprio `index.html` são o `I18N` do `<head>` e a
 linha que aplica os textos e mostra a página (o `i18n-ok`): num arquivo que não carregasse, a página, com o aviso de
-fora do ar, ficaria escondida.
+fora do ar, ficaria escondida. Na página servida entram também, pelo `inline-script`, o `script-failed.js`, o
+`desk-buttons.js` e o `start.js`.
 
 Cada ouvinte mora no arquivo da parte que ele serve: os da busca (o campo, o formulário, os botões dela, o toque fora
 da gaveta da busca na mesa e os resultados) no `search.js`, os dos efeitos de voz (a gaveta, o Ouvir e o botão de
 desligar o efeito da barra de baixo) no `voice-effects.js`, os do toca-discos no `turntable.js` e os do receptor no
-`receiver.js`. O arquivo da parte guarda os ouvintes numa função (o `bindSearch()`, o `bindSearchResults()`, o
-`bindVoiceEffects()`, o `bindTurntable()` e o `bindReceiver()`), e quem liga é o lugar em que eles eram registrados
-antes: o `ui-events.js` chama os da busca, dos efeitos, do toca-discos e do receptor, e o `queue.js` chama o
-`bindSearchResults()`.
+`receiver.js`, os do palco e da barra de baixo no `stage.js`, o da página do disco no `disc-page.js`, os da
+prateleira no `shelf.js`, o do botão do celular no `phone.js` e os do Microfone e fone, da dica de ouvir e do desligar
+no `devices.js`, os das boas-vindas no `welcome.js`, o do pareamento no `pairing.js` e os da mesa no
+`desk-buttons.js`. O arquivo da parte guarda os ouvintes em funções, uma por trecho seguido de registros (o
+`bindSearch()`, o `bindSearchResults()`, o `bindVoiceEffects()`, o `bindTurntable()`, o `bindReceiver()`, o
+`bindMiniBar()`, o `bindStageButtons()` e o `bindStageGestures()` do palco, o `bindDiscPage()`, o `bindShelfClick()` e
+o `bindShelf()`, o `bindPhoneButton()`, o `bindDeviceButtons()` e o `bindDeskButtons()`), e quem liga é o lugar em que cada trecho era registrado antes: o `ui-events.js` chama os da busca,
+dos efeitos, do toca-discos, do receptor, do palco, da página do disco, da prateleira, do celular e dos
+dispositivos, o `queue.js` chama o `bindSearchResults()` e o `start.js` chama o `bindDeskButtons()` antes da
+partida. Com um arquivo da base faltando, o `ui-events.js` para no mesmo ponto em que parava, com os
+mesmos ouvintes já registrados, e a partida não roda quando os botões da mesa param no meio (sem o `disc-page.js`, o
+`dj-desk.js` ou, na mesa de DJ, o `queue.js`, de que o `montarMesa()` precisa ao montá-la), como no script único em que os dois moravam. Sem o `shared.js` (sem o `$`), o `connection.js` e o
+`pairing.js` não registram os ouvintes da rede nem tira o `?parear` do endereço: na base, o bloco inteiro parava antes
+deles.
 Assim os controles só respondem quando os arquivos de que eles dependem já carregaram (o formulário da busca segue
 `inert` até o `ui-events.js`), e cada ouvinte continua na mesma ordem dos outros no mesmo alvo (o toque fora da busca
 para o evento depois de o ouvinte do `queue.js` na `window` ver o toque). A busca, os resultados e os efeitos de voz
-só ligam sem nenhum arquivo faltando (`scriptsMissing()`), como antes; o toca-discos e o receptor, cujos ouvintes o
-`ui-events.js` registrava sempre, ligam se o próprio arquivo carregou (`scriptLoaded()`, do `script-failed.js`). Nos
-dois casos o resto do arquivo que chama segue registrando os seus ouvintes até a página ir para o aviso de fora do ar. Os ajudantes de mais de uma parte (o `fmt()`, o `mudar()` e o
-`ligarChave()`) moram no `shared.js`.
+só ligam sem nenhum arquivo faltando (`scriptsMissing()`), como antes; o toca-discos, o receptor, o palco, a página
+do disco, a prateleira, o celular e os dispositivos, cujos ouvintes o `ui-events.js` registrava sempre, ligam se o próprio arquivo carregou (`scriptLoaded()`, do `script-failed.js`). Nos
+dois casos o resto do arquivo que chama segue registrando os seus ouvintes até a página ir para o aviso de fora do ar. Os ajudantes de mais de uma parte (o `fmt()`, o
+`mudar()` e o `ligarChave()`) moram no `shared.js`.
 
 Todo nome do alto de um script é declarado por um script só. O `dev/theme_scripts.py`, que o `--tela` do
 `dev/testa_tudo.py` roda, abre a página num Chrome sem tela contra um `--mock` e pega cada script como o V8 o leu. Cada
@@ -63,9 +85,18 @@ arquivo, sem as marcas, com os outros atributos da tag numa linha e cada `'use s
 as duas páginas iguais, linha a linha; diferentes, ela separa os blocos que só mudaram de lugar das linhas novas ou que
 sumiram (um arquivo novo traz o próprio `[strict]`). O `dev/theme_listeners.py <base>` prova o outro lado: abre o tema
 dos dois commits num Chrome sem tela, contra um `--mock` de cada, no tamanho do PC (a mesa) e no de um celular, e
-compara os ouvintes de cada nó, do `document` e da `window`, na ordem em que entraram (o `getEventListeners` do
-DevTools), com as opções e o texto de cada função; sai 0 só com as duas tabelas iguais. O arquivo em que um ouvinte mora
-não entra na comparação: mudar um ouvinte de arquivo, ou para dentro de uma função, mantém a tabela.
+compara três tabelas. A primeira tem os ouvintes ligados no fim da carga, na ordem em que entraram (o
+`getEventListeners` do DevTools), com as opções e o texto de cada função: os de cada nó, do `document`, da `window` e do
+`navigator.connection`, os de cada `MediaQueryList` que a página criou e que teve um ouvinte ou uma chamada (pela
+consulta, numeradas entre as da mesma consulta na ordem em que nasceram; o `onchange` e o `addListener` entram) e os
+dos outros alvos em que a página pôs um ouvinte, pelo tipo. A segunda tem cada chamada de `addEventListener`,
+`removeEventListener`, `addListener` e `removeListener`, e cada `onchange` posto numa `MediaQueryList` ou no
+`navigator.connection`, desde o começo da página, por alvo e evento, na ordem (um nó pelo caminho da primeira chamada,
+numerado quando outro nó já tinha o mesmo): um ouvinte posto e tirado antes da leitura aparece nela. A terceira tem
+essas `MediaQueryList` na ordem em que nasceram, entre consultas, que é a ordem em que o navegador avisa de uma
+mudança. Sai 0 só com as tabelas iguais. O
+arquivo em que um ouvinte mora não entra na comparação: mudar um ouvinte de arquivo, ou para dentro de uma função,
+mantém as tabelas. O `dev/test_theme_listeners.py`, que o `--tela` roda, confere a leitura numa página própria.
 
 Toda conversa do tema com o servidor passa pelo `transporte.js` (os pedidos da API, que o `api()` do `api.js` chama,
 e o fluxo de eventos do SSE): o resto do tema não sabe como ela chega, e o `fetch`, o `EventSource` e o
@@ -102,7 +133,7 @@ a ordem da cascata: o `base.css` (as letras, as cores e o reset) primeiro, as pa
 `top-bar.css`, `phone.css`, ...), a pele por cima delas (`skin-vars.css`, as folhas geradas, `skin-top.css`,
 `skin-case.css`, ...), os arranjos do computador e da mesa de DJ (`desktop-library.css`, `dj-desk.css`, ...) e o
 `reduced-motion.css` perto do fim, antes do `deck.css`, do `mix.css` e do `pedal.css` da mesa. No `index.html` só fica a
-linha que esconde a página até os textos estarem no lugar. O `dev/testa_i18n.py` guarda o número de linhas de CSS e JS
-inline que ainda restam no `index.html` (o `INLINE_CEILING`): ele só desce, código novo do tema vai num arquivo da
+linha que esconde a página até os textos estarem no lugar. O `dev/garden.py` guarda o número de linhas de CSS e JS
+inline que ainda restam no `index.html` (o teto `theme_inline_lines` do `dev/garden.json`): ele só desce, código novo do tema vai num arquivo da
 pasta, e a contagem vai para o resumo do PR. A contagem abaixo do número também falha: o PR que tira código da página
 baixa o número junto.

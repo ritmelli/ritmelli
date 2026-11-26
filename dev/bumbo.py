@@ -47,10 +47,10 @@ if "--codigo" in args:
     del args[i:i + 2]
 sys.path.insert(0, str(codigo))
 sys.path.insert(1, str(SB))  # o pastas.py de agora, mesmo com --codigo de antes dele
-import batida  # noqa: E402
-import engine as eng  # noqa: E402
-from bumbo_mede import TOL, bumbos, desvio, grade  # noqa: E402
-from pastas import LIB  # noqa: E402
+import batida
+import engine as eng
+from bumbo_mede import TOL, bumbos, desvio, grade
+from pastas import LIB
 
 SR = eng.SR
 lib = {x["file"]: x for x in json.load(open(LIB / "library.json", encoding="utf-8"))}
@@ -138,7 +138,8 @@ ini = som[0] / SR if len(som) else 0.0
 xb = cab[int(ini * SR):int((ini + 20) * SR)]
 gb = batida.medir(xb, SR)
 if not gb.firme:  # a regua do motor quando o batida.py nao firma: a rede (a primeira batida no comeco do som, se ali)
-    gr = eng._grade_rede(xb)
+    gr = (eng.batida.network_beat_grid(xb, eng.SR) if hasattr(eng.batida, "network_beat_grid")
+          else eng._grade_rede(xb))
     if gr is not None:
         gb = gr._replace(fase=gr.fase - gr.periodo if gr.fase - gr.periodo >= -0.06 else gr.fase)
 pb = gb.periodo

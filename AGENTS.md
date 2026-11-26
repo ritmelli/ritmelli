@@ -2,7 +2,7 @@
 
 O que vale para quem muda o código do Ritmelli e que o código não diz sozinho. Como cada peça funciona:
 [docs/ARQUITETURA.md](docs/ARQUITETURA.md). O contrato entre o servidor e a interface: [API.md](API.md). Instalar,
-rodar e contribuir: [README.md](README.md). Este arquivo fica em até 80 linhas (o `dev/testa_tudo.py` confere).
+rodar e contribuir: [README.md](README.md). Este arquivo fica em até 80 linhas (o `dev/garden.py` confere).
 
 ## Onde testar
 
@@ -33,7 +33,7 @@ rodar e contribuir: [README.md](README.md). Este arquivo fica em até 80 linhas 
 - O módulo opcional de fora do repo passa pelos ganchos do `engine.py` e pelas rotas que já existem
   ([fx.md](docs/arquitetura/fx.md); o grupo `OUT_OF_REPO` do `permissao.py`), e os outros módulos da raiz mexem na
   `Engine` e no `App` só pela interface pública ([comandos.md](docs/arquitetura/comandos.md)): o `dev/testa_ganchos.py`
-  exige as quatro contas iguais aos tetos (`TETO`, `ROUTES_CEILING`, `ENGINE_CEILING`, `APP_CEILING`).
+  conta, e o `dev/garden.py` segura cada conta no seu teto do `dev/garden.json`.
 - Código novo do tema vai num arquivo da pasta `themes/ritmelli/` (um `.js` ou `.css`), não no `index.html`.
 - Mexeu em `instalador/`, nos `atualiza*.py`, no `migra.py`, no `pastas.py`, no `microfone/microfone.py` ou no
   `ritmelli.spec`: rode o "Monta o instalador" (`monta.yml`) na branch. Na CI, só ele compila o `.iss` e roda a parcial,
@@ -52,7 +52,7 @@ Toda mudança cobre as que toca, e o PR diz quais: o servidor e o contrato no `A
 
 | Área | Arquivos | Teste (sem caminho, em `dev/`) |
 | --- | --- | --- |
-| Motor de áudio | `engine.py`, `sonoridade.py`, `transicao.py`, `batida.py` | `testa_ganho`, `testa_preabre`, `testa_congela`, `testa_microfone`, `testa_passagens`, `testa_passagem` (o motor de verdade, que usa o `batida.py`), `testa_transicao`, `testa_anel`, `testa_ganchos` |
+| Motor de áudio | `engine.py`, `sonoridade.py`, `transicao.py`, `batida.py` | `testa_ganho`, `testa_preabre`, `testa_congela`, `testa_microfone`, `testa_passagens`, `testa_passagem` (o motor de verdade, que usa o `batida.py`), `testa_transicao`, `test_stretch_outgoing` (o `esticar_saida` pela Rubber Band de verdade), `testa_anel`, `testa_ganchos` |
 | Servidor e YouTube | `server.py`, `comandos.py`, `automatico.py`, `music.py` (as funções puras de música), `yt_fora.py`, `yt_erros.py` | `testa_comandos`, `testa_automatico`, `testa_adianta`, `testa_rapido`, `testa_vivo`, `testa_musica` |
 | `--mock` | `server.py`, `pastas.py`, `dev/so_mock.py` (a trava que tira as ferramentas de `dev/` da 8799) | `testa_mock`, `testa_so_mock` |
 | Gravação dos dados | `pastas.py` (`save_json`) | `testa_grava` (só o `save_json`; o `grava_cfg` do `server.py` não tem teste próprio) |
@@ -76,5 +76,5 @@ onde entra teste novo: o [Contributing](README.md#contributing) do README). O ch
 mudado no `compara` só bloqueia com a etiqueta `extracao-tema` (sem ela, fica no artefato). A fila de merge da `main`
 exige ele e o "Trusted author": PR de quem não é um dos dois mantenedores só passa aprovado por um deles no head atual.
 Sem bypass nem `--admin`; `gh pr merge` cai no auto-merge, vedado: é o GraphQL `enqueuePullRequest`, `expectedHeadOid`.
-A fila recusa PR com a etiqueta `needs-owner` (o passo "Needs owner" do `testa.yml`, testado pelo
+A fila recusa PR com a etiqueta `needs-owner` (o passo "Verdict" do `testa.yml` e o `dequeue-on-label.yml`, testados pelo
 `dev/test_needs_owner.py`): ela marca a prova que pede ação física ou decisão do dono, e o dono a tira depois de provar.

@@ -47,13 +47,13 @@ from urllib.parse import quote
 
 import numpy as np
 from PIL import Image
-from websockets.exceptions import ConnectionClosed
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import so_mock  # noqa: E402
-from fitcheck import (CHROME, PRONTA, READY_CONDITIONS, PRONTA_S, barra_outra_origem, conecta_cdp,  # noqa: E402
-                      erro_da_pagina, fecha_chrome, le_cdp)
-from so_mock import free_port  # noqa: E402
+import so_mock
+import fitcheck
+from fitcheck import (CHROME, DIAGNOSTIC_DOMAINS, PRONTA, READY_CONDITIONS, PageEvents, Ready,
+                      barra_outra_origem, conecta_cdp, fecha_chrome, le_cdp)
+from so_mock import free_port
 
 RAIZ = Path(__file__).resolve().parent.parent
 # o celular pequeno, o de sempre, o grande e o tablet em pe (abaixo de 900 px tambem e o layout do celular), e o PC
@@ -108,53 +108,16 @@ PALCO = "document.querySelector('#palco')"
 DESK_MOUNTED = "document.body.classList.contains('mesa-dj')"
 
 
-def diagnostic_js(desk):
-    parts = [*READY_CONDITIONS, ("shelf on screen", "S.lib.length > 0")] + ([("body.mesa-dj", DESK_MOUNTED)] if desk else [])
-    parts += [("document.readyState", "document.readyState"), ("document.fonts.status", "document.fonts.status"),
-               ("images not complete", "[...document.images].filter(i => !i.complete).map(i => i.src.slice(0, 120))"),
-               ("scripts not loaded", "[...document.scripts].filter(s => s.src && "
-                                      "!performance.getEntriesByName(s.src).length).map(s => s.src)")]
-    body = ", ".join(f"{json.dumps(name)}: c(() => {js})" for name, js in parts)
-    return ("(() => { const c = f => { try { return f(); } catch (e) { return 'error: ' + e.message; } }; "
-            f"return {{{body}}}; }})()")
+def ready_conditions(desk):
+    return [*READY_CONDITIONS, ("shelf on screen", "S.lib.length > 0")] + ([("body.mesa-dj", DESK_MOUNTED)] if desk else [])
 
 
-async def wait_ready(c, expr, label):
-    deadline = time.monotonic() + PRONTA_S
-    while time.monotonic() < deadline:
-        await asyncio.sleep(0.1)
-        if c.barrados:
-            sys.exit(f"{label}: a pagina tentou ir para outra origem ({c.barrados[0]}): barrada")
-        try:
-            if await asyncio.wait_for(c.js(expr), max(0.1, deadline - time.monotonic())):
-                return True
-        except (RuntimeError, TimeoutError):  # a pagina ainda nao tem o S
-            pass
-        except (ConnectionClosed, ConnectionError):
-            return False
-    return False
-
-
-async def report_not_ready(c, label, desk, folder):
-    print(f"{label}: the theme was not ready in {PRONTA_S:.0f} s; each condition:", flush=True)
-    try:
-        conditions = await c.js(diagnostic_js(desk))
-        for name, value in (conditions or {}).items():
-            print(f"  {name}: {json.dumps(value, ensure_ascii=False)}", flush=True)
-    except (RuntimeError, TimeoutError, ConnectionClosed, ConnectionError) as ex:
-        print(f"  (the conditions did not come: {type(ex).__name__} {ex})", flush=True)
-    for e in c.erros or ["(none)"]:
-        print(f"  console: {e}", flush=True)
-    for e in c.browser_errors or ["(none)"]:
-        print(f"  browser: {e}", flush=True)
-    try:
-        shot = folder / "nao-pronto" / f"{label}.png"
-        shot.parent.mkdir(parents=True, exist_ok=True)
-        shot.write_bytes(await c.png())
-        print(f"  print: {shot}", flush=True)
-    except (RuntimeError, TimeoutError, ConnectionClosed, OSError) as ex:
-        print(f"  (the print did not come: {type(ex).__name__} {ex})", flush=True)
-    sys.exit(f"{label}: o tema nao ficou pronto em {PRONTA_S:.0f} s" + (" (sem o body.mesa-dj)" if desk else ""))
+async def report_not_ready(c, label, outcome, desk, folder):
+    verdict = await fitcheck.report_not_ready(c.cmd, label, outcome, ready_conditions(desk), c.events,
+                                              fitcheck.PRONTA_S, folder / "nao-pronto" / f"{label}.png")
+    if outcome is Ready.TIMED_OUT and desk:
+        verdict += " (without the body.mesa-dj)"
+    sys.exit(verdict)
 
 
 def na_mesa(w, h):
@@ -210,14 +173,19 @@ def sobe_servidor(tmp, porta, log, raiz=RAIZ, config=None, extras=(), env=None):
     # sys.executable e o python de verdade: o "python" do PATH, com a LOCALAPPDATA trocada, instalaria outro
     try:
         return so_mock.sobe([sys.executable, str(raiz / "server.py"), "--mock", "--no-browser", "--port", str(porta),
-                             "--data-dir", str(dados), *extras], porta, cwd=raiz, stdout=log, stderr=subprocess.STDOUT,
+                             "--data-dir", str(dados), *extras], porta, stop_flag=knows_stop_flag(raiz), cwd=raiz,
+                            stdout=log, stderr=subprocess.STDOUT,
                             env=dict(os.environ, **(env or {}), LOCALAPPDATA=str(tmp / "local")))
     except so_mock.Recusa as ex:
         sys.exit(f"{ex} (ver {log.name})")
 
 
+def knows_stop_flag(raiz):
+    return so_mock.STOP_FLAG in (raiz / "server.py").read_text(encoding="utf-8")
+
+
 def para_servidor(srv):
-    """O /api/shutdown so ao filho vivo que responde como --mock; se nao, o handle dele."""
+    """The so_mock.Filho stop (Filho.encerra)."""
     srv.encerra()
 
 
@@ -250,19 +218,17 @@ def _monta_tocando(api):
 
 class Chrome:
     def __init__(self, ws, base):
-        self.ws, self.seq, self.pend, self.erros, self.barrados = ws, 0, {}, [], []
-        self.browser_errors = []
+        self.ws, self.seq, self.pend, self.barrados = ws, 0, {}, []
+        self.events = PageEvents()
+        self.erros = self.events.page_errors
         self.fetch = barra_outra_origem(ws, base, self.barrados)  # o documento de outra origem, barrado
 
     async def le(self):
         await le_cdp(self.ws, self.pend, self.evento)
 
     def evento(self, m):
-        if not self.fetch(m) and (e := erro_da_pagina(m)):
-            self.erros.append(e)
-        if m.get("method") == "Log.entryAdded" and m["params"]["entry"].get("level") == "error":
-            entry = m["params"]["entry"]
-            self.browser_errors.append(f"{entry.get('text', '')} {entry.get('url', '')}".strip())
+        if not self.fetch(m):
+            self.events.take(m)
 
     async def cmd(self, metodo, **params):
         self.seq += 1
@@ -317,14 +283,14 @@ async def prints(a, srv, destino):
                 tabs = json.load(urllib.request.urlopen(f"http://127.0.0.1:{cport}/json"))
                 ws_url = next(t["webSocketDebuggerUrl"] for t in tabs if t["type"] == "page")
                 break
-            except Exception:  # noqa: BLE001 - o Chrome ainda esta subindo
+            except Exception:  # o Chrome ainda esta subindo
                 time.sleep(0.1)
         if not ws_url:
             sys.exit("chrome headless nao subiu")
         async with conecta_cdp(ws_url) as ws:
             c = Chrome(ws, srv.base)
             leitor = asyncio.create_task(c.le())
-            for d in ("Page", "Runtime", "Network", "Log"):
+            for d in DIAGNOSTIC_DOMAINS:
                 await c.cmd(f"{d}.enable")
             await c.cmd("Network.setBlockedURLs", urls=["*fonts.googleapis.com*", "*fonts.gstatic.com*"])
             await c.cmd("Emulation.setEmulatedMedia", features=[{"name": "prefers-reduced-motion", "value": "reduce"}])
@@ -374,10 +340,12 @@ async def prints(a, srv, destino):
                         srv.confere()  # a pagina so do filho vivo que responde como --mock
                     except so_mock.Recusa as ex:
                         sys.exit(f"{pre}: {ex}")
-                    c.browser_errors.clear()
-                    await c.cmd("Page.navigate", url=f"{srv.base}/t/ritmelli/?lang={a.lang}")
-                    if not await wait_ready(c, PRONTO + (f" && {DESK_MOUNTED}" if mesa else ""), pre):
-                        await report_not_ready(c, pre, mesa, destino.parent)
+                    c.events.new_load()
+                    ready = await fitcheck.navigate_and_wait(c.cmd, f"{srv.base}/t/ritmelli/?lang={a.lang}",
+                                                             PRONTO + (f" && {DESK_MOUNTED}" if mesa else ""),
+                                                             c.barrados, fitcheck.PRONTA_S)
+                    if ready is not Ready.READY:
+                        await report_not_ready(c, pre, ready, mesa, destino.parent)
                     await asyncio.sleep(1)
                     if mesa:
                         # o ponto de toque do visor (movimento reduzido) fica onde o primeiro desenho o ancorou, e o
@@ -473,14 +441,16 @@ def main():
     shutil.rmtree(pasta / "nao-pronto", ignore_errors=True)
     destino.mkdir(parents=True)
     tmp = Path(tempfile.mkdtemp(prefix="ritmelli-compara-"))
-    porta = free_port()
-    with open(pasta / "servidor.log", "w", encoding="utf-8") as log:
-        srv = sobe_servidor(tmp, porta, log, raiz)
-        try:
-            erros, instaveis = asyncio.run(prints(a, srv, destino))
-        finally:
-            para_servidor(srv)
-            shutil.rmtree(tmp, ignore_errors=True)
+    try:
+        porta = free_port()
+        with open(pasta / "servidor.log", "w", encoding="utf-8") as log:
+            srv = sobe_servidor(tmp, porta, log, raiz)
+            try:
+                erros, instaveis = asyncio.run(prints(a, srv, destino))
+            finally:
+                para_servidor(srv)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
     for e in erros:
         print(f"ERRO   {e}")
     for i in instaveis:
