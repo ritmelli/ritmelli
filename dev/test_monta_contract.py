@@ -108,8 +108,7 @@ def step_output_problem(job, name):
 
 
 def code(run):
-    text = re.sub(r"<#.*?#>", lambda m: re.sub(r"[^\n]", " ", m.group(0)), str(run), flags=re.S)
-    return re.sub(r"#[^\n]*", lambda m: " " * len(m.group(0)), text)
+    return re.sub(r"<#.*?#>|#[^\n]*", lambda m: re.sub(r"[^\n]", " ", m.group(0)), str(run), flags=re.S)
 
 
 def active(run, found):
@@ -341,6 +340,8 @@ def main():
                                                                        "'--saida',\n    $saida)")))
     check("'--saida',\n" in manifest_step(broken["jobs"]["monta"])["run"] and contract_problems(broken) == [],
           "the --saida value on the next line keeps the contract")
+    marks = mutant(doc, lambda d: edit_run(d, lambda run: "# a <# in a line comment\n" + run + "# and a #> later\n"))
+    check(contract_problems(marks) == [], "line comments that mention <# and #> keep the contract")
     cited = mutant(doc, lambda d: edit_run(d, lambda run: run + "# publica.py also takes '--saida', $other)\n"))
     check(contract_problems(cited) == [], "a comment citing --saida after the real option keeps the contract")
     later = mutant(doc, lambda d: shown(d, "testa")["steps"].append(
