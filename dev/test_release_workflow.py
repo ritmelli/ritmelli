@@ -289,6 +289,8 @@ SHARED_STRINGS = re.compile(r'(?:VALUE|StringStruct\()\s*"(CompanyName|LegalCopy
 
 
 def same_strings_as_the_exe(rc, spec):
+    rc = re.sub(r"//[^\n]*|/\*.*?\*/", " ", rc, flags=re.S)
+    spec = re.sub(r"#[^\n]*", " ", spec)
     dll, exe = dict(SHARED_STRINGS.findall(rc)), dict(SHARED_STRINGS.findall(spec))
     return (len(dll) == 3 and dll == exe and 'BLOCK "041604B0"' in rc and 'StringTable("041604B0"' in spec
             and "0x0416, 1200" in rc and "0x0416, 1200" in spec)
@@ -299,9 +301,14 @@ def test_version_strings():
     spec = (ROOT / "ritmelli.spec").read_text(encoding="utf-8")
     check(same_strings_as_the_exe(rc, spec), "the DLL version resource has the names and the table of the ritmelli.exe")
     for old, new in (("Behling Informática Ltda.", "Behling Informatica Ltda."), ("041604B0", "040904B0"),
-                     ("Free software under the GPLv3", "Free software"), ("0x0416, 1200", "0x0409, 1200")):
+                     ("Free software under the GPLv3", "Free software"), ("0x0416, 1200", "0x0409, 1200"),
+                     ('"ProductName", "Ritmelli"', '"ProductName", "Ritmeli"')):
         check(not same_strings_as_the_exe(rc.replace(old, new, 1), spec),
               f"the check catches {old!r} changed in version.rc")
+    company_rc, company_spec = '      VALUE "CompanyName"', '            StringStruct("CompanyName"'
+    check(not same_strings_as_the_exe(rc.replace(company_rc, "      // " + company_rc.strip(), 1), spec)
+          and not same_strings_as_the_exe(rc, spec.replace(company_spec, "            # " + company_spec.strip(), 1)),
+          "the check catches the CompanyName commented out in version.rc or in ritmelli.spec")
 
 
 def main():
