@@ -91,9 +91,9 @@ def page_files(raiz, path):
     return found
 
 
-def in_order(expected, bodies):
+def first_lost(expected, bodies):
     left = iter(bodies)
-    return [name for kind, name, text in expected if [kind, text] not in left]
+    return next((name for kind, name, text in expected if [kind, text] not in left), None)
 
 
 class Tab:
@@ -232,11 +232,11 @@ def served_pages(srv, role, raiz):
         with urllib.request.urlopen(srv.base + path, timeout=10) as r:
             tags = file_tags(r.read().decode("utf-8"))
         expected = page_files(raiz, path)
-        lost = in_order(expected, tags.bodies)
+        lost = first_lost(expected, tags.bodies)
         results.append((not tags.files and expected and not lost,
                         f"{role}: {path} has no <script src> and no stylesheet <link> "
                         f"({[f'{k} {n}' for k, n in tags.files] or 'none'}), and the text of its {len(expected)} files "
-                        f"inside it, in order ({lost or 'all of them'})"))
+                        f"inside it, in order ({f'not from {lost} on' if lost else 'all of them'})"))
     return results
 
 
