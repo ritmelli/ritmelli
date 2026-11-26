@@ -309,8 +309,8 @@ def main(argv=None):
             try:
                 runs = (checks, *(held_until(a) for a in RAN_BEFORE), startup_with_the_search,
                         *(after_a_failure(*f) for f in EARLIER_FAILURES))
-                for run in runs:
-                    results += asyncio.run(missing_script.with_tab(srv, run))
+                for found in asyncio.run(missing_script.with_tabs(srv, runs)):
+                    results += found
             finally:
                 compara.para_servidor(srv)
     for ok, message in results:
