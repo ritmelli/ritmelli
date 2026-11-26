@@ -19,30 +19,29 @@ CSS_ESCAPE = re.compile(r"\\(?:([0-9a-fA-F]{1,6})(?:\r\n|[ \t\r\n\f])?|(.))", re
 URL_START = re.compile(r"url\([ \t\r\n\f]*['\"]?", re.IGNORECASE)
 NOT_PLAIN_OUTSIDE = re.compile(r"\\|image-set\(", re.IGNORECASE)
 NOT_RELATIVE = re.compile(r"[ \t\r\n\f]*(?:https?://|(?!https?:)[a-z][a-z0-9+.-]*:|/|#)", re.IGNORECASE | re.ASCII)
-TEXT_ONLY = ("textarea", "title", "xmp", "iframe", "noembed", "noframes", "noscript")
-FOREIGN = ("svg", "math")
-NOT_IN_FOREIGN = ("script", "style", "link", "foreignobject", "desc", "title", "annotation-xml", "mi", "mo", "mn", "ms",
-                  "mtext")
-NOT_IN_PAGE = {"base": "changes where every address of the page points",
-               "template": "holds markup the browser keeps inert, which the build would still read",
-               "plaintext": "turns the rest of the page into text, where the build would still read tags"}
+HTML_ELEMENTS = ("a", "b", "body", "button", "canvas", "dialog", "div", "form", "h1", "h2", "h3", "head", "header", "html",
+                 "iframe", "input", "kbd", "label", "li", "link", "main", "meta", "ol", "output", "p", "script",
+                 "section", "select", "small", "span", "style", "svg", "title", "ul")
+SVG_ELEMENTS = ("circle", "g", "mask", "path", "rect")
+TEXT_ONLY = ("title", "iframe")
 SCRIPT_TYPES = ("", "text/javascript", "application/json")
 PLAIN_ATTRIBUTES = ("rel", "type", "as")
+READ_ATTRIBUTES = ("src", "href", "rel", "type")
 SPACE = "[ \t\n\f\r]"
 ATTRIBUTE_NAME = "[A-Za-z_:@][-A-Za-z0-9_:.@]*"
-VALUE = r"""(?:"[^"]*"|'[^']*'|[^ \t\n\f\r"'=<>`]+)"""
+VALUE = r"""(?:"[^"\r\x00]*"|'[^'\r\x00]*'|[^ \t\n\f\r\x00"'=<>`]+)"""
 ATTRIBUTE = re.compile(rf"{SPACE}+({ATTRIBUTE_NAME})(?:{SPACE}*={SPACE}*({VALUE}))?")
 GRAMMAR = {
     "text": re.compile(r"[^<]+"),
     "comment": re.compile(r"<!--(?![>-])(?:(?!--)[\s\S])*-->"),
-    "doctype": re.compile(r"<!doctype html>", re.IGNORECASE),
+    "doctype": re.compile(r"<!doctype html>", re.IGNORECASE | re.ASCII),
     "end tag": re.compile(r"</([A-Za-z][A-Za-z0-9-]*)>"),
     "start tag": re.compile(rf"<([A-Za-z][A-Za-z0-9-]*)((?:{SPACE}+{ATTRIBUTE_NAME}(?:{SPACE}*={SPACE}*{VALUE})?)*)"
                             rf"{SPACE}*(/?)>"),
 }
-BODY = {tag: re.compile(rf"[^<]*</{tag}>", re.IGNORECASE) for tag in TEXT_ONLY}
-BODY["style"] = re.compile(r"(?:(?!</style)[\s\S])*</style>", re.IGNORECASE)
-BODY["script"] = re.compile(r"(?:(?!</script|<!--)[\s\S])*</script>", re.IGNORECASE)
+BODY = {tag: re.compile(rf"[^<]*</{tag}>", re.IGNORECASE | re.ASCII) for tag in TEXT_ONLY}
+BODY["style"] = re.compile(r"(?:(?!</style)[\s\S])*</style>", re.IGNORECASE | re.ASCII)
+BODY["script"] = re.compile(r"(?:(?!</script|<!--)[\s\S])*</script>", re.IGNORECASE | re.ASCII)
 EXPECTED = ("text without <, <name attribute=\"value\">, </name>, <!-- text without -- -->, or <!doctype html>")
 
 
@@ -77,7 +76,7 @@ def place(html, i):
 
 class Template:
     def __init__(self, html):
-        self.html, self.found, self.elements, self.foreign = html, [], [], []
+        self.html, self.found, self.elements, self.svg, self.select = html, [], [], False, False
         i = 0
         while i < len(html):
             i = self.token(i)
@@ -100,20 +99,27 @@ class Template:
         attrs = {}
         for name, value in ATTRIBUTE.findall(m.group(2)):
             attrs.setdefault(name.lower(), value[1:-1] if value[:1] in "\"'" and value else value)
-        if self.foreign and tag in NOT_IN_FOREIGN:
-            self.refuse(i, f"the <{tag}> is inside <{self.foreign[-1]}>, where the browser reads what the build "
-                           f"cannot follow: draw it with shapes and attributes only, and put its CSS and code in the "
-                           f"theme's files")
-        if tag in NOT_IN_PAGE or "srcdoc" in attrs:
-            why = NOT_IN_PAGE.get(tag, "writes a page in an attribute, whose files the browser would fetch")
-            self.refuse(i, f"the tag {raw[:60]!r} {why}: leave it out")
+        self.listed(i, f"<{tag}>", tag)
+        if self.select:
+            self.refuse(i, f"the <{tag}> is inside <select>, where a browser can drop or move what the build would "
+                           f"read: leave the <select> empty and fill it from the theme's code")
+        if "srcdoc" in attrs:
+            self.refuse(i, f"the tag {raw[:60]!r} writes a page in an attribute, whose files the browser would fetch: "
+                           f"leave it out")
         if loose := [a for a in PLAIN_ATTRIBUTES if "&" in attrs.get(a, "")]:
             self.refuse(i, f"the {loose[0]} of the tag {raw[:60]!r} has an &: write the value itself")
-        if tag in FOREIGN:
-            if not m.group(3):
-                self.foreign.append(tag)
+        if tag in ("script", "style", "link") and (loose := [m.group(0) for a in ("src", "href")
+                                                             for m in REFERENCE.finditer(attrs.get(a, ""))
+                                                             if m.group(0)[1:] not in html5]):
+            self.refuse(i, f"the tag {raw[:60]!r} has {loose[0]!r}, which is not a whole character reference the "
+                           f"browser reads the same way")
+        if tag == "svg":
+            self.svg = not m.group(3)
             return body
-        if self.foreign:
+        if self.svg:
+            return body
+        if tag == "select":
+            self.select = True
             return body
         if tag == "script" and "src" in attrs:
             return self.file_tag(i, raw, SCRIPT_TAG, "script", "</script>", attrs)
@@ -131,8 +137,17 @@ class Template:
         if tag == "style" and (problem := sheet_problem(text.group(0)[:-8], False)):
             self.refuse(i, f"the <style> has {problem}")
         if tag in ("script", "style"):
-            self.elements.append((tag, {a: unescape(attrs[a]) for a in ("src", "href", "rel", "type") if a in attrs}))
+            self.record(tag, attrs)
         return text.end()
+
+    def listed(self, i, written, tag):
+        if tag not in (SVG_ELEMENTS if self.svg else HTML_ELEMENTS):
+            self.refuse(i, f"the {written} is not one of the elements the build reads{' inside <svg>' * self.svg}: "
+                           f"adding one to theme_page.py takes a pull request with a case in dev/theme_page_cases.py "
+                           f"that dev/theme_page_oracle.py checks against Chrome")
+
+    def record(self, tag, attrs):
+        self.elements.append((tag, {a: unescape(attrs[a]) for a in READ_ATTRIBUTES if a in attrs}))
 
     def link(self, i, raw, attrs):
         rel = attrs.get("rel", "").lower().split()
@@ -142,7 +157,7 @@ class Template:
                            f"file tag")
         if "stylesheet" in rel:
             return self.file_tag(i, raw, SHEET_TAG, "style", "", attrs)
-        self.elements.append(("link", {a: unescape(attrs[a]) for a in ("src", "href", "rel", "type") if a in attrs}))
+        self.record("link", attrs)
         return i + len(raw)
 
     def file_tag(self, i, raw, canonical, kind, end, attrs):
@@ -150,26 +165,29 @@ class Template:
         if not written or not self.html.startswith(end, i + len(raw)):
             self.refuse(i, f"the tag {raw!r} is not <script src=\"...\"></script> or <link rel=\"stylesheet\" "
                            f"href=\"...\">, the only file tags the page puts inline")
-        value = written.group(1)
-        if loose := [m.group(0) for m in REFERENCE.finditer(value) if m.group(0)[1:] not in html5]:
-            self.refuse(i, f"the tag {raw!r} has {loose[0]!r}, which is not a whole character reference the browser "
-                           f"reads the same way")
-        self.found.append((i, i + len(raw) + len(end), kind, unescape(value)))
-        self.elements.append(("script" if kind == "script" else "link",
-                              {a: unescape(attrs[a]) for a in ("src", "href", "rel", "type") if a in attrs}))
+        self.found.append((i, i + len(raw) + len(end), kind, unescape(written.group(1))))
+        self.record("script" if kind == "script" else "link", attrs)
         return i + len(raw) + len(end)
 
     def end_tag(self, tag, i):
-        if tag in FOREIGN and self.foreign:
-            if self.foreign[-1] != tag:
-                self.refuse(i, f"the </{tag}> does not close the <{self.foreign[-1]}> open there, which the browser "
-                               f"keeps open: close it with </{self.foreign[-1]}>")
-            self.foreign.pop()
+        if self.svg and tag == "svg":
+            self.svg = False
+            return
+        self.listed(i, f"</{tag}>", tag)
+        if tag == "select":
+            self.select = False
 
 
 @functools.lru_cache(maxsize=16)
 def template(html):
     return Template(html)
+
+
+def strict(html):
+    try:
+        return template(html), None
+    except ThemePageError as ex:
+        return None, (*ex.at, str(ex))
 
 
 def file_tags(html):

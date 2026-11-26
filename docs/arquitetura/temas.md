@@ -34,11 +34,25 @@ folha, sem outros atributos. O servidor (o `build` do `theme_page.py`, que o `se
 `<script>` ou um `<style>` com o texto do arquivo, sem a marca de ordem de bytes (BOM) do começo, e a página não pede ao
 servidor nenhum script nem nenhuma folha: não existe página com um arquivo faltando. A montagem lê o modelo inteiro por
 uma gramática estrita, que só aceita texto sem `<`, a tag de abertura com atributos `nome="valor"` (ou com aspas
-simples, ou sem aspas) separados por espaço ASCII, a tag de fim `</nome>`, o comentário `<!-- texto sem -- -->` e o
-`<!doctype html>`; o texto do `<script>`, do `<style>` e dos elementos de texto vai até o primeiro `</nome>` exato. Ela
-não imita o navegador: o que fica fora da gramática para a montagem, e a página responde 500 com o modelo, a linha e a
-coluna (`themes/ritmelli/index.html:3:5`), o que ela achou e a forma esperada, sem pasta do PC; o log do servidor diz o
-mesmo. Depois da gramática, ela ainda recusa, e o que escrever no lugar:
+simples, ou sem aspas, sem retorno de carro nem NUL no valor) separados por espaço ASCII, a tag de fim `</nome>`, o
+comentário `<!-- texto sem -- -->` e o `<!doctype html>`; o texto do `<script>`, do `<style>`, do `<title>` e do
+`<iframe>` vai até o primeiro `</nome>` exato, em ASCII. Ela não imita o navegador: o que fica fora da gramática para a
+montagem, e a página responde 500 com o modelo, a linha e a coluna (`themes/ritmelli/index.html:3:5`), o que ela achou e
+a forma esperada, sem pasta do PC; o log do servidor diz o mesmo.
+
+A gramática só aceita os elementos que o tema e a galeria usam hoje, numa lista para a página e noutra para dentro do
+`<svg>` (o `HTML_ELEMENTS` e o `SVG_ELEMENTS` do `theme_page.py`). Qualquer outra tag, de abertura ou de fim, para a
+montagem com a linha e a coluna e o nome do elemento. Acrescentar um elemento pede um PR com um caso no
+`dev/theme_page_cases.py` que o `dev/theme_page_oracle.py` confere no Chrome. Por isso o tema não tem `<table>`,
+`<frameset>`, `<math>`, `<template>`, `<base>`, `<plaintext>`, `<noscript>` nem `<textarea>`: em cada um, o navegador
+move, descarta ou lê como texto o que a montagem leria.
+
+- na página: `a`, `b`, `body`, `button`, `canvas`, `dialog`, `div`, `form`, `h1`, `h2`, `h3`, `head`, `header`, `html`,
+  `iframe`, `input`, `kbd`, `label`, `li`, `link`, `main`, `meta`, `ol`, `output`, `p`, `script`, `section`, `select`,
+  `small`, `span`, `style`, `svg`, `title`, `ul`;
+- dentro do `<svg>`: `circle`, `g`, `mask`, `path`, `rect`, e o `</svg>` que o fecha.
+
+Depois da gramática, a montagem ainda recusa, e o que escrever no lugar:
 
 - o arquivo que falta, a pasta no lugar dele ou o caminho que sai da pasta da página (ou de `themes/`, com `/t/`): um
   arquivo que existe ali;
@@ -46,8 +60,9 @@ mesmo. Depois da gramática, ela ainda recusa, e o que escrever no lugar:
   que o segura;
 - a tag de arquivo com outro atributo, outra ordem, maiúsculas ou algo antes do fim: exatamente
   `<script src="arquivo.js"></script>` ou `<link rel="stylesheet" href="arquivo.css">`;
-- um `&` no nome do arquivo que não abre uma referência nomeada inteira, e toda referência numérica: o nome sem `&`, ou
-  com `&amp;`; e um `&` no `rel`, no `type` ou no `as`: o valor escrito por extenso;
+- um `&` no `src` ou no `href` de um `<script>`, de um `<style>` ou de um `<link>` que não abre uma referência nomeada
+  inteira, e toda referência numérica: o nome sem `&`, ou com `&amp;`; e um `&` no `rel`, no `type` ou no `as`: o valor
+  escrito por extenso;
 - o script com `</script` ou `<!--` ou que começa com `#!`, e a folha com `</style`: o texto sem eles;
 - a folha, de arquivo ou escrita na página, com `@import`, mesmo num comentário ou numa string (a folha se lê com os
   escapes de CSS decodificados): uma tag de arquivo por folha;
@@ -57,19 +72,17 @@ mesmo. Depois da gramática, ela ainda recusa, e o que escrever no lugar:
   tag de arquivo;
 - o `<script>` escrito na página com um `type` que não é `text/javascript` nem `application/json` (o `module` importa
   arquivos): um `<script>` sem `type` ou com um desses dois, ou a tag de arquivo;
-- o `<base>`, que muda para onde aponta cada endereço da página, o `<template>`, cujo conteúdo o navegador deixa inerte,
-  o `<plaintext>`, que faz do resto da página texto, e o `srcdoc`, que escreve uma página num atributo: tirá-los, e pôr
-  no próprio tema o que o `srcdoc` mostrava;
-- dentro de `<svg>` ou `<math>`, o `<script>`, o `<style>`, o `<link>` e os elementos em que o navegador volta a ler
-  HTML (`<foreignObject>`, `<desc>`, `<title>`, `<annotation-xml>`, `<mi>`, `<mo>`, `<mn>`, `<ms>`, `<mtext>`), e o
-  `</svg>` ou `</math>` que não fecha o que está aberto: o desenho só com formas e atributos, e o CSS e o código nos
-  arquivos do tema.
+- toda tag dentro de um `<select>`, onde um navegador pode descartar ou mover o que a montagem leria (o Chrome de hoje
+  guarda ali o `<link>` e o `<style>`; o leitor antigo do `<select>`, que outros navegadores ainda usam, descarta o
+  `<link>`): o `<select>` vazio, preenchido pelo código do tema;
+- o `srcdoc`, que escreve uma página num atributo: tirá-lo, e pôr no próprio tema o que ele mostrava.
 
 O `dev/testa_mock.py` confere cada caso da lista e cada forma fora da gramática (os casos moram no
 `dev/theme_page_cases.py`). O `dev/theme_page_oracle.py`, que o `--tela` do `dev/testa_tudo.py` roda, abre num Chrome
-sem tela, com o JavaScript desligado, o tema, a galeria e cada caso que a montagem aceita, e reprova quando os
-`<script>`, `<style>` e `<link>` do DOM, com o `src`, o `href`, o `rel` e o `type`, não são, na mesma ordem, os que a
-montagem leu: uma forma que a gramática aceita e o navegador lê de outro jeito vira falha de teste. O
+sem tela, com os scripts bloqueados pelo cabeçalho `Content-Security-Policy: script-src 'none'` (o Chrome lê a página
+como com o JavaScript ligado, e o `<noscript>` como texto), o tema, a galeria e cada caso que a montagem aceita, e
+reprova quando os `<script>`, `<style>` e `<link>` do DOM, com o `src`, o `href`, o `rel` e o `type`, não são, na mesma
+ordem, os que a montagem leu: uma forma que a gramática aceita e o navegador lê de outro jeito vira falha de teste. O
 `dev/missing_script.py`, que o `--tela` também roda, lê a página e a galeria como o servidor as manda, nas duas línguas,
 de um `--mock` como o PC e de outro como o celular, e reprova com um `<script src>` ou um `<link rel="stylesheet">`
 nelas ou com um pedido de script ou de folha que o Chrome faça ao servidor. O `dev/garden.py` conta as linhas de CSS e

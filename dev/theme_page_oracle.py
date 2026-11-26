@@ -28,10 +28,8 @@ def pages(raiz):
 
 
 def built_view(html):
-    try:
-        return [[tag, HTML, attrs] for tag, attrs in theme_page.template(html).elements]
-    except theme_page.ThemePageError:
-        return None
+    read, _ = theme_page.strict(html)
+    return read and [[tag, HTML, attrs] for tag, attrs in read.elements]
 
 
 class Pages(http.server.BaseHTTPRequestHandler):
@@ -43,6 +41,7 @@ class Pages(http.server.BaseHTTPRequestHandler):
         body = self.server.pages[int(number)].encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Security-Policy", "script-src 'none'")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -53,7 +52,6 @@ class Pages(http.server.BaseHTTPRequestHandler):
 
 async def chrome_views(base, count):
     async def run(tab):
-        await tab.cmd("Emulation.setScriptExecutionDisabled", value=True)
         views = []
         for n in range(count):
             loads = tab.loads
