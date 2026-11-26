@@ -69,8 +69,9 @@ de microfone no meio: o reinício do áudio derrubou os streams de qualquer micr
 microfone pedido, o `pede_tarefa` ainda espera ela acabar e o áudio voltar, e o motor reabre do mesmo jeito, sem
 mensagem própria: se o microfone recusado ainda é o ativo, a conferência que a reabertura abre pede para reinstalar
 (`server.mic.notReadyReinstall`). Ao desinstalar, o original de
-todo microfone volta, e a tarefa e os mudos do registro saem. A DLL e o log moram na `microfone\` da pasta do executável (pelo
-código, na `%ProgramW6432%\Ritmelli`), e tudo isso só vale com essa pasta protegida
+todo microfone volta, e a pasta do filtro, a tarefa, as vagas do hospedeiro e os mudos do registro saem, mesmo quando
+o Audiosrv não volta (o `remove` sai com o erro depois de limpar). A DLL e o log moram na `microfone\` da pasta do
+executável (pelo código, na `%ProgramW6432%\Ritmelli`), e tudo isso só vale com essa pasta protegida
 (`pastas.pasta_protegida`): o `instala` e o `instala-todos` conferem antes de tudo e recusam, e o
 `instala-todos` do executável, o da tarefa, ainda apaga as duas tarefas que rodam como SYSTEM (a da
 atualização e a dele), que só o setup completo cria de novo. Com a pasta reprovada, o `remove`

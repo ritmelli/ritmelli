@@ -28,6 +28,7 @@ import ast
 import io
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -211,6 +212,7 @@ class TestaConferencia(unittest.TestCase):
 
 
 REAL_AUDIO_SERVICE = filtro.servico_audio
+REAL_RMTREE = shutil.rmtree
 
 
 def refusing_powershell(service, state="Running"):
@@ -246,7 +248,8 @@ class TestaReinicio(unittest.TestCase):
                   mock.patch.object(filtro, "_depois_do_reinicio", self.c("confere", {"mudos": [UMC_IN]})),
                   mock.patch.object(filtro, "_protegida", lambda: self.protegida),
                   mock.patch.object(filtro, "_apaga_registro_com", self.c("apaga_com")),
-                  mock.patch.object(filtro, "PASTA", tempfile.gettempdir() + r"\ritmelli-teste-nao-existe")]
+                  mock.patch.object(filtro, "PASTA", tempfile.gettempdir() + r"\ritmelli-teste-nao-existe"),
+                  mock.patch.object(filtro.shutil, "rmtree", self.c("rmtree", REAL_RMTREE))]
         for p in self.p:
             p.start()
 
@@ -406,7 +409,7 @@ class TestaReinicio(unittest.TestCase):
 
     def test_remove(self):
         r = self._remove(sobra=False)
-        self.assertEqual(self.c.nomes(), ["reinicia", "tarefa_apaga", "esquece", "grava_mudos"],
+        self.assertEqual(self.c.nomes(), ["reinicia", "rmtree", "tarefa_apaga", "esquece", "grava_mudos"],
                          "desinstalando: sem conferencia (nao sobra app para avisar)")
         self.assertEqual(self.c.lista[-1][1], ([],), "e apaga os mudos de antes")
         self.assertIsNone(r)
@@ -415,8 +418,13 @@ class TestaReinicio(unittest.TestCase):
         self.assertEqual(r, {"mudos": [UMC_IN]})
 
     def test_remove_cleans_up_when_the_audio_service_fails(self):
-        self.c.lista.clear()
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        folder = Path(tmp.name) / "microfone"
+        folder.mkdir()
+        (folder / "micfx.dll").write_bytes(b"")
         with mock.patch.object(filtro.subprocess, "run", refusing_powershell("audiosrv")), \
+                mock.patch.object(filtro, "PASTA", str(folder)), \
                 mock.patch.object(filtro, "servico_audio", REAL_AUDIO_SERVICE), \
                 mock.patch.object(filtro, "microfones", lambda todos=False: [("{a}", "IN 1", "X")]), \
                 mock.patch.object(filtro, "_devolve", lambda ep: True), \
@@ -427,7 +435,9 @@ class TestaReinicio(unittest.TestCase):
                 self.assertRaises(SystemExit) as caught:
             filtro.remove()
         self.assertEqual(caught.exception.code, "the Start of the audio service failed (1): Cannot restart service")
-        self.assertEqual(self.c.nomes(), ["tarefa_apaga", "esquece", "grava_mudos"], "the uninstaller still cleans up")
+        self.assertEqual(self.c.nomes(), ["rmtree", "tarefa_apaga", "esquece", "grava_mudos"],
+                         "the uninstaller still cleans up")
+        self.assertFalse(folder.exists(), "the filter folder goes too")
 
     def test_remove_reprovada(self):
         """Com a pasta do app reprovada (pastas.pasta_protegida), o remove devolve os microfones e sai com erro, sem
@@ -641,7 +651,9 @@ class TestRepeatedInstallAfterAFailedRestart(unittest.TestCase):
 
     @unittest.expectedFailure
     def test_the_second_run_does_not_pass_without_the_restart(self):
-        self.assertEqual(self.runs[1][0], 1, "#262: the restart of the first run never happened")
+        self.assertEqual(self.restarts, [False, False], "#262: the second run must try the full restart again")
+        self.assertEqual((self.runs[1][0], self.runs[1][1]["ok"], self.runs[1][1].get("erro")),
+                         (1, False, "the restart failed"))
 
 
 class TestDiagnosticStreams(unittest.TestCase):
