@@ -29,7 +29,7 @@ COMMENT_EXTENSIONS = (".py", ".js", ".css", ".ps1", ".yml", ".cpp", ".h", ".iss"
 GARDEN_FILES = ("dev/garden.py", "dev/test_garden.py")
 ISSUE = re.compile(r"#\d+\b|/issues/\d+\b")
 BLOCK_MARKER = re.compile(r"^\s*(?:[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-(?:INICIO|FIM)|[a-z]+:(?:inicio|fim))\b")
-KEPT_COMMENT = re.compile(r"^\s*(?:manual:|i18n-ok\b)|^ inline-script: [\w-]+\.js $")
+KEPT_COMMENT = re.compile(r"^\s*manual:|^\s*i18n-ok\s*$|^ inline-script: [\w-]+\.js $")
 GENERATED_MARKERS = {"molduras:inicio (gravado pelo dev/molduras.py: o desenho mora la, nao editar aqui)"}
 LICENSE = re.compile(r"SPDX-License-Identifier:|\bCopyright\b|\bLicensed under\b", re.I)
 ENCODING = re.compile(r"coding[:=]\s*[-\w.]+")
@@ -47,7 +47,7 @@ PROSE = re.compile(r"risco aceito|accepted risk|sem prova|por enquanto|for now|k
                    r"|como antes", re.I)
 LEFT_OUT = re.compile(r"^--\s.*ficou de fora", re.S)
 KNOWN_FAILURE = re.compile(r"^\s*known failure", re.I)
-LEFT_OUT_QUOTED = re.compile(r"[\"'][^\"']*ficou de fora")
+LEFT_OUT_QUOTED = re.compile(r"[\"']--\s[^\"']*ficou de fora")
 SKIP_NAMES = {"skip", "skipIf", "skipUnless", "expectedFailure", "skipTest", "SkipTest", "xfail", "skipif"}
 BROAD = {"Exception", "BaseException"}
 SLEEP_MODULES = {"time", "asyncio"}
@@ -376,7 +376,7 @@ def lex_yaml(text):
         if not m:
             continue
         end = n
-        while end < len(lines) and (not lines[end].strip() or indent_of(lines[end]) > indent_of(line)):
+        while end < len(lines) and (not lines[end].strip() or indent_of(lines[end]) > key_indent(line)):
             end += 1
         body = lines[n:end]
         if m.group(3) == "run":

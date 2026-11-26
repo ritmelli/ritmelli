@@ -83,6 +83,7 @@ CASES = {
         ("bat", {"a.bat": "@echo off\necho remove\n"}, {"a.bat": "@echo off\nrem why\n"}),
         ("bat double colon", {"a.bat": "echo a::b\n"}, {"a.bat": ":: why\necho a::b\n"}),
         ("html", {"a.html": "<!-- inline-script: a.js -->\n<p>x</p>\n"}, {"a.html": "<!-- why -->\n<p>x</p>\n"}),
+        ("an i18n-ok marker with prose", {"a.py": "x = 1  # i18n-ok\n"}, {"a.py": "x = 1  # i18n-ok: workaround\n"}),
         ("an inline-script marker with prose", {"a.html": "<!-- inline-script: script-failed.js -->\n"},
          {"a.html": "<!-- inline-script: script-failed.js and why it is here -->\n"}),
         ("html inline js and css", {"a.html": "<script>\nlet a = '//';\n</script>\n<style>\na {}\n</style>\n"},
@@ -265,11 +266,11 @@ CASES = {
                                          "print(f'known failure, {ISSUE}: a refused dequeue fails the run')\n"},
          {"dev/t.py": "print('known failure: theme_rebuild counts a reindented line')\n"}),
         ("ficou de fora in a workflow",
-         {"a.yml": "steps:\n  - run: echo 'sem placa de video, o pedal ficou de fora (#219)'\n"},
-         {"a.yml": "steps:\n  - run: echo 'sem placa de video, o pedal de troca de voz ficou de fora'\n"}),
+         {"a.yml": "steps:\n  - run: echo 'sem placa de video, o pedal de troca de voz ficou de fora'\n"},
+         {"a.yml": "steps:\n  - run: echo '--   o pedal de troca de voz ficou de fora'\n"}),
         ("ficou de fora with its issue in the line's comment",
-         {"a.yml": "steps:\n  - run: echo 'o pedal ficou de fora'  # #219\n"},
-         {"a.yml": "steps:\n  - run: echo 'o pedal ficou de fora'  # no issue\n"}),
+         {"a.yml": "steps:\n  - run: echo '--   o pedal ficou de fora'  # #219\n"},
+         {"a.yml": "steps:\n  - run: echo '--   o pedal ficou de fora'  # no issue\n"}),
         ("ficou de fora in a PowerShell script", {"a.ps1": "# o pedal ficou de fora num comentario\n"},
          {"a.ps1": "'--   o pedal ficou de fora'\n"}),
     ],
@@ -393,6 +394,15 @@ def test_workflow_python_lines():
         "{handler}", "          except Exception:\n              pass\n")
     found = garden.COUNTERS["broad_excepts"](garden.Tree({".github/workflows/w.yml": commented}))
     check(found == [(".github/workflows/w.yml", 13)], f"a block with a comment on its header is still read ({found})")
+    shell_after = ("jobs:\n  j:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: |\n          try:\n"
+                   "              pass\n          except Exception:\n              pass\n        shell: python\n")
+    found = garden.COUNTERS["broad_excepts"](garden.Tree({".github/workflows/w.yml": shell_after}))
+    check(found == [(".github/workflows/w.yml", 8)], f"a step that names its shell after the block ({found})")
+    retry = PY_STEP.replace("JOB", "monta").replace(
+        "time.sleep(1)\n", "for _ in range(3):\n              try:\n                  f()\n                  break\n"
+                           "              except OSError:\n                  time.sleep(1)\n")
+    found = garden.COUNTERS["retries"](garden.Tree({".github/workflows/w.yml": retry}))
+    check(found == [(".github/workflows/w.yml", 9)], f"a retry in a workflow step is listed at its line ({found})")
 
 
 def test_known_misses():
