@@ -126,7 +126,10 @@ def listing(rev, theme):
     else:
         rows = [x.split("\t", 1) for x in git("ls-tree", "-r", "-z", rev, "--", folder).split("\0") if x]
         names, ids = [path for _, path in rows], [meta.split()[2] for meta, _ in rows]
-    return {name[len(folder):]: blob for name, blob in zip(names, ids)}
+    found = {name[len(folder):]: blob for name, blob in zip(names, ids)}
+    if (RAIZ / folder / "i18n").is_dir() if rev is None else any(x.startswith("i18n/") for x in found):
+        found["i18n/"] = "a folder"
+    return found
 
 
 @dataclass
@@ -184,7 +187,7 @@ def block_of(kind, name, others):
 
 def edge(text):
     space = text[:len(text) - len(text.lstrip(HTML_SPACE))]
-    if len(space) == len(text):
+    if not text:
         return "a line break"
     return "a line break" if "\n" in space else f"the spaces {space!r}" if space else "nothing"
 

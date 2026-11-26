@@ -1,5 +1,7 @@
 import importlib
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -200,6 +202,9 @@ SAMPLES = (
     ("one of two spaces before the i18n mark in a paragraph taken out",
      {"index.html": "<p>Hello  <!-- i18n -->world</p>\n", **TEXTS},
      {"index.html": "<p>Hello <!-- i18n -->world</p>\n", **TEXTS}, ["gone", "new"]),
+    ("one of two spaces after the last script, at the end of the page, taken out",
+     {"index.html": "<p>x</p><script src=\"x.js\"></script>  ", "x.js": "f();\n"},
+     {"index.html": "<p>x</p><script src=\"x.js\"></script> ", "x.js": "f();\n"}, ["gone", "new"]),
     ("a script tag reindented on its own line", {"index.html": "<div>\n  <script src=\"x.js\"></script>\n</div>\n",
                                                  "x.js": "f();\n"},
      {"index.html": "<div>\n    <script src=\"x.js\"></script>\n</div>\n", "x.js": "f();\n"}, []),
@@ -485,6 +490,19 @@ def main():
     except theme_rebuild.Doubt as unsure:
         broken = unsure
     results.append((isinstance(broken, theme_rebuild.Doubt), f"a page in Latin-1: cannot judge ({broken})"))
+    with tempfile.TemporaryDirectory(prefix="ritmelli-rebuild-folder-") as tmp:
+        (Path(tmp) / "themes" / "t" / "i18n").mkdir(parents=True)
+        subprocess.run(["git", "init", "-q", tmp], check=True)
+        kept = theme_rebuild.RAIZ
+        theme_rebuild.RAIZ = Path(tmp)
+        try:
+            folder = theme_rebuild.listing(None, "t")
+        finally:
+            theme_rebuild.RAIZ = kept
+    marked = built({"index.html": "<!-- i18n -->\n"}.get, folder)
+    results.append((folder == {"i18n/": "a folder"} and isinstance(marked, theme_rebuild.Doubt),
+                    f"an empty i18n folder in the working tree is listed, and with the mark it cannot be judged "
+                    f"({folder}, {marked})"))
     for page in ("themes/ritmelli/index.html", "gallery/index.html"):
         try:
             theme_rebuild.tags_of(theme_rebuild.text_of((theme_rebuild.RAIZ / page).read_bytes()))
