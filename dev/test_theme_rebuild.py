@@ -391,16 +391,18 @@ def main():
         results.append((shared is not None and shared == own,
                         f"a /t/ritmelli/ address is read from themes/ritmelli ({'the working tree' if rev is None else rev}, "
                         f"{len(shared or '')} characters)"))
-    refused = [x for x in DOUBTFUL if x[0] in (DOUBTFUL[0][0], "an inline-script that is not in the theme")]
+    refused = [(title, dict(page), 3) for title, page in DOUBTFUL
+               if title in (DOUBTFUL[0][0], "an inline-script that is not in the theme")]
     kept = theme_rebuild.reader, theme_rebuild.listing
-    for title, page in refused:
-        pages = {"base": inline("f();"), "head": dict(page)}
+    for title, page, expected in [("the same page", inline("f();"), 0), ("a changed script", inline("g();"), 1),
+                                  *refused]:
+        pages = {"base": inline("f();"), "head": page}
         theme_rebuild.reader, theme_rebuild.listing = (lambda rev, _: pages[rev].get), (lambda rev, _: {})
         try:
             code = theme_rebuild.main(["base", "head"])
         finally:
             theme_rebuild.reader, theme_rebuild.listing = kept
-        results.append((code == theme_rebuild.CANNOT_JUDGE, f"the verdict on {title} is {code}"))
+        results.append((code == expected, f"main exits {code} on {title}, {expected} expected"))
     report = theme_rebuild.compare(theme, theme, compiles)
     results.append((not report.changes and report.declarations > 100,
                     f"the theme against itself only moves code ({report.declarations} declarations compared)"))
