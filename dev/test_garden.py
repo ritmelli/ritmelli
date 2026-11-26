@@ -463,6 +463,10 @@ CASES = {
         ("a job of the testa.yml", {"AGENTS.md": AGENTS_OK + "- The `Testa o PR` check.\n",
                                     ".github/workflows/testa.yml": "on:\n  push:\njobs:\n  x:\n    name: Testa o PR\n"},
          {"AGENTS.md": AGENTS_OK + "- The `Testa o PR` check.\n"}),
+        ("a check named in double quotes", {"AGENTS.md": AGENTS_OK + "- Run \"Testa o PR\" before the queue.\n",
+                                            ".github/workflows/testa.yml": "on:\n  push:\njobs:\n  x:\n"
+                                                                          "    name: Testa o PR\n"},
+         {"AGENTS.md": AGENTS_OK + "- Run \"Testa o PR\" before the queue.\n"}),
         ("a job of another workflow", {"AGENTS.md": AGENTS_OK + "- The `testa-parcial` job of `monta.yml`.\n",
                                        ".github/workflows/monta.yml": "on:\n  push:\njobs:\n  testa-parcial:\n"
                                                                      "    runs-on: windows-2025\n"},
@@ -671,6 +675,8 @@ def test_description():
         "an image as an example in code across lines": "## Proof\n\nLike `this\n![a](https://github.com/user-attachments/"
                                                        "assets/1)` here.\n",
         "an image only as an example in code":"## Proof\n\n`![a](https://github.com/user-attachments/assets/1)`\n",
+        "a proof label inside an open numbered item": "## Proof\n\n1. [ ] Pending\n   **Proof**\n"
+                                                      "   `python dev/testa_i18n.py`\n",
         "only an open checklist item": "## Proof\n\n- [ ] `python dev/testa_i18n.py`\n  ```\n  ok    the keys\n"
                                        "  ```\n",
         "an anchor as the link's target": good + "\nThe rest stays for now ([details](#250)).\n",

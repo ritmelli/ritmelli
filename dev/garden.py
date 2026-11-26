@@ -32,6 +32,7 @@ ISSUE_URL = re.compile(r"(?<![\w./-])(?:https?://)?(?:www\.)?github\.com/[\w.-]+
 URL = re.compile(r"\b[a-z][a-z\d+.-]*://\S+|\bwww\.\S+", re.I)
 SHORT_ISSUE = re.compile(r"(?<![^\s(\[{,;:])#\d+\b")
 LINK_TARGET = re.compile(r"\]\([^)]*\)")
+QUOTED = re.compile(r'"([^"\n]+)"')
 OPEN_ITEM = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+\[ \]\s")
 CODE_SPAN = re.compile(r"(`+)(?!`)(?:(?!\n[ \t]*\n).)*?(?<!`)\1(?!`)", re.S)
 PARAGRAPH_START = re.compile(r"^\s*(?:#{1,6}\s|[-*+]\s|\d+[.)]\s|>)")
@@ -1222,6 +1223,7 @@ def agents_rules_without_check(t):
     for n, rule in agents_rules(t.files.get("AGENTS.md", "")):
         cited = {name.replace("\\", "/") for c in re.findall(r"`([^`]+)`", rule) if c.split()
                  for name in (c.strip(), c.split()[0])}
+        cited |= set(QUOTED.findall(rule))
         if not cited & valid:
             items.append(("AGENTS.md", n))
     return items
@@ -1529,7 +1531,7 @@ def proof_sections(lines):
 def description_problems(body):
     lines = re.sub(r"<!--.*?-->", "", body or "", flags=re.S).splitlines()
     problems = []
-    sections = list(proof_sections(lines))
+    sections = list(proof_sections(without_open_items(lines)))
     if not sections:
         problems.append("no proof section (a heading, a bold label or a line starting \"How it was proven:\" or "
                         "\"Proof:\")")
