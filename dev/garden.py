@@ -33,7 +33,7 @@ URL = re.compile(r"\b[a-z][a-z\d+.-]*://\S+|\bwww\.\S+", re.I)
 SHORT_ISSUE = re.compile(r"(?<![^\s(\[{,;:])#\d+\b")
 LINK_TARGET = re.compile(r"\]\([^)]*\)")
 CODE_SPAN = re.compile(r"(`+)(?!`)(?:(?!\n[ \t]*\n).)*?(?<!`)\1(?!`)", re.S)
-PARAGRAPH_START = re.compile(r"^\s*(?:#{1,6}\s|[-*+]\s|\d+[.)]\s|>|\*\*)")
+PARAGRAPH_START = re.compile(r"^\s*(?:#{1,6}\s|[-*+]\s|\d+[.)]\s|>)")
 BLOCK_MARKER = re.compile(r"^\s*(?:[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-(?:INICIO|FIM)|[a-z]+:(?:inicio|fim))\b")
 KEPT_COMMENT = re.compile(r"^\s*manual:|^\s*i18n-ok\s*$|^ inline-script: [\w-]+\.js $")
 GENERATED_MARKERS = {"molduras:inicio (gravado pelo dev/molduras.py: o desenho mora la, nao editar aqui)"}
@@ -58,6 +58,10 @@ SKIP_NAMES = {"skip", "skipIf", "skipUnless", "expectedFailure", "skipTest", "Sk
 BROAD = {"Exception", "BaseException"}
 SLEEP_MODULES = {"time", "asyncio"}
 PS_LOOP = re.compile(r"\b(?:for|foreach|while|do)\b", re.I)
+PS_TRY = re.compile(r"\btry\s*\{", re.I)
+PS_CATCH = re.compile(r"\bcatch\s*(?:\[[^\]]*\]\s*)*\{", re.I)
+PS_VARIABLE = re.compile(r"\$(\w+)")
+PS_ASSIGNED = re.compile(r"\$(\w+)\s*=(?!=)")
 PROOF_LABEL = re.compile(r"^(?:how it was (?:proven|proved|tested)|proof\b|prova\b|como foi provado)", re.I)
 SECTION_LABEL = re.compile(r"^\s*(?:#{1,6}\s+(?P<heading>[^:]+?)(?::\s*(?P<rest>.*))?\s*$"
                            r"|\*\*(?P<bold>[^*]+?):?\*\*:?\s*(?P<rest2>.*)$"
@@ -731,7 +735,8 @@ def python_retries(tree):
             for attempt in (n for n in inner if isinstance(n, ast.Try)):
                 again = [h for h in attempt.handlers if not leaves(h.body)]
                 waits_on_failure = any(is_sleep(n, aliases) for h in again for n in local_nodes(h))
-                stops_on_success = bool(guards.get(id(attempt), set()) & assigned_names(attempt.body))
+                guard = guards.get(id(attempt), set()) | (test_names(loop.test) if isinstance(loop, ast.While) else set())
+                stops_on_success = bool(guard & assigned_names(attempt.body))
                 if again and (waits_on_failure or ends or stops_on_success):
                     found.append(loop.lineno)
                     break
@@ -776,9 +781,25 @@ def powershell_retries(code):
                 cut = inner_end + 1
         own.append(code[cut:body_end + 1])
         body = "".join(own)
-        if re.search(r"\btry\s*\{", body, re.I) and START_SLEEP.search(body):
+        if not (re.search(r"\btry\s*\{", body, re.I) and START_SLEEP.search(body)):
+            continue
+        waits_on_failure = any(START_SLEEP.search(block) for block in ps_blocks(body, PS_CATCH))
+        ends = re.search(r"\b(?:break|return|exit)\b", body, re.I)
+        tried = {v.lower() for block in ps_blocks(body, PS_TRY) for v in PS_ASSIGNED.findall(block)}
+        condition = code[start:body_start]
+        after = re.match(r"\s*(?:while|until)\s*\(", code[body_end + 1:], re.I)
+        if after:
+            open_at = body_end + after.end()
+            condition += code[open_at:closing(code, open_at, "(", ")") + 1]
+        stops_on_success = tried & {v.lower() for v in PS_VARIABLE.findall(condition)}
+        if waits_on_failure or ends or stops_on_success:
             found.append(code.count("\n", 0, start) + 1)
     return found
+
+
+def ps_blocks(code, opener):
+    for m in opener.finditer(code):
+        yield code[m.end() - 1:closing(code, m.end() - 1, "{", "}") + 1]
 
 
 JS_HANDLER = re.compile(r"\bonerror\s*=\s*(?:function\b[^(]*\([^)]*\)\s*|(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>\s*)"

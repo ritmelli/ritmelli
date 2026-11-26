@@ -198,7 +198,12 @@ CASES = {
                   "        continue\n    use(d)\n"},
          {"a.py": "import time\nwhile True:\n    try:\n        d = read()\n    except OSError:\n        time.sleep(1)\n"
                   "        continue\n    use(d)\n"}),
-        ("an outer loop around a retry",{"a.py": "import time\nfor a in b:\n    x = 1\n"},
+        ("a while whose condition the success turns off",
+         {"a.py": "import time\nwhile not stop:\n    try:\n        f()\n    except OSError:\n        pass\n"
+                  "    time.sleep(1)\n"},
+         {"a.py": "import time\nwhile not done:\n    try:\n        f()\n        done = True\n    except OSError:\n"
+                  "        pass\n    time.sleep(1)\n"}),
+        ("an outer loop around a retry", {"a.py": "import time\nfor a in b:\n    x = 1\n"},
          {"a.py": "import time\nfor a in b:\n    while True:\n        try:\n            f()\n        except OSError:\n"
                   "            time.sleep(1)\n"}),
         ("a retry in a workflow's Python step",
@@ -207,16 +212,22 @@ CASES = {
          {".github/workflows/w.yml": PY_STEP.replace("JOB", "monta").replace(
              "time.sleep(1)\n", "for _ in range(3):\n              try:\n                  f()\n                  break\n"
                                 "              except OSError:\n                  time.sleep(1)\n")}),
-        ("powershell", {"a.ps1": "for ($i = 0; $i -lt 3; $i++) { Start-Sleep 1 }\n"},
-         {"a.ps1": "for ($i = 0; $i -lt 3; $i++) { try { f } catch { }; Start-Sleep 1 }\n"}),
-        ("powershell in a Python string", {"a.py": "ps = 'do{Start-Sleep 1}while($a)'\n"},
-         {"a.py": "ps = 'do{Start-Sleep 1;try{f}catch{}}while($a)'\n"}),
+        ("powershell", {"a.ps1": "for ($i = 0; $i -lt 3; $i++) { try { f } catch { }; Start-Sleep 1 }\n"},
+         {"a.ps1": "for ($i = 0; $i -lt 3; $i++) { try { f } catch { Start-Sleep 1 } }\n"}),
+        ("a powershell poll that waits the same after a success and a failure",
+         {"a.ps1": "while ($true) { try { Get-Status } catch { Write-Warning $_ }; Start-Sleep 5 }\n"},
+         {"a.ps1": "while ($true) { try { Get-Status; break } catch { Write-Warning $_ }; Start-Sleep 5 }\n"}),
+        ("powershell in a Python string", {"a.py": "ps = 'do{Start-Sleep 1;try{f}catch{}}while($a)'\n"},
+         {"a.py": "ps = 'do{Start-Sleep 1;try{$s=f}catch{}}while($s -eq $null)'\n"}),
+        ("a powershell for whose condition the try turns off",
+         {"a.ps1": "for ($i = 0; $i -lt 9 -and -not $e; $i++) { try { f } catch { }; Start-Sleep 1 }\n"},
+         {"a.ps1": "for ($i = 0; $i -lt 9 -and -not $e; $i++) { try { $e = f } catch { }; Start-Sleep 1 }\n"}),
         ("a powershell loop around a retry", {"a.ps1": "foreach ($x in $y) { f $x }\n"},
          {"a.ps1": "foreach ($x in $y) {\n  while ($true) { try { f $x; break } catch { Start-Sleep 1 } }\n}\n"}),
         ("a powershell loop around a retry in a Python string", {"a.py": "ps = 'foreach($x in $y){f $x}'\n"},
          {"a.py": "ps = 'foreach($x in $y){while($true){try{f $x;break}catch{Start-Sleep 1}}}'\n"}),
         ("a do-while followed by another loop", {"a.py": "ps = 'do{f}while($a);while($b){Start-Sleep 1}'\n"},
-         {"a.py": "ps = 'do{try{f}catch{};Start-Sleep 1}while($a);while($b){Start-Sleep 1}'\n"}),
+         {"a.py": "ps = 'do{try{f}catch{Start-Sleep 1}}while($a);while($b){Start-Sleep 1}'\n"}),
         ("a script's onerror that loads it again",
          {"a.js": "const loadAgain = () => {\n  l.onerror = () => { l.remove(); };\n};\nsetTimeout(loadAgain, 3000);\n"},
          {"a.js": "const loadAgain = () => {\n  l.onerror = () => { l.remove(); setTimeout(loadAgain, 3000); };\n};\n"}),
@@ -600,6 +611,8 @@ def test_description():
         "an image only as an example in code":"## Proof\n\n`![a](https://github.com/user-attachments/assets/1)`\n",
         "an anchor as the link's target":good + "\nThe rest stays for now ([details](#250)).\n",
         "the issue in the next paragraph": good + "\nThe rest stays for now.\n\nSee #250.\n",
+        "the issue in the next list item, in bold": good + "\n- The rest stays for now.\n"
+                                                     "- **[#250](https://github.com/o/r/issues/250)** is another.\n",
         "the issue in the next list item": good + "\n- The rest stays for now.\n- #250 is another thing.\n",
     }
     for label, body in failing.items():
@@ -612,6 +625,9 @@ def test_description():
           == [], "a prose phrase with a link to its issue passes")
     check(garden.description_problems(good + "\nThe rest stays for now, tracked in\nhttps://github.com/o/r/issues/250.\n")
           == [], "a prose phrase with its issue on the next line of the paragraph passes")
+    check(garden.description_problems(good + "\nThe rest stays for now, tracked in\n"
+                                             "**[#250](https://github.com/o/r/issues/250)**.\n") == [],
+          "a prose phrase with its issue in bold on the next line of the paragraph passes")
     check(garden.pr_number("pull_request", {"pull_request": {"number": 7}}) == 7, "the PR number of a pull_request")
     check(garden.pr_number("merge_group", {"merge_group": {"head_ref": "refs/heads/gh-readonly-queue/main/pr-246-"
                                                            + "a" * 40}}) == 246, "the PR number of a merge_group entry")
