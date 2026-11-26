@@ -4,6 +4,7 @@ import tempfile
 import threading
 import types
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -57,11 +58,9 @@ class GravaCfg(unittest.TestCase):
                 start.wait()
                 server.App.grava_cfg(app, **{f"key{i}": i})
 
-            threads = [threading.Thread(target=write, args=(i,)) for i in range(WRITERS)]
-            for t in threads:
-                t.start()
-            for t in threads:
-                t.join()
+            with ThreadPoolExecutor(WRITERS) as pool:
+                for future in [pool.submit(write, i) for i in range(WRITERS)]:
+                    future.result()
             expected = {"mic": "default", **{f"key{i}": i for i in range(WRITERS)}}
             self.assertEqual(app.cfg, expected)
             self.assertEqual(json.loads(app.cfg_path.read_text(encoding="utf-8")), expected)
