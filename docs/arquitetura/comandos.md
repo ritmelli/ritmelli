@@ -124,8 +124,9 @@ O servidor e os comandos leem e conferem o prato pela interface do motor, e não
 e do `Proximo`), e a `Engine.on_line(t)` confere, sob o `_qlock`, se o prato ainda é aquela linha. A virada sai do
 motor pelo `take_switch`, a passagem preparada pelo `drop_prepared` (o `cancelar_pronto` é o mesmo, pegando o
 `_qlock`), o ganho medido antes das travas pelo `gain_for`, o nome novo do disco no prato pelo `update_track`, a
-leitura do estado pelo `platter_state` e os arquivos em uso pelo `tracks_in_use`. Toda mudança da fila passa pelo
-`App.change_queue`, que pega o `_qlock`, muda e confere a preparada no mesmo trecho. Os trechos do servidor e dos
+leitura do estado pelo `platter_state` e os arquivos em uso pelo `tracks_in_use`. A mudança da fila feita pelo
+`App.change_queue` pega o `_qlock`, muda e confere a preparada no mesmo trecho; o `_troca_audio` do Automático ainda
+muda entradas da fila por fora dele (#211, e a forma que o `dev/testa_ganchos.py` não vê está na #232). Os trechos do servidor e dos
 comandos que precisam do `_qlock` (os do Próximo, da reserva, do `concilia`, da troca, do `remember_pos`, do
 `release_reservation` e do `change_queue`) o pegam pelo `Engine.state_section()`, e o `_lock` só pelo
 `Engine.with_lock`. A falha de preparar a próxima sai do motor pelo `take_prepare_failure`, sob o `_qlock`, e o erro
