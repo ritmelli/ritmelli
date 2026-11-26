@@ -30,7 +30,7 @@ from pastas import PORTA as PORTA_DO_APP  # 8799
 # no Fetch.enable do CDP: cada documento (a pagina, um iframe, um redirecionamento dele) para antes do pedido
 DOCUMENTOS = [{"urlPattern": "*", "resourceType": "Document", "requestStage": "Request"}]
 STOP_FLAG = "--stop-on-stdin-eof"
-STILL_ACTIVE = 259
+WAIT_TIMEOUT = 0x102
 
 
 class Recusa(Exception):
@@ -232,30 +232,28 @@ class _Job:
         return found
 
     def left_after(self, seconds):
-        """Waits up to seconds for the processes in the job to end: (how many are still active, and each process that
-        was in it, as (image name, still running))."""
+        """Waits up to seconds for the processes in the job to end: (how many are still active, and, when any is, each
+        process that was in it when the wait began, as (image name, still running))."""
         handles = self.members()
         try:
             fim = time.monotonic() + seconds
             for handle in handles:
                 self.k.WaitForSingleObject(wintypes.HANDLE(handle), max(0, int((fim - time.monotonic()) * 1000)))
-            seen = [(self._image(handle), self._running(handle)) for handle in handles]
+            left = self.active()
+            seen = [(self._image(handle), self._running(handle)) for handle in handles] if left else []
         finally:
             for handle in handles:
                 self.k.CloseHandle(wintypes.HANDLE(handle))
-        return self.active(), seen
+        return left, seen
 
     def _image(self, handle):
         size, name = wintypes.DWORD(1024), ctypes.create_unicode_buffer(1024)
         if not self.k.QueryFullProcessImageNameW(wintypes.HANDLE(handle), 0, name, ctypes.byref(size)):
-            raise Recusa(f"a process of the test server job could not be named (error {ctypes.get_last_error()})")
+            return f"a process whose name could not be read (error {ctypes.get_last_error()})"
         return Path(name.value).name
 
     def _running(self, handle):
-        code = wintypes.DWORD()
-        if not self.k.GetExitCodeProcess(wintypes.HANDLE(handle), ctypes.byref(code)):
-            raise Recusa(f"a process of the test server job could not be checked (error {ctypes.get_last_error()})")
-        return code.value == STILL_ACTIVE
+        return self.k.WaitForSingleObject(wintypes.HANDLE(handle), 0) == WAIT_TIMEOUT
 
     def end(self, seconds=10.0):
         if not self.job:

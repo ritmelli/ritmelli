@@ -19,6 +19,7 @@ starts is a fake Popen: nothing is run.
     python dev/testa_so_mock.py
 
 Exits 1 if something fails."""
+import ctypes
 import http.server
 import json
 import socket
@@ -409,7 +410,57 @@ def starts():
           f"another --mock answering on the port while the child exits: refused, the answer isn't the child's ({msg})")
 
 
+
+class FakeKernel:
+    """The kernel32 calls of so_mock._Job.left_after: a process per handle as (name or None, exit code, running)."""
+
+    def __init__(self, processes):
+        self.processes, self.named = processes, []
+
+    def WaitForSingleObject(self, handle, ms):
+        return 0x102 if self.processes[handle.value][2] else 0  # WAIT_TIMEOUT: the process still runs
+
+    def QueryFullProcessImageNameW(self, handle, flags, buf, size):
+        name = self.processes[handle.value][0]
+        self.named.append(handle.value)
+        if name is None:
+            ctypes.set_last_error(5)
+            return 0
+        buf.value = "C:/x/" + name
+        return 1
+
+    def GetExitCodeProcess(self, handle, code):
+        code._obj.value = self.processes[handle.value][1]
+        return 1
+
+    def CloseHandle(self, handle):
+        return 1
+
+
+def leftovers(processes, active):
+    job = object.__new__(so_mock._Job)
+    job.k = FakeKernel(processes)
+    with mock.patch.object(so_mock._Job, "members", lambda self: list(processes)),             mock.patch.object(so_mock._Job, "active", lambda self: active):
+        try:
+            return job.left_after(0.01), job.k.named
+        except so_mock.Recusa as ex:
+            return (None, str(ex)), job.k.named
+
+
+def left_after_names():
+    (left, seen), named = leftovers({1: ("ffmpeg.exe", 0, False)}, 0)
+    check(left == 0 and seen == [] and named == [],
+          f"a job left empty is not asked for any process name ({left}, {seen}, {named})")
+    (left, seen), named = leftovers({1: (None, 259, True), 2: ("conhost.exe", 259, True),
+                                     3: ("python.exe", 259, False)}, 2)
+    check(left == 2 and seen == [("a process whose name could not be read (error 5)", True), ("conhost.exe", True),
+                                 ("python.exe", False)],
+          f"a process whose name cannot be read is listed as such, the others are still named, and one that ended with "
+          f"code 259 is not taken for one still running ({seen})")
+
+
 app_port()
+left_after_names()
 fake = FakeServer()
 try:
     state(fake)
