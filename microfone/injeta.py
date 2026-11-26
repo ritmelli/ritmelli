@@ -35,6 +35,7 @@ k32.MapViewOfFile.restype = ctypes.c_void_p
 k32.MapViewOfFile.argtypes = (wintypes.HANDLE, wintypes.DWORD, wintypes.DWORD, wintypes.DWORD, ctypes.c_size_t)
 k32.UnmapViewOfFile.argtypes = (ctypes.c_void_p,)
 k32.GetTickCount64.restype = ctypes.c_uint64
+clock = time.monotonic
 k32.CloseHandle.argtypes = (wintypes.HANDLE,)
 FILE_MAP_READ, FILE_MAP_WRITE = 0x0004, 0x0002
 
@@ -200,7 +201,7 @@ class Microfone:
         Desligada, a voz do microfone volta na hora. A leitura comeca do que for escrito a partir daqui: quem quer
         folga escreve um pouco de silencio logo depois de ligar, antes da voz."""
         if ligada and not self._pista_ligou:
-            self.a.pista_ligou_ms = k32.GetTickCount64() & 0xFFFFFFFF
+            self.a.pista_ligou_ms = round(clock() * 1000) & 0xFFFFFFFF or 1
         self.a.pista_batida = k32.GetTickCount64()
         if ligada and not self.a.pista_ligada:
             self.a.pista_inicio = self.a.pista_escrito  # antes de ligar: o filtro so le a marca com a pista ligada
@@ -208,8 +209,7 @@ class Microfone:
         self.a.pista_ligada = 1 if ligada else 0
 
     def pista_ligou(self):
-        t = self.a.pista_ligou_ms
-        return t, (k32.GetTickCount64() - t) % 2**32 / 1000
+        return self.a.pista_ligou_ms
 
     def pista_pulso(self):
         """O escritor da pista esta vivo (chamar a cada volta, mesmo sem ter o que escrever)."""

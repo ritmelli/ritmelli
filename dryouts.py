@@ -65,10 +65,12 @@ class VoicePedalStart:
         elif on_at is None:
             self.on_at = self.clock()
 
-    def track(self, live, stamp=None, up_s_ago=0.0):
+    def track(self, live, stamp=None):
+        now = self.clock()
         new = (stamp != self._stamp) if stamp else (live and not self._live)
         if new:
-            up_at, on_at = self.clock() - up_s_ago, self.on_at
+            up_at = now - (round(now * 1000) - stamp) % 2**32 / 1000 if stamp else now
+            on_at = self.on_at
             if on_at is not None and up_at >= on_at:
                 LOG.tell(f"voice pedal: its voice track came up {up_at - on_at:.2f} s after the pedal turned on")
             self.track_up_at = up_at
@@ -83,7 +85,7 @@ class VoicePedalStart:
         if (lo is not None and empty_at is not None and last_on is not None and lo < last_on[1]
                 and last_on[0] <= empty_at and (on_at is None or on_at > empty_at)):
             on_at, off_at, kept = last_on
-            up_at = up_at if up_at is not None and on_at <= up_at <= off_at else kept
+            up_at = up_at if up_at is not None and on_at <= up_at <= off_at + TICK_S else kept
         if on_at is None or (empty_at is not None and on_at > empty_at):
             return on_at, None
         now = self.clock()
@@ -110,9 +112,14 @@ class RingDryOuts:
     def __init__(self, pedal):
         self.pedal = pedal
         self.while_pedal_starting = 0
+        self.counts = (0, 0)
         self._told_at = -1e9
         self._start, self._told_this_start = None, 0
         self.filled_at = self.empty_at = None
+
+    def state(self):
+        dry_outs, while_pedal_starting = self.counts
+        return {"secas": dry_outs, "secas_pedal": while_pedal_starting}
 
     def read_ring(self, read):
         before = self.pedal.clock()
@@ -127,6 +134,8 @@ class RingDryOuts:
         start, starting = self.pedal.starting(self.filled_at, self.empty_at)
         if starting is not None:
             self.while_pedal_starting += 1
+        self.counts = (count, self.while_pedal_starting)
+        if starting is not None:
             if start != self._start:
                 self._start, self._told_this_start = start, 0
             self._told_this_start += 1

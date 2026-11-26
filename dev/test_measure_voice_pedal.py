@@ -42,7 +42,7 @@ def track_up_line(after_s):
     pedal.pedal(True)
     pedal.clock = lambda: 100.0 + after_s
     with mock.patch("sys.stderr", io.StringIO()) as err:
-        pedal.track(True, stamp=1)
+        pedal.track(True, stamp=round((100.0 + after_s) * 1000))
         dryouts.LOG.written()
     return err.getvalue().strip()
 

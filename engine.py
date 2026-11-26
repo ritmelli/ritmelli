@@ -954,8 +954,8 @@ class Injetor:
     def estado(self):
         return {"anel": self.m is not None, "leitores": self.leitores,
                 "folga_min_ms": None if self.folga_min is None else round(self.folga_min * 1000 / SR, 1),
-                "secas": self.secas, "volta_max_ms": round(self.volta_max * 1000, 1),
-                "secas_pedal": self.dry_outs.while_pedal_starting, "efeito_no_filtro": self.efeito_no_filtro}
+                "volta_max_ms": round(self.volta_max * 1000, 1), **self.dry_outs.state(),
+                "efeito_no_filtro": self.efeito_no_filtro}
 
     def _volta(self, s):
         self.volta_max = max(self.volta_max, s)
@@ -969,7 +969,7 @@ class Injetor:
         self.saude.fila(fila, passagem=seca and self.motor.em_passagem(), esticando=seca and RUBBER_BAND.em_curso())
         if seca:
             self.secas += 1
-            self.motor._pista_viva = self.motor.voice_pedal.track(m.pista_viva(), *m.pista_ligou())
+            self.motor._pista_viva = self.motor.voice_pedal.track(m.pista_viva(), m.pista_ligou())
             self.dry_outs.ran_dry(volta, self.secas)
 
     def para(self):
@@ -1039,7 +1039,7 @@ class Injetor:
         # medidor levam a voz dela, que e o que o jogo ouve, e nao a crua
         p = m.pista_le()  # sempre le: a posicao anda junto com o escritor
         viva = m.pista_viva()
-        self.motor._pista_viva = self.motor.voice_pedal.track(viva, *m.pista_ligou())
+        self.motor._pista_viva = self.motor.voice_pedal.track(viva, m.pista_ligou())
         if viva and len(p):
             p = np.concatenate([self._resto_pista, p])
             n = len(p) // BLOCK * BLOCK
