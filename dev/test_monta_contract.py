@@ -16,12 +16,12 @@ ROOT = Path(__file__).resolve().parent.parent
 MONTA = ROOT / ".github" / "workflows" / "monta.yml"
 VERSION = "${{ steps.congela.outputs.versao }}"
 MARK = "<version>"
-EXPRESSION = re.compile(r"\$\{\{[^}]*\}\}")
+EXPRESSION = re.compile(r"\$\{\{.*?\}\}")
 INPUTS = ("notas", "notas_en")
 REQUIRED_JOBS = ("testa", "testa-atualizador", "testa-migracao", "testa-parcial")
 SETUP, EXE = f"Ritmelli-{MARK}", f"ritmelli-exe-{MARK}"
 NOTES = {"NOTAS": ("${{ inputs.notas }}", "--notas"), "NOTAS_EN": ("${{ inputs.notas_en }}", "--notas-en")}
-OTHER_VERSION = re.compile(r"Ritmelli-(?:[0-9.]|\$\{\{[^}]*\}\})+")
+OTHER_VERSION = re.compile(r"Ritmelli-(?:[0-9]|\$\{\{.*?\}\})(?:[0-9.]|\$\{\{.*?\}\})*")
 
 failures = []
 
@@ -122,6 +122,8 @@ def contract_problems(doc):
     congela = step_by_id(monta, "congela")
     if congela is None:
         problems.append("the monta job has no congela step")
+    elif "if" in congela:
+        problems.append("the congela step runs only under an if:, so the versao may be empty")
     elif not writes_versao(congela.get("run", "")):
         problems.append("the congela step does not write versao= to its GITHUB_OUTPUT")
     if inner((monta.get("outputs") or {}).get("versao", "")) != inner(VERSION):
@@ -210,6 +212,10 @@ def main():
     forward = mutant(doc, lambda d: edit_run(d, lambda run: run.replace(script, "instalador/atualizacao/publica.py")))
     check(script in manifest_step(doc["jobs"]["monta"])["run"] and contract_problems(forward) == [],
           "the publica.py call written with forward slashes keeps the contract")
+    helper = mutant(doc, lambda d: d["jobs"]["monta"]["steps"].append(
+        {"uses": upload(d, setup)["uses"], "with": {"name": "Ritmelli-.1", "path": "x"}}))
+    check(contract_problems(helper) == [], "an artifact named Ritmelli-.1, which the pipeline never takes for the "
+                                           "version, keeps the contract")
     other_dir = mutant(doc, lambda d: upload(d, exe)["with"].update(path="dist/app/ritmelli.exe"))
     check(contract_problems(other_dir) == [], "the ritmelli.exe in another folder keeps the contract")
     dotted = mutant(doc, lambda d: upload(d, exe)["with"].update(path="./dist/ritmelli/ritmelli.exe"))
@@ -261,6 +267,11 @@ def main():
             r"^(\s*)(\$saida\s*=.*)$", r"\1\2\n\1$saida = Join-Path $saida 'x'", run, count=1, flags=re.M)),
         "the folder of --saida assigned again in other case": lambda d: edit_run(d, lambda run: re.sub(
             r"^(\s*)(\$saida\s*=.*)$", r"\1\2\n\1$Saida = 'instalador_out'", run, count=1, flags=re.M)),
+        "a Ritmelli artifact named by a format expression": lambda d: d["jobs"]["monta"]["steps"].append(
+            {"uses": upload(d, setup)["uses"],
+             "with": {"name": "Ritmelli-${{ format('{0}', github.run_number) }}", "path": "x"}}),
+        "the congela step under a condition": lambda d: step_by_id(d["jobs"]["monta"], "congela").update(
+            {"if": "github.event_name == 'push'"}),
         "a Ritmelli artifact named by another expression": lambda d: d["jobs"]["monta"]["steps"].append(
             {"uses": upload(d, setup)["uses"], "with": {"name": "Ritmelli-${{ github.run_number }}", "path": "x"}}),
         "the --saida of publica.py with a subfolder": lambda d: edit_run(d, lambda run: run.replace(
