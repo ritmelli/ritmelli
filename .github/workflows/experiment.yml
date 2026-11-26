@@ -10,8 +10,8 @@ env:
   PYTHONUTF8: '1'
 
 jobs:
-  reopen:
-    name: notice reopen with the state held, in a loop
+  stop-left:
+    name: mock stop, the processes left named, in a loop
     runs-on: windows-2025
     timeout-minutes: 90
     steps:
@@ -24,10 +24,10 @@ jobs:
           requirements: requirements-dev.txt
       - name: ffmpeg on the PATH
         run: Add-Content -Path $env:GITHUB_PATH -Value "$env:GITHUB_WORKSPACE/instalador/ffmpeg/bin" -Encoding utf8
-      - name: the reopen case, 40 rounds, with the proxy timed and the server stacks when the state is late
+      - name: the phone and PC stop while measuring, 20 rounds each
         continue-on-error: true
-        run: python dev/experiment_reopen.py . 40
-      - name: the whole test_fitcheck_ready, 3 runs
+        run: python dev/experiment_stop_left.py . 20
+      - name: the whole test_mock_stop, 3 runs
         continue-on-error: true
         run: |
-          for ($i = 1; $i -le 3; $i++) { python dev/test_fitcheck_ready.py > "$env:RUNNER_TEMP/r.txt" 2>&1; "run $i exit $LASTEXITCODE"; Get-Content "$env:RUNNER_TEMP/r.txt" | Where-Object { $_ -match '^FAIL|^notice:|S.state|response:' } | ForEach-Object { Write-Output $_ } }
+          for ($i = 1; $i -le 3; $i++) { python dev/test_mock_stop.py > "$env:RUNNER_TEMP/r.txt" 2>&1; "run $i exit $LASTEXITCODE"; Get-Content "$env:RUNNER_TEMP/r.txt" | Where-Object { $_ -match '^FAIL' } | ForEach-Object { Write-Output $_ } }
