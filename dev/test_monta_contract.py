@@ -19,9 +19,9 @@ MARK = "<version>"
 EXPRESSION = re.compile(r"\$\{\{[^}]*\}\}")
 INPUTS = ("notas", "notas_en")
 REQUIRED_JOBS = ("testa", "testa-atualizador", "testa-migracao", "testa-parcial")
-ARTIFACTS = {f"Ritmelli-{MARK}": "instalador/saida", f"ritmelli-exe-{MARK}": "dist/ritmelli/ritmelli.exe"}
+SETUP, EXE = f"Ritmelli-{MARK}", f"ritmelli-exe-{MARK}"
 NOTES = {"NOTAS": ("${{ inputs.notas }}", "--notas"), "NOTAS_EN": ("${{ inputs.notas_en }}", "--notas-en")}
-VERSION_OUTPUT = re.compile(r"\$env:GITHUB_OUTPUT\s+-Value\s+\"versao=\$")
+LITERAL_SETUP = re.compile(r"Ritmelli-[0-9][0-9.]*")
 
 failures = []
 
@@ -76,6 +76,26 @@ def manifest_step(job):
     return found[0] if len(found) == 1 else None
 
 
+def writes_versao(run):
+    return any("Add-Content" in line and "-Path $env:GITHUB_OUTPUT" in line and '-Value "versao=$' in line
+               for line in str(run).splitlines())
+
+
+def output_folder(run):
+    value = re.findall(r"'--saida',\s*('[^']*'|\$\w+)", str(run))
+    if len(value) != 1:
+        return None
+    if value[0].startswith("'"):
+        return value[0][1:-1]
+    assigned = re.findall(rf"^\s*\{value[0]}\s*=\s*'([^']*)'\s*$", str(run), re.M)
+    return assigned[0] if len(assigned) == 1 else None
+
+
+def one_literal_file(path, filename):
+    path = str(path or "").strip()
+    return "\n" not in path and not any(c in path for c in "*?[!") and Path(path).name == filename
+
+
 def contract_problems(doc):
     problems = []
     dispatch = (doc.get("on") or {}).get("workflow_dispatch") if isinstance(doc.get("on"), dict) else None
@@ -92,24 +112,31 @@ def contract_problems(doc):
     congela = step_by_id(monta, "congela")
     if congela is None:
         problems.append("the monta job has no congela step")
-    elif not any(VERSION_OUTPUT.search(line) for line in str(congela.get("run", "")).splitlines()):
+    elif not writes_versao(congela.get("run", "")):
         problems.append("the congela step does not write versao= to its GITHUB_OUTPUT")
     if inner((monta.get("outputs") or {}).get("versao", "")) != inner(VERSION):
         problems.append(f"the versao output of the monta job is not {VERSION}")
     problems += [f"the monta job has no {name} output, which the jobs the pipeline requires read"
                  for name in ("anterior", "parcial") if not str((monta.get("outputs") or {}).get(name) or "").strip()]
     run_uploads = uploads(jobs)
-    for name, path in ARTIFACTS.items():
-        found = [w for n, w in run_uploads if n == name]
-        if len(found) != 1:
-            problems.append(f"the run uploads {len(found)} artifacts named {name}, not 1")
-        elif normal_path(found[0].get("path")) != normal_path(path):
-            problems.append(f"the {name} artifact is {found[0].get('path')!r}, not {path}")
+    found = {name: [w for n, w in run_uploads if n == name] for name in (SETUP, EXE)}
+    problems += [f"the run uploads {len(w)} artifacts named {n}, not 1" for n, w in found.items() if len(w) != 1]
+    literal = [n for n, _ in run_uploads if LITERAL_SETUP.fullmatch(n)]
+    if literal:
+        problems.append(f"the run uploads {literal}, which the pipeline would take for the version of the build")
+    if len(found[EXE]) == 1 and not one_literal_file(found[EXE][0].get("path"), "ritmelli.exe"):
+        problems.append(f"the {EXE} artifact is not the ritmelli.exe alone ({found[EXE][0].get('path')!r})")
     manifest = manifest_step(monta)
-    if manifest is None:
+    if manifest is None or switched_off(manifest.get("if")):
         problems.append("the monta job has no one step that runs publica.py")
     else:
         run = str(manifest.get("run", ""))
+        saida = output_folder(run)
+        if saida is None:
+            problems.append("the step that runs publica.py has no one literal --saida")
+        elif len(found[SETUP]) == 1 and normal_path(found[SETUP][0].get("path")) != normal_path(saida):
+            problems.append(f"the {SETUP} artifact is {found[SETUP][0].get('path')!r}, not the folder publica.py "
+                            f"writes the manifest to ({saida})")
         for name, (value, option) in NOTES.items():
             if (manifest.get("env") or {}).get(name) != value:
                 problems.append(f"the step that runs publica.py does not get {name} from {value}")
@@ -125,14 +152,17 @@ def mutant(doc, change):
 
 
 def upload(doc, name):
-    return next(s for s in doc["jobs"]["monta"]["steps"] if (s.get("with") or {}).get("name") == name)
+    marked = EXPRESSION.sub(lambda m: MARK if inner(m.group(0)) == inner(VERSION) else m.group(0), name)
+    return next(s for s in doc["jobs"]["monta"]["steps"]
+                if EXPRESSION.sub(lambda m: MARK if inner(m.group(0)) == inner(VERSION) else m.group(0),
+                                  str((s.get("with") or {}).get("name", ""))) == marked)
 
 
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
     doc = load(MONTA)
-    check(contract_problems(doc) == [], f"monta.yml has every name the publishing pipeline reads "
-                                        f"({contract_problems(doc)})")
+    real = contract_problems(doc)
+    check(real == [], f"monta.yml has every name the publishing pipeline reads ({real})")
     if failures:
         print("1 failed (the mutants need the real names)")
         return 1
@@ -143,6 +173,26 @@ def main():
     check(contract_problems(renamed_step) == [], "a congela step renamed (same id) keeps the contract")
     slash = mutant(doc, lambda d: upload(d, setup)["with"].update(path="instalador/saida"))
     check(contract_problems(slash) == [], "the Ritmelli artifact path without its final slash keeps the contract")
+    folder = "$saida = 'instalador\\saida'"
+
+    def move_folder(d):
+        step = manifest_step(d["jobs"]["monta"])
+        step.update(run=step["run"].replace(folder, "$saida = 'instalador\\out'"))
+
+    moved = mutant(doc, lambda d: (upload(d, setup)["with"].update(path="instalador/out/"), move_folder(d)))
+    check(folder in manifest_step(doc["jobs"]["monta"])["run"] and contract_problems(moved) == [],
+          "the --saida of publica.py and the Ritmelli artifact path moved together keep the contract")
+    other_dir = mutant(doc, lambda d: upload(d, exe)["with"].update(path="dist/app/ritmelli.exe"))
+    check(contract_problems(other_dir) == [], "the ritmelli.exe in another folder keeps the contract")
+    dotted = mutant(doc, lambda d: upload(d, exe)["with"].update(path="./dist/ritmelli/ritmelli.exe"))
+    check(contract_problems(dotted) == [], "the ritmelli.exe path written as ./dist/ritmelli/ritmelli.exe keeps the "
+                                           "contract")
+    written = "-Path $env:GITHUB_OUTPUT -Value \"versao=$v\""
+    reordered = "-Value \"versao=$v\" -Path $env:GITHUB_OUTPUT"
+    swapped = mutant(doc, lambda d: step_by_id(d["jobs"]["monta"], "congela").update(
+        run=step_by_id(d["jobs"]["monta"], "congela")["run"].replace(written, reordered)))
+    check(written in step_by_id(doc["jobs"]["monta"], "congela")["run"] and contract_problems(swapped) == [],
+          "the Add-Content of versao with its parameters swapped keeps the contract")
     mutants = {
         "the trigger": lambda d: d.update(on={"push": None}),
         "the notas input": lambda d: d["on"]["workflow_dispatch"]["inputs"].pop("notas"),
@@ -160,6 +210,16 @@ def main():
         "the ritmelli-exe artifact name": lambda d: upload(d, exe)["with"].update(name="ritmelli-app"),
         "the ritmelli-exe artifact path": lambda d: upload(d, exe)["with"].update(path="dist/ritmelli/"),
         "a second Ritmelli artifact": lambda d: d["jobs"]["monta"]["steps"].append(copy.deepcopy(upload(d, setup))),
+        "a Ritmelli artifact with a literal version": lambda d: d["jobs"]["monta"]["steps"].append(
+            {"uses": upload(d, setup)["uses"], "with": {"name": "Ritmelli-0.0.0", "path": "x"}}),
+        "the step that runs publica.py switched off": lambda d: manifest_step(d["jobs"]["monta"]).update(
+            {"if": "false"}),
+        "the ritmelli.exe path with a wildcard": lambda d: upload(d, exe)["with"].update(path="dist/*/ritmelli.exe"),
+        "the ritmelli.exe path with two files": lambda d: upload(d, exe)["with"].update(
+            path="dist/ritmelli/ritmelli.exe\ndist/ritmelli/ritmelli2.exe"),
+        "the --saida of publica.py alone": move_folder,
+        "the --saida of publica.py": lambda d: manifest_step(d["jobs"]["monta"]).update(
+            run=manifest_step(d["jobs"]["monta"])["run"].replace("'--saida', $saida", "'--out', $saida")),
         "a second Ritmelli artifact in another job": lambda d: d["jobs"]["testa"]["steps"].append(
             {"uses": upload(d, setup)["uses"], "with": {"name": "Ritmelli-${{ needs.monta.outputs.versao }}",
                                                          "path": "saida/"}}),
@@ -176,8 +236,9 @@ def main():
             name=f"{j}-renamed"))(job_id)
     mutants["the name of the testa-migracao job"] = lambda d: d["jobs"]["testa-migracao"].update(
         name="migracao (${{ matrix.scenario }})")
-    for name, change in mutants.items():
-        check(contract_problems(mutant(doc, change)) != [], f"the check catches {name} changed")
+    for base, label in ((doc, ""), (spaces, " (version expression without spaces)")):
+        for name, change in mutants.items():
+            check(contract_problems(mutant(base, change)) != [], f"the check catches {name} changed{label}")
     print(f"{'all passed' if not failures else f'{len(failures)} failed'}")
     return 1 if failures else 0
 
