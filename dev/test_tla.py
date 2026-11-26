@@ -44,7 +44,7 @@ RENAME_PLAY = (("WithTheRename", "TRUE"), ("WithTheJobOnThePlatter", "FALSE"), (
                ("WithTheSeek", "FALSE"), ("WithTheForget", "FALSE"))
 PART_CONSTANTS = ("DownloadOutcomes", "StreamReaderStartsWith", "QueueLengths")
 WHOLE = {"LocksAndSwitch": ({"Qids": 2, "RIds": 2, "GIds": 2},),
-         "PassageFailure": ({"Entries": 2, "Sources": 2}, {"Entries": 2, "Files": 2})}
+         "PassageFailure": ({"Entries": 2, "Sources": 2, "Files": 1}, {"Entries": 2, "Sources": 1, "Files": 2})}
 TWO_FILES = (("Files", "{f1, f2}"), ("Sources", "{s1}"))
 REQUIRED = {
     "Races211": {"TypeOK", "LockOrderKept", "NoOrphanLoading", "NoStaleLoading", "SwitchEntryMatchesPlatter",
@@ -408,7 +408,7 @@ def rename_part_failures(runs, cfg_text):
 
 def set_sizes(cfg_text):
     constants = (c.split(" = ", 1) for c in parse_cfg(cfg_text).get("CONSTANTS", []))
-    return {name: len(re.findall(r"[^{},\s]+", value)) for name, value in constants if value.startswith("{")}
+    return {name: len(set(re.findall(r"[^{},\s]+", value))) for name, value in constants if value.startswith("{")}
 
 
 def covers(run, cfg_text, need):
@@ -466,6 +466,9 @@ def main():
     one_source = dict(cfgs, PassageFailure=cfgs["PassageFailure"].replace("Sources = {s1, s2}", "Sources = {s1}"))
     check(one_source != cfgs and invariant_failures(RUNS, one_source) != [],
           "the mutant whose PassageFailure.cfg has one source fails")
+    no_file = dict(cfgs, PassageFailure=cfgs["PassageFailure"].replace("Files = {f1}", "Files = {}"))
+    check(no_file != cfgs and invariant_failures(RUNS, no_file) != [],
+          "the mutant whose PassageFailure.cfg has no file fails")
     narrower = dict(cfgs, LocksAndSwitch=cfgs["LocksAndSwitch"].replace("    HistoryOnceInOrder\n", "", 1))
     check(narrower != cfgs and invariant_failures(RUNS, narrower) != [],
           "the mutant whose LocksAndSwitch.cfg drops HistoryOnceInOrder fails")
@@ -489,6 +492,15 @@ def main():
             ("the passing run of PassageFailure has one source only",
              [replace(r, constants=(("Sources", "{s1}"),)) if r.spec == "PassageFailure" and r.expect == "pass" else r
               for r in RUNS]),
+            ("the passing run of PassageFailure with two sources has no shelf file",
+             [replace(r, constants=(("Files", "{}"),)) if r.spec == "PassageFailure" and r.expect == "pass"
+              and not r.constants else r for r in RUNS]),
+            ("the passing run of PassageFailure names one source twice",
+             [replace(r, constants=(("Sources", "{s1, s1}"),)) if r.spec == "PassageFailure" and r.expect == "pass"
+              and not r.constants else r for r in RUNS]),
+            ("the passing run of PassageFailure with two files has no source",
+             [replace(r, constants=(("Files", "{f1, f2}"), ("Sources", "{}"))) if r.spec == "PassageFailure"
+              and r.expect == "pass" and r.constants else r for r in RUNS]),
             ("the passing run of PassageFailure with two files is gone, and its mutant still runs",
              [r for r in RUNS if not (r.spec == "PassageFailure" and r.expect == "pass" and r.constants)]),
             ("the passing runs of PassageFailure turn on a mutant's switch",

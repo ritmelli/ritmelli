@@ -1186,13 +1186,13 @@ def similar_on_its_own(A, letter, n):
 
 def shelf_record(letter, n):
     return {"id": f"shelf{n}", "title": "similar", "file": f"shelf{n}.m4a", "duration": 600.0, "lufs": -14.0,
-            "youtube_id": letter * 11, "added": "2026-11-26T00:00:00"}
+            "youtube_id": letter * 11}
 
 
 def gain_failure_of_a_shelf_file(A, E, readers):
     check(play(A, E, readers, "d1"), "d1 is on the platter, read")
     x = similar_on_its_own(A, "m", 13)
-    A.lib.add(shelf_record("m", 13))
+    A.lib.add(item := shelf_record("m", 13))
     launches = Launches()
     with mock.patch.object(eng, "TRANS_PREP_S", 1e6), contextlib.redirect_stderr(io.StringIO()), \
             mock.patch.object(E, "gain_for", side_effect=ValueError("a stored lufs that is not a number")):
@@ -1201,7 +1201,7 @@ def gain_failure_of_a_shelf_file(A, E, readers):
         watch(A, launches)
     key = carried_key(A, x)
     A.lib.remove("shelf13")
-    check(launches.qids == [] and key[2] == ("m" * 11, ("shelf13.m4a", "2026-11-26T00:00:00")) and key in A.failed_passages,
+    check(launches.qids == [] and key[2] == ("m" * 11, cmd.Identity(item)) and key in A.failed_passages,
           f"a shelf file whose gain fails is keyed by that file, before the gain, and the next poll does not start it "
           f"again ({A.failed_passages}, launched {launches.qids})")
 
@@ -1280,10 +1280,10 @@ def shelf_record_deleted_before_the_pick(A, E, readers):
 def replacement_shelf_file_after_its_predecessor_failed(A, E, readers):
     check(play(A, E, readers, "d1"), "d1 is on the platter, read")
     x = similar_on_its_own(A, "p", 19)
-    A.lib.add(shelf_record("p", 19))
+    A.lib.add(dict(shelf_record("p", 19), added="2026-11-26T00:00:00"))
     A.failed_passages.add(failed := carried_key(A, x))
     A.lib.remove("shelf19")
-    A.lib.add(dict(shelf_record("p", 19), added="2026-11-26T00:00:01"))
+    A.lib.add(replacement := dict(shelf_record("p", 19), added="2026-11-26T00:00:00"))
     launches, want = Launches(), carried_key(A, x)
     with mock.patch.object(eng, "TRANS_PREP_S", 1e6):
         watch(A, launches)
@@ -1294,11 +1294,11 @@ def replacement_shelf_file_after_its_predecessor_failed(A, E, readers):
     A.failed_passages.clear()
     handed = prepares.call_args.args[0]() if prepares.call_count == 1 and callable(prepares.call_args.args[0]) else None
     key = prepares.call_args.kwargs.get("key") if prepares.call_count == 1 else None
-    check(launches.qids == [x["qid"]] and (handed or {}).get("added") == "2026-11-26T00:00:01"
-          and key == want != failed and want[2][1] == ("shelf19.m4a", "2026-11-26T00:00:01"),
-          f"a shelf file downloaded again under the same name, replacing one whose prepare failed, for the same "
-          f"entry, gets its own prepare, and the worker hands the new record and its own key to the engine (launched "
-          f"{launches.qids}, handed {(handed or {}).get('added')}, key {key})")
+    check(launches.qids == [x["qid"]] and (handed or {}).get("file") == "shelf19.m4a"
+          and key == want != failed and want[2][1] == cmd.Identity(replacement),
+          f"a shelf record downloaded again with the same id, file name and added stamp, replacing one whose prepare "
+          f"failed, for the same entry, gets its own prepare, and the worker hands the new record and its own key to "
+          f"the engine (launched {launches.qids}, key {key})")
 
 
 def engine_failure_through_the_real_prepare(A, E, readers):
