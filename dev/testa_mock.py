@@ -608,6 +608,21 @@ async def papeis_no_guard():
                         f"{who}: {m} {c} refuses an infinite duration as a bad body, not as a video longer than a day "
                         f"({j.get('error')})")
             del A.job_rodando
+            lookups = []
+            shelf_get, shelf_by_youtube = A.lib.get, A.lib.by_youtube
+            A.lib.get = lambda iid: lookups.append(("get", iid))
+            A.lib.by_youtube = lambda yid: lookups.append(("by_youtube", yid))
+            try:
+                for m, c, sent in (("POST", "/api/queue", {"youtube_id": "dQw4w9WgXcQ", "duration": -1}),
+                                   ("POST", "/api/queue", {"id": "d1", "youtube_id": "dQw4w9WgXcQ", "duration": -1}),
+                                   ("POST", "/api/library", {"youtube_id": "dQw4w9WgXcQ", "play": True,
+                                                             "duration": -1})):
+                    resp, _, _ = await manda(m, c, corpo=sent, handler=rota[(m, c)], **kw)
+                    confere(resp.status == 400 and not lookups, f"{who}: {m} {c} refuses {sent} before it looks at "
+                            f"the shelf ({resp.status}, {lookups})")
+                    lookups.clear()
+            finally:
+                A.lib.get, A.lib.by_youtube = shelf_get, shelf_by_youtube
             labels, platter = [], []
             A.job_rodando, A.run_download, A.job_update = (lambda _: None), (lambda *a: None), (lambda j, **k: None)
             A.new_job = lambda label, play, alvo: labels.append(label) or {"id": "j1"}
@@ -1156,7 +1171,9 @@ def ao_vivo(srv):
             library = answer_of(srv, "POST", "/api/library", {**sent, "play": True})
             target = sent.get("youtube_id") or sent.get("url")
             if isinstance(target, str) and target.strip():
-                confere(queue == library and queue[0] == 400, f"the queue and the shelf with play refuse "
+                envelope = isinstance(queue[1], dict) and queue[1].get("ok") is False \
+                    and isinstance(queue[1].get("error"), dict)
+                confere(queue == library and queue[0] == 400 and envelope, f"the queue and the shelf with play refuse "
                         f"{str(sent)[:90]} with the same answer (queue {queue}, shelf {library})")
             else:
                 confere((queue, library) == tuple((400, {"ok": False, "error": {"text": EMPTY_TARGET_TEXT[route]}})
