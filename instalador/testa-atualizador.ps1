@@ -33,6 +33,7 @@ function Falha($msg) {
 }
 function Estado { try { Get-Content "$pasta\estado.json" -Raw -Encoding UTF8 | ConvertFrom-Json } catch { $null } }
 function Responde { try { Invoke-RestMethod "$api/state" -TimeoutSec 2 } catch { $null } }
+function Existe($caminho) { try { Test-Path -LiteralPath $caminho } catch [System.UnauthorizedAccessException] { $true } }
 # roda o bloco de segundo em segundo ate ele dar algo, ou ate o prazo (e ai da $null)
 function Espera($segundos, [scriptblock]$cond) {
   $fim = (Get-Date).AddSeconds($segundos)
@@ -165,7 +166,7 @@ try {
 # --- o desinstalador leva a tarefa e a pasta da atualizacao. Ele se copia para a pasta temporaria e roda de la: o fim se
 # confere pelo que ele apaga
 Start-Process "$app\unins000.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART'
-if (-not (Espera 120 { -not (Test-Path "$app\ritmelli.exe") -and -not (Test-Path $pasta) })) {
+if (-not (Espera 120 { -not (Existe "$app\ritmelli.exe") -and -not (Existe $pasta) })) {
   Get-ChildItem $app -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 20 -ExpandProperty FullName
   throw 'o desinstalador nao tirou o app e a pasta da atualizacao em 2 min'
 }
