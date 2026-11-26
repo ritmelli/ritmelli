@@ -11,6 +11,8 @@ ROOT = Path(__file__).resolve().parent.parent
 MONTA = ROOT / ".github" / "workflows" / "monta.yml"
 BUILD_MANIFEST = ROOT / "instalador" / "atualizacao" / "build_manifest.py"
 SCRIPT = "instalador/atualizacao/build_manifest.py"
+INVOCATION = re.compile(r'^[ \t]*&[ \t]*"[^"\n]*\\python\.exe"[ \t]+instalador[\\/]atualizacao[\\/]'
+                        r'build_manifest\.py[ \t]*$', re.M)
 CALLS = re.compile(r"\b(build_manifest|publica)\b", re.I)
 VERSION = "${{ steps.congela.outputs.versao }}"
 MARK = "<version>"
@@ -87,8 +89,16 @@ def step_by_id(job, step_id):
 
 
 def manifest_step(job):
-    found = [s for s in job_steps(job) if SCRIPT in code(s.get("run", "")).replace("\\", "/")]
+    found = [s for s in job_steps(job) if INVOCATION.search(code(s.get("run", "")))]
     return found[0] if len(found) == 1 else None
+
+
+def texts(node):
+    if isinstance(node, dict):
+        return [t for k, v in node.items() for t in (*texts(k), *texts(v))]
+    if isinstance(node, list):
+        return [t for v in node for t in texts(v)]
+    return [str(node)]
 
 
 def manifest_folder():
@@ -217,8 +227,7 @@ def contract_problems(doc, folder=None):
     if len(found[EXE]) == 1 and not one_literal_file(found[EXE][0].get("path"), "ritmelli.exe"):
         problems.append(f"the {EXE} artifact is not the ritmelli.exe alone ({found[EXE][0].get('path')!r})")
     manifest = manifest_step(monta)
-    callers = [s for j in jobs.values() if not switched_off(j.get("if")) for s in job_steps(j)
-               if CALLS.search(str(s.get("run", ""))) and not switched_off(s.get("if"))]
+    callers = [s for j in jobs.values() for s in job_steps(j) if any(CALLS.search(t) for t in texts(s))]
     folder = folder or manifest_folder()
     if manifest is None or switched_off(manifest.get("if")):
         problems.append("the monta job has no one step that runs build_manifest.py, the script that runs publica.py")
@@ -229,8 +238,8 @@ def contract_problems(doc, folder=None):
         problems.append("the step that runs build_manifest.py runs only under an if:, so the manifest may be missing")
     else:
         if len(found[SETUP]) == 1 and normal_path(found[SETUP][0].get("path")) != normal_path(folder):
-            problems.append(f"the {SETUP} artifact is {found[SETUP][0].get('path')!r}, not the folder build_manifest.py "
-                            f"writes the manifest to ({folder})")
+            problems.append(f"the {SETUP} artifact is {found[SETUP][0].get('path')!r}, not the folder "
+                            f"build_manifest.py writes the manifest to ({folder})")
         for name, value in NOTES.items():
             if inner((manifest.get("env") or {}).get(name, "")) != inner(value):
                 problems.append(f"the step that runs build_manifest.py does not get {name} from {value}")
@@ -320,12 +329,14 @@ def main():
         step = manifest_step(d["jobs"]["monta"])
         step.update(run=change(step["run"]))
 
-    moved = mutant(doc, lambda d: (upload(d, setup)["with"].update(path="instalador/out/"),
+    folder, other = manifest_folder(), manifest_folder() + "_moved"
+    moved = mutant(doc, lambda d: (upload(d, setup)["with"].update(path=other + "/"),
                                    source_step(d, "parcial").update(run=source_step(d, "parcial")["run"].replace(
-                                       'Test-Path "instalador\\saida\\', 'Test-Path "instalador\\out\\'))))
-    check(manifest_folder() == "instalador/saida" and contract_problems(moved, folder="instalador/out") == [],
+                                       f'Test-Path "{folder}/'.replace("/", "\\"),
+                                       f'Test-Path "{other}/'.replace("/", "\\")))))
+    check(contract_problems(moved, folder=other) == [],
           "the folder build_manifest.py writes to and the Ritmelli artifact path moved together keep the contract")
-    check(contract_problems(doc, folder="instalador/out") != [],
+    check([p for p in contract_problems(doc, folder=other) if "not the folder build_manifest.py writes" in p] != [],
           "the check catches the folder build_manifest.py writes to changed alone")
     script = "instalador\\atualizacao\\build_manifest.py"
     forward = mutant(doc, lambda d: edit_run(d, lambda run: run.replace(script, SCRIPT)))
@@ -443,6 +454,12 @@ def main():
             d, lambda run: run.replace("build_manifest.py", "publica.py")),
         "a step after the manifest that mentions publica.py": lambda d: shown(d, "testa")["steps"].append(
             {"name": "Lista", "shell": "powershell", "run": "# publica.py wrote the manifest\n"}),
+        "a switched-off step that runs publica.py": lambda d: shown(d, "testa")["steps"].append(
+            {"if": "false", "run": "python instalador\\atualizacao\\publica.py --app outro\n"}),
+        "an action whose script mentions publica": lambda d: shown(d, "testa")["steps"].append(
+            {"uses": "actions/github-script@v7", "with": {"script": "// publica"}}),
+        "the manifest step that only prints the script's path": lambda d: manifest_step(d["jobs"]["monta"]).update(
+            run="Write-Output 'instalador\\atualizacao\\build_manifest.py'\n"),
         "the step that runs build_manifest.py under a condition": lambda d: manifest_step(d["jobs"]["monta"]).update(
             {"if": "env.ASSINA == 'true'"}),
         "the congela step under a condition": lambda d: step_by_id(d["jobs"]["monta"], "congela").update(
