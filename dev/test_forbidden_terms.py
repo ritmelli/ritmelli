@@ -66,14 +66,14 @@ def readings(name, data):
     for bom, encoding in UNICODE_BOMS:
         if data.startswith(bom):
             return [data.decode(encoding, errors="replace")]
-    if b"\0" not in data:
-        return [data.decode("utf-8", errors="replace")]
     if has_binary_signature(name, data):
         texts = ["\n".join(run.group().decode(encoding) for run in pattern.finditer(data))
                  for encoding, pattern in UTF16_ASCII_RUNS.items()]
         if Path(name).suffix.lower() not in MODEL_WEIGHT_SUFFIXES:
             texts.append("\n".join(run.group().decode("ascii") for run in PRINTABLE_RUN.finditer(data)))
         return texts
+    if b"\0" not in data:
+        return [data.decode("utf-8", errors="replace")]
     return [data.decode(encoding, errors="replace") for encoding in (*UTF16_ASCII_RUNS, "utf-8")]
 
 
@@ -178,6 +178,7 @@ class Matcher(unittest.TestCase):
     def test_model_weights_are_read_only_for_their_utf16_ascii_runs(self):
         weights = b"\x08\x08\x12\x07pytorch\x00"
         self.assertEqual(self.hits("modelos/model.onnx", weights + b"\x00\x07 a kiwi box \xff\x00"), [])
+        self.assertEqual(self.hits("modelos/model.onnx", b"\x08\x08\x12\x04kiwi"), [])
         for encoding in UTF16_ASCII_RUNS:
             self.assertTrue(self.hits("modelos/model.onnx", weights + "\x01 a Kiwi box ".encode(encoding)), encoding)
 
