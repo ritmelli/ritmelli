@@ -1,8 +1,8 @@
 import asyncio
 import contextlib
-import importlib.util
 import io
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -21,15 +21,16 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(sys.argv[1]) / "dev"))
 import compara
+import fitcheck
 compara.PRONTO = sys.argv[4]
-compara.PRONTA_S = 3.0
+fitcheck.PRONTA_S = 3.0
 sys.argv = ["compara.py", "--ref", "--sizes", sys.argv[2], "--pasta", sys.argv[3]]
 sys.exit(compara.main())
 """
 
-_spec = importlib.util.spec_from_file_location("compara", ROOT / "dev" / "compara.py")
-compara = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(compara)
+sys.path.insert(0, str(ROOT / "dev"))
+import compara  # noqa: E402
+import fitcheck  # noqa: E402
 
 failures = []
 
@@ -49,8 +50,8 @@ def never_ready(size, density, mesa):
         print(out.rstrip())
         lines = out.splitlines()
         where = "the PC" if mesa else "the phone"
-        check(p.returncode != 0 and f"vazio-{size}: o tema nao ficou pronto" in out
-              and (" (sem o body.mesa-dj)" in out) == mesa,
+        check(p.returncode != 0 and f"vazio-{size}: the theme was not ready in 3 s" in out
+              and (" (without the body.mesa-dj)" in out) == mesa and "browser went away" not in out,
               f"on {where}, a theme that never gets ready fails the capture (exit {p.returncode})")
         names = [n for n, _ in compara.READY_CONDITIONS] + ["shelf on screen"] + (["body.mesa-dj"] if mesa else [])
         for name in names:
@@ -59,43 +60,51 @@ def never_ready(size, density, mesa):
               f"on {where}, it prints the console.error of the page")
         check(any(line.startswith("  browser: ") and SCRIPT_MARK in line for line in lines),
               f"on {where}, it prints the browser's line for the script that did not load")
+        check(any(re.fullmatch(rf"  response: 404 http://127\.0\.0\.1:\d+/.*{re.escape(SCRIPT_MARK)}", line)
+                  for line in lines),
+              f"on {where}, it prints the 404 of the script, read from Network.responseReceived")
         print_file = Path(tmp) / "nao-pronto" / f"vazio-{size}.png"
         check(print_file.is_file() and print_file.stat().st_size > 0, f"on {where}, it saves a print of the page")
 
 
 class ClosedChrome:
-    erros = ["console.error: collected before the close"]
-    browser_errors = ["Failed to load resource: collected.js"]
     barrados = []
 
     def __init__(self, error):
         self.error = error
+        self.calls = []
+        self.events = fitcheck.PageEvents()
+        self.events.page_errors.append("console.error: collected before the close")
+        self.events.browser_errors.append("Failed to load resource: collected.js")
+        self.events.failed_responses.append("404 http://127.0.0.1:1/collected.js")
 
-    async def js(self, expr):
-        raise self.error
-
-    async def png(self):
+    async def cmd(self, method, **params):
+        self.calls.append(method)
         raise self.error
 
 
 def closed_connection(error):
     kind = type(error).__name__
-    started = asyncio.run(asyncio.wait_for(compara.wait_ready(ClosedChrome(error), "true", "vazio-1x1"), 5))
-    check(started is False, f"with a {kind}, the wait for the ready signal gives up at once and goes to the diagnostic")
+    chrome = ClosedChrome(error)
+    outcome = asyncio.run(asyncio.wait_for(fitcheck.wait_ready(chrome.cmd, "true", [], 20), 5))
+    check(outcome is fitcheck.Ready.CHROME_GONE,
+          f"with a {kind}, the wait for the ready signal gives up at once as a Chrome that went away ({outcome})")
     out = io.StringIO()
     with tempfile.TemporaryDirectory(prefix="ritmelli-nao-pronto-") as tmp, contextlib.redirect_stdout(out):
         try:
-            asyncio.run(compara.report_not_ready(ClosedChrome(error), "vazio-1x1", False, Path(tmp)))
+            asyncio.run(compara.report_not_ready(chrome, "vazio-1x1", outcome, False, Path(tmp)))
             ended = None
         except SystemExit as ex:
             ended = str(ex)
+        shots = list(Path(tmp).rglob("*.png"))
     text = out.getvalue()
     print(text.rstrip())
-    check(ended == f"vazio-1x1: o tema nao ficou pronto em {compara.PRONTA_S:.0f} s"
-          and f"the conditions did not come: {kind}" in text
+    check(ended is not None and "browser went away" in ended and "not ready" not in ended
           and "console: console.error: collected before the close" in text
-          and "browser: Failed to load resource: collected.js" in text and "the print did not come" in text,
-          f"with a {kind}, the diagnostic still prints what it collected and fails")
+          and "browser: Failed to load resource: collected.js" in text
+          and "response: 404 http://127.0.0.1:1/collected.js" in text and not shots,
+          f"with a {kind}, the diagnostic says the Chrome went away, not that the theme was not ready, and prints "
+          f"what it collected ({ended})")
 
 
 def main():

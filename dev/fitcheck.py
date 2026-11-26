@@ -33,6 +33,7 @@ Sai 1 se algum tamanho reprovar.
 import argparse
 import asyncio
 import base64
+import enum
 import itertools
 import json
 import os
@@ -43,8 +44,10 @@ import tempfile
 import time
 import urllib.parse
 import urllib.request
+from pathlib import Path
 
 import websockets
+from websockets.exceptions import ConnectionClosed
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import so_mock  # noqa: E402
@@ -112,18 +115,95 @@ PRONTA = ("(() => { try { return " + " && ".join(js for _, js in READY_CONDITION
           "; } catch (e) { return false; } })()")
 PRONTA_S = 20.0
 JS_WAIT_S = 1.5
+CDP_GONE = (ConnectionClosed, ConnectionError)
+DIAGNOSTIC_DOMAINS = ("Page", "Runtime", "Network", "Log")
 
 
-async def espera_pronta(cmd, barrados):
-    """Waits up to PRONTA_S for the PRONTA of the page. cmd: the CDP command of the caller. False when it did not get
-    ready, or when the page tried to leave for another origin (barrados)."""
-    fim = time.monotonic() + PRONTA_S
-    while time.monotonic() < fim and not barrados:
-        r = await cmd("Runtime.evaluate", expression=PRONTA, returnByValue=True)
+class Ready(enum.Enum):
+    READY = "ready"
+    TIMED_OUT = "timed out"
+    LEFT = "left for another origin"
+    CHROME_GONE = "chrome gone"
+
+
+async def wait_ready(cmd, expr, blocked, timeout_s):
+    deadline = time.monotonic() + timeout_s
+    while not blocked:
+        try:
+            r = await asyncio.wait_for(cmd("Runtime.evaluate", expression=expr, returnByValue=True),
+                                       max(0.1, deadline - time.monotonic()))
+        except CDP_GONE:
+            return Ready.CHROME_GONE
+        except (RuntimeError, TimeoutError):
+            r = {}
         if r.get("result", {}).get("value") is True:
-            return True
+            return Ready.READY
+        if time.monotonic() >= deadline:
+            return Ready.TIMED_OUT
         await asyncio.sleep(0.1)
-    return False
+    return Ready.LEFT
+
+
+class PageEvents:
+    def __init__(self):
+        self.page_errors, self.browser_errors, self.failed_responses = [], [], []
+
+    def new_load(self):
+        self.browser_errors.clear()
+        self.failed_responses.clear()
+
+    def take(self, m):
+        method, params = m.get("method"), m.get("params", {})
+        if e := erro_da_pagina(m):
+            self.page_errors.append(e)
+        elif method == "Log.entryAdded" and params["entry"].get("level") == "error":
+            entry = params["entry"]
+            self.browser_errors.append(f"{entry.get('text', '')} {entry.get('url', '')}".strip())
+        elif method == "Network.responseReceived" and params["response"].get("status", 0) >= 400:
+            response = params["response"]
+            self.failed_responses.append(f"{response['status']} {response.get('url', '')}")
+
+
+def diagnostic_js(conditions):
+    parts = [*conditions,
+             ("document.readyState", "document.readyState"), ("document.fonts.status", "document.fonts.status"),
+             ("images not complete", "[...document.images].filter(i => !i.complete).map(i => i.src.slice(0, 120))"),
+             ("scripts not loaded", "[...document.scripts].filter(s => s.src && "
+                                    "!performance.getEntriesByName(s.src).length).map(s => s.src)")]
+    body = ", ".join(f"{json.dumps(name)}: c(() => {js})" for name, js in parts)
+    return ("(() => { const c = f => { try { return f(); } catch (e) { return 'error: ' + e.message; } }; "
+            f"return {{{body}}}; }})()")
+
+
+async def report_not_ready(cmd, label, outcome, conditions, events, timeout_s, shot=None):
+    if outcome is Ready.CHROME_GONE:
+        verdict = (f"{label}: the Chrome DevTools connection closed before the theme was ready: the browser went "
+                   "away, so the theme was not judged")
+    elif outcome is Ready.LEFT:
+        verdict = f"{label}: the page tried to leave for another origin before it was ready"
+    else:
+        verdict = f"{label}: the theme was not ready in {timeout_s:.0f} s"
+    print(f"{verdict}; what the page showed:", flush=True)
+    if outcome is not Ready.CHROME_GONE:
+        try:
+            r = await cmd("Runtime.evaluate", expression=diagnostic_js(conditions), returnByValue=True)
+            for name, value in (r.get("result", {}).get("value") or {}).items():
+                print(f"  {name}: {json.dumps(value, ensure_ascii=False)}", flush=True)
+        except (RuntimeError, TimeoutError, *CDP_GONE) as ex:
+            print(f"  (the conditions did not come: {type(ex).__name__} {ex})", flush=True)
+    for kind, found in (("console", events.page_errors), ("browser", events.browser_errors),
+                        ("response", events.failed_responses)):
+        for e in found or ["(none)"]:
+            print(f"  {kind}: {e}", flush=True)
+    if shot is not None and outcome is not Ready.CHROME_GONE:
+        try:
+            png = base64.b64decode((await cmd("Page.captureScreenshot", format="png"))["data"])
+            shot.parent.mkdir(parents=True, exist_ok=True)
+            shot.write_bytes(png)
+            print(f"  print: {shot}", flush=True)
+        except (RuntimeError, TimeoutError, KeyError, OSError, *CDP_GONE) as ex:
+            print(f"  (the print did not come: {type(ex).__name__} {ex})", flush=True)
+    return verdict
 
 
 def conecta_cdp(ws_url):
@@ -291,12 +371,13 @@ async def run(a):
             except Exception:  # noqa: BLE001 - subindo
                 time.sleep(0.1)
         async with conecta_cdp(ws_url) as ws:
-            seq, pend, barrados, erros = [0], {}, [], []
+            seq, pend, barrados, events = [0], {}, [], PageEvents()
+            erros = events.page_errors
             fetch = barra_outra_origem(ws, base, barrados)
 
             def evento(m):
-                if not fetch(m) and (e := erro_da_pagina(m)):
-                    erros.append(e)
+                if not fetch(m):
+                    events.take(m)
 
             tarefa = asyncio.create_task(le_cdp(ws, pend, evento))
 
@@ -307,8 +388,8 @@ async def run(a):
                 await ws.send(json.dumps({"id": seq[0], "method": method, "params": params}))
                 return (await asyncio.wait_for(f, 30)).get("result", {})
 
-            await cmd("Page.enable")
-            await cmd("Runtime.enable")  # as excecoes e o console.error da pagina
+            for domain in DIAGNOSTIC_DOMAINS:
+                await cmd(f"{domain}.enable")
             await cmd("Fetch.enable", patterns=so_mock.DOCUMENTOS)
             for sz in a.sizes.split(","):
                 w, h = map(int, sz.split("x"))
@@ -317,11 +398,20 @@ async def run(a):
                 try:
                     so_mock.confere(a.url)  # antes de cada navegacao: a porta pode ter mudado de dono
                     erros.clear()
+                    events.new_load()
                     await cmd("Page.navigate", url=a.url)
-                    pronta = await espera_pronta(cmd, barrados)
+                    ready = await wait_ready(cmd, PRONTA, barrados, PRONTA_S)
+                    if ready is Ready.CHROME_GONE:
+                        verdict = await report_not_ready(cmd, f"{sz:>10}", ready, READY_CONDITIONS, events, PRONTA_S)
+                        print(f"FALHA  {verdict}; nothing more checked")
+                        falhas += 1
+                        break
                     await confere_pagina(cmd, a.url, barrados)  # a page that left for another origin is refused here
-                    if not pronta:
-                        print(f"FALHA  {sz:>10}  the page was not ready in {PRONTA_S:.0f} s")
+                    if ready is not Ready.READY:
+                        shot = Path(a.shots) / f"not-ready_{sz}.png" if a.shots else None
+                        verdict = await report_not_ready(cmd, f"{sz:>10}", ready, READY_CONDITIONS, events, PRONTA_S,
+                                                         shot)
+                        print(f"FALHA  {verdict}")
                         falhas += 1
                         continue
                     await asyncio.sleep(a.wait)
@@ -426,7 +516,7 @@ async def aviso_no_chrome(base, botao):
                                "--no-first-run", "--no-default-browser-check", "about:blank"],
                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     r = {"abriu": False, "ao_ligar": None, "antes_do_enviar": None, "foco": None, "fechou": None, "reabriu": None,
-         "erros": []}
+         "erros": [], "not_ready": []}
     try:
         ws_url = None
         for _ in range(100):
@@ -437,12 +527,13 @@ async def aviso_no_chrome(base, botao):
             except Exception:  # noqa: BLE001 - subindo
                 time.sleep(0.1)
         async with conecta_cdp(ws_url) as ws:
-            seq, pend, barrados = [0], {}, []
+            seq, pend, barrados, events = [0], {}, [], PageEvents()
+            events.page_errors = r["erros"]
             fetch = barra_outra_origem(ws, base, barrados)
 
             def evento(m):
-                if not fetch(m) and (e := erro_da_pagina(m)):
-                    r["erros"].append(e)
+                if not fetch(m):
+                    events.take(m)
             tarefa = asyncio.create_task(le_cdp(ws, pend, evento))
 
             async def cmd(method, **params):
@@ -463,13 +554,22 @@ async def aviso_no_chrome(base, botao):
                     await asyncio.sleep(0.1)
                 return False
 
+            async def load_and_wait_notice():
+                so_mock.confere(url)
+                events.new_load()
+                await cmd("Page.navigate", url=url)
+                ready = await wait_ready(cmd, PRONTA, barrados, PRONTA_S)
+                if ready is not Ready.READY:
+                    r["not_ready"].append(await report_not_ready(cmd, "notice", ready, READY_CONDITIONS, events,
+                                                                 PRONTA_S))
+                    return False
+                return await espera_aviso()
+
             foco = "(e => e && (e.value || e.id || e.tagName))(document.activeElement)"
-            await cmd("Page.enable")
-            await cmd("Runtime.enable")
+            for domain in DIAGNOSTIC_DOMAINS:
+                await cmd(f"{domain}.enable")
             await cmd("Fetch.enable", patterns=so_mock.DOCUMENTOS)
-            so_mock.confere(url)
-            await cmd("Page.navigate", url=url)
-            r["abriu"] = await espera_aviso()
+            r["abriu"] = await load_and_wait_notice()
             await confere_pagina(cmd, url, barrados)
             if botao == "ligar" and not r["abriu"]:
                 # o Microfone e fone aberto pelo botao dele, e o Comecar a enviar da linha dos dados de uso
@@ -504,9 +604,7 @@ async def aviso_no_chrome(base, botao):
                 await asyncio.sleep(1.0)
                 r["fechou"] = not await js("document.querySelector('#dlg-metricas').open")
                 if botao == "esc":  # o Esc nao escolhe: na proxima abertura, o aviso de novo
-                    so_mock.confere(url)
-                    await cmd("Page.navigate", url=url)
-                    r["reabriu"] = await espera_aviso()
+                    r["reabriu"] = await load_and_wait_notice()
             tarefa.cancel()
     finally:
         fecha_chrome(chrome, prof)
@@ -578,6 +676,7 @@ def cenario_metricas():
                 o_que = f"{nome}{', ' + BOTOES[botao] if botao else ''}"
                 diz(r["abriu"] == abre, f"{o_que}: o aviso {'abre' if r['abriu'] else 'nao abre'} ao carregar")
                 diz(not r["erros"], f"{o_que}: sem erro na pagina ({r['erros'][:2]})")
+                diz(not r["not_ready"], f"{o_que}: the page got ready before the wait for the notice ({r['not_ready']})")
                 if botao == "ligar":
                     texto2 = cfg.get("metricas_texto") == 2
                     diz(r["ao_ligar"] is (not texto2),

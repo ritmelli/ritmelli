@@ -29,8 +29,12 @@ nenhuma execução de PR exercita: o bloco do "Testa o PR" num bash com um `gh` 
 que o GitHub não confirma reprova dizendo isso; no push, os jobs pulados só passam com uma
 execução da fila aprovada no mesmo commit), os jobs que o push pula, as chaves de cache, essa trava
 e as bibliotecas sem versão no `instalador/travas.txt` (as conhecidas, da issue #231). O
-`dev/test_compara_not_ready.py` roda o `compara` com um sinal de pronto que nunca fecha e confere o
-diagnóstico, no celular e na mesa, e o `dev/test_capture.py` roda o `--capture` de verdade (os prints,
+`fitcheck` e o `compara` esperam o tema pela mesma função (o `wait_ready` do `dev/fitcheck.py`), que separa o
+Chrome que caiu do tema que não ficou pronto e, no segundo caso, mostra cada condição, os erros da página e as
+respostas com erro (o `Network.responseReceived`). O `dev/test_compara_not_ready.py` roda o `compara` com um sinal
+de pronto que nunca fecha e confere o diagnóstico, no celular e na mesa; o `dev/test_fitcheck_ready.py` faz o mesmo
+no `fitcheck` e confere que o aviso dos dados de uso aparece com um script do tema atrasado de propósito (a espera
+do aviso começa com a página pronta, não no `Page.navigate`). O `dev/test_capture.py` roda o `--capture` de verdade (os prints,
 a chave e o `head_cache` que o workflow lê para salvar). O `dev/test_compara_push_steps.py` roda os
 passos do Compara que, no push, capturam sem calcular as áreas nem resolver a base. O `--tela` junta o `fitcheck` e o `compara` do jeito do PR (no
 `testa.yml` o `compara` roda num job à parte, pelo `--compara`, com a referência da base no
