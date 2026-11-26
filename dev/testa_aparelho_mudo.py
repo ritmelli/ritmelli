@@ -696,9 +696,10 @@ class TestRepeatedInstallAfterAFailedRestart(unittest.TestCase):
             self.assertEqual((self.runs[1][0], self.runs[1][1]["ok"], self.runs[1][1].get("erro")),
                              (1, False, "the restart failed"))
 
-    @unittest.expectedFailure
     def test_the_second_run_tries_the_full_restart_again(self):
-        self.assertEqual(self.restarts, [False, False], "#262: the second run must try the full restart again")
+        with self.assertRaises(AssertionError, msg="passed, but it is a known failure (#262): if the fix is on "
+                                                   "purpose, the case leaves the known failures in the same PR"):
+            self.assertEqual(self.restarts, [False, False])
 
 
 class TestDiagnosticStreams(unittest.TestCase):

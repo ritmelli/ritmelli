@@ -216,11 +216,9 @@ class TestaMicrofone(unittest.TestCase):
         self.assertTrue(v.e._injetor.leitores, "o Injetor nao viu o leitor do anel")
 
     def test_vigia_reabre_o_leitor_perdido(self):
-        """The filter of the microphone in use stops reading and doesn't come back, with the engine still capturing the
-        same microphone and the device list frozen: the watcher reopens the audio on the same microphone, at most
-        LEITOR_TENTATIVAS times, keeping the audio event window; a reader that comes back resets the count, and the
-        next loss reopens again. The delay and the interval are proven on the controlled clock of
-        test_recupera_leitor_conta."""
+        """The filter of the microphone in use stops reading and doesn't come back: the watcher reopens the audio on the
+        same microphone, at most LEITOR_TENTATIVAS times, keeping the audio event window; a reader that comes back
+        resets the count. The delay and the interval are proven in test_recupera_leitor_conta."""
         anel = AnelFalso()
         anel.liga()
         v = VigiaNoAnel()

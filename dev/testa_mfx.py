@@ -293,8 +293,6 @@ class TestaMfx(Base):
 
 
 class TestEndpointWithoutFxProperties(Base):
-    """The endpoint of a device that left the PC: no FxProperties, and Windows denies creating it."""
-
     def _endpoint(self, state, fx_properties=False):
         r = self.reg
         props = r.CreateKeyEx(r.HKEY_LOCAL_MACHINE, f"{mf.CAPTURA}\\{EP}\\Properties")
@@ -380,9 +378,6 @@ class TestEndpointWithoutFxProperties(Base):
 
 
 class FailedListWriteAfterTheSingleEffect:
-    """#261: _pendura deletes the maker's single EFX/MFX before it writes the list that takes it over. setUp runs the
-    first install with that list write refused once, then the second one."""
-
     failing_list = None
 
     def setUp(self):
@@ -415,10 +410,10 @@ class TestFailedEfxListWrite(FailedListWriteAfterTheSingleEffect, Base):
     def test_the_mfx_list_gets_the_host(self):
         self.assertEqual((self.le(mf.MFX_LISTA), self.le(mf.MFX), self.vaga(0)), ([HOST0], None, MFX_FM))
 
-    @unittest.expectedFailure
     def test_the_maker_efx_survives(self):
-        self.assertEqual((self.le(mf.EFX_LISTA), self.le(mf.EFX)), ([EFX_FM, mf.CLSID], None),
-                         "#261: the maker's EFX left the chain")
+        with self.assertRaises(AssertionError, msg="passed, but it is a known failure (#261): if the fix is on "
+                                                   "purpose, the case leaves the known failures in the same PR"):
+            self.assertEqual((self.le(mf.EFX_LISTA), self.le(mf.EFX)), ([EFX_FM, mf.CLSID], None))
 
 
 class TestFailedMfxListWrite(FailedListWriteAfterTheSingleEffect, Base):
@@ -427,10 +422,10 @@ class TestFailedMfxListWrite(FailedListWriteAfterTheSingleEffect, Base):
     def test_the_efx_list_keeps_the_maker(self):
         self.assertEqual(self.le(mf.EFX_LISTA), [EFX_FM, mf.CLSID])
 
-    @unittest.expectedFailure
     def test_the_maker_mfx_survives(self):
-        self.assertEqual((self.le(mf.MFX_LISTA), self.le(mf.MFX), self.vaga(0)), ([HOST0], None, MFX_FM),
-                         "#261: the maker's MFX left the chain")
+        with self.assertRaises(AssertionError, msg="passed, but it is a known failure (#261): if the fix is on "
+                                                   "purpose, the case leaves the known failures in the same PR"):
+            self.assertEqual((self.le(mf.MFX_LISTA), self.le(mf.MFX), self.vaga(0)), ([HOST0], None, MFX_FM))
 
 
 class Gravador:

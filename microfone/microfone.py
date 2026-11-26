@@ -255,8 +255,7 @@ def audio_rodando():
 
 def servico_audio(acao):
     """Stop, Start or Restart of the audio service (audiodg.exe holds the DLL while it runs). Start-Service gets no
-    -Force (with it the command fails silently and the PC is left without sound: 13/11). Exits with an error when the
-    command fails or when the final state isn't the expected one."""
+    -Force (with it the command fails silently and the PC is left without sound: 13/11)."""
     forca = " -Force" if acao in ("Stop", "Restart") else ""
     command = subprocess.run([POWERSHELL, "-NoProfile", "-Command",
                               f"{acao}-Service audiosrv{forca} -ErrorAction Stop"], check=False, capture_output=True,
@@ -276,8 +275,7 @@ def reinicia_audio(so_servico=False):
     """After changing the effect keys: the AudioEndpointBuilder keeps the device properties and reads them again only
     when it restarts (the audiosrv goes down with it and comes back through servico_audio). With so_servico (#136:
     only the filter DLL changed, and no microphone got the filter), only the audiosrv: the new audiodg.exe already
-    loads the new DLL, and the AudioEndpointBuilder, which tears down and mounts every device, stays as it is.
-    Returns the reason when the AudioEndpointBuilder didn't restart, or None."""
+    loads the new DLL, and the AudioEndpointBuilder, which tears down and mounts every device, stays as it is."""
     if so_servico:
         servico_audio("Restart" if audio_rodando() else "Start")  # a troca da DLL ja parou o audio para solta-la
         return None
@@ -566,10 +564,6 @@ def _not_present(base):
 
 
 def _open_fx_properties(base):
-    """The FxProperties key of the endpoint, created when missing. An endpoint whose device isn't present (DeviceState
-    NOTPRESENT), has no FxProperties and where Windows denies creating it even to an administrator raises
-    LockedEndpointNotPresent: a device that left the PC, which the filter can't reach. In any other state, one that
-    can't be read, or with the key there or not known to be missing, the denial stays an error."""
     path = base + r"\FxProperties"
     try:
         return winreg.CreateKeyEx(winreg.HKEY_LOCAL_MACHINE, path, 0, winreg.KEY_READ | winreg.KEY_SET_VALUE)
@@ -753,10 +747,7 @@ def instala_todos(dll):
     """Puts the filter on every Windows microphone (active, disabled or unplugged) that doesn't have it, and replaces
     the DLL if the app's one changed. The PC audio restarts only when something changed: running again with nothing
     new leaves the sound alone, and only a new DLL restarts only the audio service. Returns the device check if the
-    audio restarted (confere_aparelhos), or None. A microphone that refuses the filter doesn't stop the others or
-    restart the audio by itself, and an AudioEndpointBuilder that doesn't restart fails too: at the end,
-    FilterChangeFailed carries the check (or None). Only an endpoint without Properties and a
-    LockedEndpointNotPresent are left out without an error."""
+    audio restarted (confere_aparelhos), or None."""
     parou = _prepara_dll(dll)
     novos, failures, left_out = [], [], 0
     for m in microfones(todos=True):
@@ -811,9 +802,8 @@ def remove(filtro=None):
     DLL out. The PC audio restarts only if some microphone changed (the uninstaller always calls it). With the app
     folder outside the protected folder rule, the microphones are restored the same way (it's only registry), but the
     DLL there is neither loaded nor deleted: its registration goes through winreg, and the command exits with an
-    error. The cleanup runs even when the restart fails; an AudioEndpointBuilder that didn't restart then raises
-    FilterChangeFailed. Return the device check if the audio restarted, some microphone keeps the filter and the
-    folder passed (_depois_do_reinicio), or None."""
+    error. Return the device check if the audio restarted, some microphone keeps the filter and the folder passed
+    (_depois_do_reinicio), or None."""
     alvos = [acha(filtro)] if filtro else microfones(todos=True)
     mexeu = False
     for ep, nome, apar in alvos:
@@ -1021,8 +1011,7 @@ def _microphone_ready(name):
 def pede_tarefa(nome, espera_s=60):
     """From the app, without administrator: runs the installer's task and waits for the microphone to have the filter
     (and the enhancements) and for the Windows audio to come back. {ok} or {ok: False, motivo, detalhe, reopen}: the
-    motivo is a code (sem_tarefa, tarefa_falhou, nao_pronto, audio), and the caller words it in the language of the
-    screen (engine.py). With nao_pronto the task may still have restarted the audio, so reopen asks for a reopen."""
+    motivo is a code (sem_tarefa, tarefa_falhou, nao_pronto, audio) that engine.py words for the screen."""
     if not tarefa_existe():
         return {"ok": False, "motivo": "sem_tarefa"}
     r = subprocess.run([SCHTASKS, "/run", "/tn", TAREFA], capture_output=True, text=True, encoding="oem",
