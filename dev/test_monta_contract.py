@@ -115,10 +115,10 @@ def literal(value):
 
 
 def output_folder(run):
-    value = re.findall(r"""['"]--saida['"],\s*('[^']*'|"[^"]*"|\$\w+)\s*[,)]""", code(run))
+    value = re.findall(r"""['"]--saida['"],\s*('[^']*'|"[^"]*"|\$\w+)\s*[,)]""", str(run))
     if len(value) != 1 or not value[0].startswith("$"):
         return literal(value[0]) if len(value) == 1 else None
-    assigned = re.findall(rf"\{value[0]}\b\s*([-+*/]?=)(?!=)\s*(.*?)\s*$", code(run), re.M | re.I)
+    assigned = re.findall(rf"\{value[0]}\b\s*([-+*/]?=)(?!=)\s*(.*?)\s*$", str(run), re.M | re.I)
     return literal(assigned[0][1]) if len(assigned) == 1 and assigned[0][0] == "=" else None
 
 
@@ -409,6 +409,10 @@ def main():
             {"uses": upload(d, setup)["uses"], "with": {"name": "Ritmelli-${{ github.run_number }}", "path": "x"}}),
         "the --saida of publica.py with a subfolder": lambda d: edit_run(d, lambda run: run.replace(
             "'--saida', $saida)", "'--saida', $saida + '\\sub')")),
+        "a comment that assigns the folder of --saida": lambda d: edit_run(d, lambda run: re.sub(
+            r"^(\s*)(\$saida\s*=.*)$", r"\1# $saida = 'saida'\n\1\2", run, count=1, flags=re.M)),
+        "a trailing comment on the --saida assignment": lambda d: edit_run(d, lambda run: re.sub(
+            r"^(\s*)(\$saida\s*=.*)$", r"\1\2  # the artifact folder", run, count=1, flags=re.M)),
         "the folder of --saida assigned twice": lambda d: edit_run(d, lambda run: re.sub(
             r"^(\s*)(\$saida\s*=.*)$", r"\1\2\n\1$saida += '_other'", run, count=1, flags=re.M)),
         "the ritmelli-exe upload under a condition": lambda d: upload(d, exe).update(
