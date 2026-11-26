@@ -250,10 +250,27 @@ def call_spans(text):
         yield m.group(1), text[m.end():i - 1]
 
 
+def requested_keys(html):
+    pedidas = set(re.findall(rf'data-i18n(?:-[a-z-]+)?="({CHAVE})"', html))
+    sem_marcacao = set(re.findall(rf'data-i18n-[a-z-]+="({CHAVE})"', html))
+    plurais = set()
+    for nome, args in call_spans(html):
+        nela = set(re.findall(rf"['\"]({CHAVE})['\"]", args))
+        plural = set(re.findall(rf"^\s*['\"]({CHAVE})['\"]", args)) if nome == "tp" else set()
+        plurais |= plural
+        pedidas |= nela - plural
+        if nome != "rico":
+            sem_marcacao |= nela
+    return pedidas, plurais, sem_marcacao
+
+
 def check_call_spans():
     spans = list(call_spans("a = I18N.t(x ? 'a.b'\n  : f('c.d', ')')) + 'e.f';\nI18N.tp('g.h', n); I18N.rico(\n'i.j')"))
     if spans != [("t", "x ? 'a.b'\n  : f('c.d', ')')"), ("tp", "'g.h', n"), ("rico", "\n'i.j'")]:
         falha(f"call_spans should read each I18N call to its closing parenthesis, across lines: {spans}")
+    keys = requested_keys("I18N.tp('a.count', n); I18N.t('a.count'); I18N.tp('b.count', n, 'b.label')")
+    if keys[:2] != ({"a.count", "b.label"}, {"a.count", "b.count"}):
+        falha(f"requested_keys should ask for the key of an I18N.t even when an I18N.tp uses it as a plural: {keys}")
     print("the I18N call reader checked")
 
 
@@ -398,16 +415,7 @@ def confere_tema(tema, servidor, efeitos):
     check_block_pairs(tema, arquivos)
     check_script_tags(tema, arquivos["index.html"], arquivos)
     html = "\n".join(arquivos.values())
-    pedidas = set(re.findall(rf'data-i18n(?:-[a-z-]+)?="({CHAVE})"', html))
-    sem_marcacao = set(re.findall(rf'data-i18n-[a-z-]+="({CHAVE})"', html))
-    plurais = set()
-    for nome, args in call_spans(html):
-        nela = set(re.findall(rf"['\"]({CHAVE})['\"]", args))
-        pedidas |= nela
-        if nome == "tp":
-            plurais |= set(re.findall(rf"^\s*['\"]({CHAVE})['\"]", args))
-        if nome != "rico":
-            sem_marcacao |= nela
+    pedidas, plurais, sem_marcacao = requested_keys(html)
     for k in sorted(sem_marcacao):
         if tags(base.get(k, "")):
             falha(f"{tema.name}: {k} has markup, so it goes through data-i18n or I18N.rico, not I18N.t or an attribute")
@@ -418,7 +426,7 @@ def confere_tema(tema, servidor, efeitos):
             falha(f"{tema.name}: the server sends {k} ({onde}), which is not in the files")
         elif params(base[k]) != params(texto):
             falha(f"{tema.name}: {k} has params {sorted(params(base[k]))}, and the server sends {sorted(params(texto))}")
-    for k in sorted(pedidas - plurais):
+    for k in sorted(pedidas):
         if k not in base:
             falha(f"{tema.name}: the theme uses {k}, which is not in the files")
     for k in sorted(plurais):
