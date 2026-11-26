@@ -12,6 +12,7 @@ NESTED = "@media (min-width: 1px) {\n  a { color: red; }\n  @container (max-widt
 FONT = "@font-face { font-family: 'A'; src: url(fonts/a.woff2) format('woff2'); }\n"
 PEDAL = '<script src="pedal.js" onerror="scriptFailed(this)"></script>'
 HIDDEN = "html:not(.i18n-ok) body { visibility: hidden; }"
+TWO_INLINED = "<!-- inline-script: s.js -->\n<!-- inline-script: t.js -->\n"
 LEFT, CAME = "declaration left its script", "declaration came into the script"
 
 
@@ -117,6 +118,16 @@ SAMPLES = (
      {"index.html": "<!-- inline-script: s.js -->\n", "s.js": "'use strict';\nf();\n"},
      {"index.html": "<!-- inline-script: s.js -->\n", "s.js": "'use strict'; // </script>\nf();\n"},
      ["new", "new", "gone"]),
+    ("a // <!-- in an inlined script turned into // <!-- <script>",
+     {"index.html": TWO_INLINED, "s.js": "f();\n// <!--\n", "t.js": "g();\n"},
+     {"index.html": TWO_INLINED, "s.js": "f();\n// <!-- <script>\n", "t.js": "g();\n"},
+     ["gone", "scripts", "does not parse", "gone", "new"]),
+    ("a // <!-- --> in an inlined script turned into // <!-- <script></script> -->",
+     {"index.html": TWO_INLINED, "s.js": "f();\n// <!-- -->\n", "t.js": "g();\n"},
+     {"index.html": TWO_INLINED, "s.js": "f();\n// <!-- <script></script> -->\n", "t.js": "g();\n"}, []),
+    ("a <script> put after the --> of a // <!-- --> in an inlined script",
+     {"index.html": TWO_INLINED, "s.js": "f();\n// <!-- -->\n", "t.js": "g();\n"},
+     {"index.html": TWO_INLINED, "s.js": "f();\n// <!-- --> <script>\n", "t.js": "g();\n"}, []),
     ("a vertical tab in place of the space before + in a calc()", styled("a { padding: calc(14px + 1px); }\n"),
      styled("a { padding: calc(14px\v+ 1px); }\n"), ["gone", "new"]),
     ("a vertical tab after the space before + in a calc()", styled("a { padding: calc(14px + 1px); }\n"),
@@ -195,8 +206,12 @@ def main():
         ("a translation changed", {"i18n/i18n_en.properties": lambda text, _: text.replace(
             "nav.backToShelf=Back to the shelf", "nav.backToShelf=Close the app") if "nav.backToShelf=" in text else ""},
          "translation new"),
-        ("a <!-- <script> put at the end of start.js", {"start.js": lambda text, _: text + "// <!-- <script>\n"},
-         "script tag or strict mode"),
+        ("a translation line repeated", {"i18n/i18n_en.properties": lambda text, _: text.replace(
+            "nav.backToShelf=Back to the shelf", "nav.backToShelf=Back to the shelf\nnav.backToShelf=Back to the shelf")
+            if "nav.backToShelf=" in text else ""}, "translation new"),
+        ("a translation line moved to the end", {"i18n/i18n_en.properties": lambda text, _: text.replace(
+            "nav.backToShelf=Back to the shelf\n", "") + "nav.backToShelf=Back to the shelf\n"
+            if "nav.backToShelf=" in text else ""}, "translations in another order"),
         ("transporte.js renamed",
          {"index.html": lambda html, _: html.replace('src="transporte.js"', 'src="transporte-new.js"')
           if 'src="transporte.js"' in html else "",

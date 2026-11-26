@@ -19,7 +19,8 @@ USAGE = """Proof that a change to a theme only moves code: the page put back tog
 The page is the index.html of the theme with every <!-- inline-script: --> made a <script> with the text of its file,
 as the server sends it, and every <script src>
 and <link rel="stylesheet"> replaced by the text of its file. A script or style ends where the browser ends it: at the
-first </script or </style followed by a space, / or > (so a </script> in a comment of a script ends it there). Every script and stylesheet, from a file or inline, sits between a line that opens it
+first </script or </style followed by a space, / or >, with the escaped states of script data (a <!-- and a
+<script inside it), as the HTML tokenizer does (so a </script> in a comment of a script ends it there). Every script and stylesheet, from a file or inline, sits between a line that opens it
 ([script NAME], [inline-script NAME], [script], [link NAME] or [style], with the tag's other attributes when it has
 any) and a [/script] or [/style] line. <base> and <head> are git commits (the head defaults to the working tree).
 
@@ -44,6 +45,10 @@ compile, or that tree-sitter does not parse, is a change. Anything else is a cha
 INLINE_SCRIPT = re.compile(r"<!-- inline-script: ([\w-]+\.js) -->")
 INLINED = "data-theme-rebuild-inline-script"
 RAW_TEXT = re.compile(r"<!--.*?-->|<(script|style)\b[^>]*>", re.I | re.S)
+SCRIPT_START = re.compile(r"<script[\t\n\f\r />]", re.I)
+SCRIPT_END = re.compile(r"</script[\t\n\f\r />]", re.I)
+STYLE_END = re.compile(r"</style[\t\n\f\r />]", re.I)
+ANY_END = re.compile(r"</(?:script|style)", re.I)
 CSS_SPACES = re.compile(r"[ \t\n\r\f]+")
 HTML_SPACE = " \t\n\r\f"
 MARK = re.compile(r"/\*\s*(?:[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-(?:INICIO|FIM)|[a-z]+:(?:inicio|fim))\b[^*]*\*/")
@@ -158,15 +163,41 @@ def ended_as_the_browser_ends(page):
             out.append(page[at:opened.end()])
             at = opened.end()
             continue
-        end = re.compile(rf"</{opened.group(1)}[\t\n\f\r />]", re.I).search(page, opened.end())
-        if not end:
-            break
-        close = tag_end(page, end.end() - 1)
+        kind = opened.group(1).lower()
+        end = script_end(page, opened.end()) if kind == "script" else page_end(page, opened.end(), STYLE_END)
+        close = tag_end(page, end + len(f"</{kind}")) if end >= 0 else -1
         if close < 0:
-            break
-        out.append(page[at:end.start()] + f"</{opened.group(1).lower()}>")
+            return "".join(out) + page[at:opened.end()] + inert(page[opened.end():])
+        out.append(page[at:opened.end()] + inert(page[opened.end():end]) + f"</{kind}>")
         at = close + 1
     return "".join(out) + page[at:]
+
+
+def inert(text):
+    return ANY_END.sub(lambda m: "<\\/" + m.group(0)[2:], text)
+
+
+def page_end(page, at, pattern):
+    found = pattern.search(page, at)
+    return found.start() if found else -1
+
+
+def script_end(page, at):
+    state = "data"
+    while at < len(page):
+        if state != "data" and page.startswith("-->", at):
+            state, at = "data", at + 3
+        elif state == "data" and page.startswith("<!--", at):
+            state, at = "escaped", at + 2
+        elif state == "escaped" and SCRIPT_START.match(page, at):
+            state, at = "double escaped", at + len("<script")
+        elif SCRIPT_END.match(page, at):
+            if state != "double escaped":
+                return at
+            state, at = "escaped", at + len("</script")
+        else:
+            at += 1
+    return -1
 
 
 def tag_end(page, at):
@@ -421,8 +452,11 @@ def compare(a, b, compiles):
     (scripts_a, parsed_a), (scripts_b, parsed_b) = sides
     compare_sequences(report, "markup", markup(a), markup(b), lambda _: "the page", lambda _: "the page")
     for (language, mine), (_, theirs) in zip(a.texts or [(None, ())] * len(b.texts), b.texts or [(None, ())] * len(a.texts)):
-        report.changes += [("translation gone", language, [x]) for x in mine if x not in theirs]
-        report.changes += [("translation new", language, [x]) for x in theirs if x not in mine]
+        gone, new = collections.Counter(mine) - collections.Counter(theirs), collections.Counter(theirs) - collections.Counter(mine)
+        report.changes += [("translation gone", language, [x]) for x in gone.elements()]
+        report.changes += [("translation new", language, [x]) for x in new.elements()]
+        if mine != theirs and not gone and not new:
+            report.changes.append(("translations in another order", language, []))
     if len(scripts_a) != len(scripts_b):
         report.changes.append(("scripts", f"the base has {len(scripts_a)} and the head {len(scripts_b)}", []))
     for page, parsed in ((a, parsed_a), (b, parsed_b)):
@@ -430,8 +464,7 @@ def compare(a, b, compiles):
     for k, (x, y) in enumerate(zip(scripts_a, scripts_b)):
         bx, by = a.blocks[x], b.blocks[y]
         sx, sy = parsed_a[x].strict if x in parsed_a else None, parsed_b[y].strict if y in parsed_b else None
-        if (bx.source, bx.others, bx.ignored, bx.text.count("<!--"), sx) != \
-                (by.source, by.others, by.ignored, by.text.count("<!--"), sy):
+        if (bx.source, bx.others, bx.ignored, sx) != (by.source, by.others, by.ignored, sy):
             report.changes.append(("script tag or strict mode", f"script {k + 1}: {bx.header} (strict: {sx}) -> "
                                    f"{by.header} (strict: {sy})", []))
         if not bx.code and [r.strip() for r in bx.raw if r.strip()] != [r.strip() for r in by.raw if r.strip()]:

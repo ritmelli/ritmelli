@@ -81,21 +81,23 @@ e que o `queue.js` vê o toque que fecha a busca na mesa.
 Para provar que um PR só mudou código de lugar, o `dev/theme_rebuild.py <base>` monta a página de novo nos dois
 commits, com cada `<!-- inline-script: -->` virando um `<script>` com o texto do arquivo, como o servidor manda, e cada
 `<script src>` e `<link>` trocado pelo texto do arquivo. Um script ou um estilo acaba onde o navegador o acaba: no
-primeiro `</script` ou `</style` seguido de espaço, `/` ou `>` (então um `</script>` num comentário fecha o script ali), e um `<script src>` sem `</script>` engole o texto até o
-próximo, que entra na comparação.
+primeiro `</script` ou `</style` seguido de espaço, `/` ou `>` (então um `</script>` num comentário fecha o script ali),
+salvo num script em que um `<!--` seguido de `<script` ainda não teve o `-->`, que pula esse `</script>` como o
+tokenizador do HTML pula; e um `<script src>` sem `</script>` engole o texto até o próximo, que entra na comparação.
 O fim da tag respeita as aspas de um valor, e um `\r` sozinho conta como fim de linha, como no navegador (lido do git
 ou da pasta). Ela sai 0 quando o head só muda código de lugar:
 - a marcação é a mesma, na mesma ordem (sem os cinco espaços do HTML nas pontas de cada linha), com cada script e cada
   folha de estilo no mesmo lugar dela;
 - os scripts são os mesmos, na mesma ordem, cada um carregado do mesmo jeito (inline ou do mesmo arquivo), com os
-  mesmos atributos, o mesmo modo estrito e o mesmo número de `<!--` no texto (que muda onde o navegador fecha o script);
+  mesmos atributos e o mesmo modo estrito;
 - cada script declara as mesmas funções no alto (elas podem mudar de lugar dentro dele, porque existem antes de qualquer
   instrução dele rodar, e só nele);
 - toda outra instrução do alto está no head, na mesma ordem e no mesmo script;
 - toda regra de estilo está no head, na mesma ordem, com os mesmos atributos de folha, numa folha da mesma pasta e inline
   ou de arquivo como antes (pode mudar de folha ligada ali: as URLs relativas dela continuam apontando para o mesmo
   arquivo);
-- as traduções que o servidor põe na página (a pasta `i18n/`, na página com a marca do i18n) são as mesmas.
+- as traduções que o servidor põe na página (a pasta `i18n/`, na página com a marca do i18n) são as mesmas linhas, na
+  mesma ordem (uma linha repetida também conta: chave repetida é erro no `i18n.ler`).
 
 Instruções e regras são comparadas como árvores de sintaxe (o tree-sitter, do `requirements-dev.txt`), com o texto de
 cada nó que nenhum filho cobre (o número de um `14px`), sem os comentários e os espaços fora de strings e templates. Assim, uma marca de bloco, uma linha em branco ou uma indentação
