@@ -1729,11 +1729,11 @@ class Engine:
     def _pedal_voz_laco(self, pv, fila):
         """A thread do liga(): um pedido por vez, na ordem; a sentinela (None, Event) do fechar acaba com ela."""
         while True:
-            ligado, feito = fila.get()
+            ligado, item = fila.get()
             if ligado is None:
-                feito.set()
+                item.set()
                 return
-            self.voice_pedal.sent(feito)
+            self.voice_pedal.sent(item)
             try:
                 pv.liga(ligado)
             except Exception as ex:  # o modulo e de fora: o erro dele nao derruba a troca de efeito
