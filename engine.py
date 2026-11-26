@@ -1042,7 +1042,7 @@ class Injetor:
         # medidor levam a voz dela, que e o que o jogo ouve, e nao a crua
         p = m.pista_le()  # sempre le: a posicao anda junto com o escritor
         viva = m.pista_viva()
-        self.motor._pista_viva = self.motor.voice_pedal.track(viva, m.pista_ligou_ha())
+        self.motor._pista_viva = self.motor.voice_pedal.track(viva, *m.pista_ligou())
         if viva and len(p):
             p = np.concatenate([self._resto_pista, p])
             n = len(p) // BLOCK * BLOCK

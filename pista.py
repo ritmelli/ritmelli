@@ -221,5 +221,5 @@ def main(args):
     m.fecha()
     if p.erro:
         diz(f"erro: {p.erro}")
-    print("fim " + json.dumps(p.est), file=sys.stderr, flush=True)
+    print("fim " + json.dumps({**p.est, "provedores": conv.provedores()}), file=sys.stderr, flush=True)
     return 0

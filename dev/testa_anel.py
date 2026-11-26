@@ -237,12 +237,12 @@ class TestVoicePedalStart(unittest.TestCase):
         pedal = dryouts.VoicePedalStart(clock=lambda: 5.0)
         pedal.pedal(True)
         pedal.clock = lambda: (pedal.pedal(False), 6.0)[1]
-        self.assertIn("turned on 1.00 s ago", pedal.starting())
+        self.assertIn("turned on 1.00 s ago", pedal.starting()[1])
 
 
 class TestVoicePedalDryOut(unittest.TestCase):
     def setUp(self):
-        self.k = K32Falso(aberturas=2)
+        self.k = K32Falso(aberturas=3)
         self.tick = 10_000
         self.k.GetTickCount64 = lambda: self.tick
         a = self.a = injeta.Anel.from_address(self.k.p)
@@ -334,8 +334,11 @@ class TestVoicePedalDryOut(unittest.TestCase):
         self.assertEqual(self.offset(line, "turned on"), 2.0)
         self.now += 1.0
         self.dry_out()
-        self.assertEqual((self.inj.dry_outs.while_pedal_starting, len(self.pedal_lines()), self.plain_lines()), (2, 2, 0),
-                         "each dry-out while the pedal starts is told, without the quiet window")
+        self.assertEqual((self.inj.dry_outs.while_pedal_starting, len(self.pedal_lines()), self.plain_lines()),
+                         (2, 2, 0), "each dry-out while the pedal starts is told, without the quiet window")
+        self.advance(0.7)
+        self.track_up()
+        self.assertIn("its voice track came up 3.70 s after the pedal turned on", self.log.getvalue())
 
     def test_dry_out_after_the_track_came_up(self):
         self.pedal_on(1.0)
@@ -359,6 +362,36 @@ class TestVoicePedalDryOut(unittest.TestCase):
         self.dry_out()
         line = self.pedal_lines()[-1]
         self.assertEqual((self.offset(line, "turned on"), self.offset(line, "came up")), (1.5, 0.5))
+
+    def test_track_off_and_on_while_the_injector_was_away(self):
+        self.pedal_on(0.0)
+        self.track_up()
+        first = self.motor.voice_pedal.track_up_at
+        self.gate.clear()
+        self.assertTrue(self.held.wait(3), "the injector never got to the ring")
+        self.producer.pista_liga(False)
+        self.motor.voice_pedal.pedal(False)
+        self.advance(dryouts.AFTER_TRACK_S)
+        self.pedal_on(0.0)
+        self.producer.pista_liga(True)
+        self.advance(0.2)
+        self.producer.pista_pulso()
+        self.gate.set()
+        self.assertTrue(espera(lambda: self.motor.voice_pedal.track_up_at != first), "the new track was not seen")
+        self.dry_out()
+        self.assertEqual(self.offset(self.pedal_lines()[-1], "came up"), 0.2)
+
+    def test_track_after_a_voice_process_that_was_killed(self):
+        injeta.Microfone().pista_liga(True)
+        self.seen_up()
+        self.advance(30.0)
+        self.assertTrue(espera(lambda: not self.motor._pista_viva), "the killed track never went quiet")
+        self.pedal_on(1.0)
+        old = self.motor.voice_pedal.track_up_at
+        self.producer.pista_liga(True)
+        self.assertTrue(espera(lambda: self.motor.voice_pedal.track_up_at != old), "the new track never came up")
+        self.dry_out()
+        self.assertIn("came up 0.00 s ago", self.pedal_lines()[-1])
 
     def test_dry_out_long_after_the_track_came_up(self):
         self.pedal_on(0.0)
@@ -391,8 +424,8 @@ class TestVoicePedalDryOut(unittest.TestCase):
         self.pedal_on(0.0)
         for _ in range(dryouts.PEDAL_LINES + 5):
             self.dry_out()
-        self.assertEqual((self.inj.dry_outs.while_pedal_starting, len(self.pedal_lines())),
-                         (dryouts.PEDAL_LINES + 5, dryouts.PEDAL_LINES))
+        self.assertEqual((self.inj.dry_outs.while_pedal_starting, len(self.pedal_lines()), self.plain_lines()),
+                         (dryouts.PEDAL_LINES + 5, dryouts.PEDAL_LINES, 1), "past the cap, the plain line")
         self.motor.voice_pedal.pedal(False)
         self.now += 1.0
         self.pedal_on(0.0)

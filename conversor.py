@@ -166,6 +166,9 @@ class Conversor:
         self.fator = f32(2 ** (float(tom) / 12))
         self._zera()
 
+    def provedores(self):
+        return [s.get_providers()[0] for s in (self.s_cont, self.s_tom, self.s_encp, self.s_dec)]
+
     @staticmethod
     def _sessao(caminho, so, prov, fixar=False):
         """Uma sessao do modelo. fixar: os tamanhos livres das entradas em 1 (o lote do decodificador saiu livre da

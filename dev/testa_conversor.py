@@ -183,6 +183,9 @@ class Motor(unittest.TestCase):
         self.assertLess(float(np.sqrt((y[-24000:] ** 2).mean())), 1e-4)
         np.testing.assert_array_equal(c.tom_congelado, 0, "sem som, sem tom")
 
+    def test_reports_where_each_session_runs(self):
+        self.assertEqual(self.conversor(0).provedores(), ["CPUExecutionProvider"] * 4)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

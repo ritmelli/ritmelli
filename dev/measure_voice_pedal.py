@@ -1,7 +1,6 @@
 # manual: python dev/measure_voice_pedal.py "<microfone>" precisa de um microfone com o filtro, placa de video e os modelos das vozes (python dev/vozes.py baixa), com o Ritmelli desligado
 import argparse
 import json
-import collections
 import os
 import subprocess
 import sys
@@ -27,9 +26,10 @@ def lines(path):
 def runtime_refusal(provider):
     import onnxruntime
     if provider == "dml" and "DmlExecutionProvider" not in onnxruntime.get_available_providers():
-        return (f"onnxruntime {onnxruntime.__version__} here has no DmlExecutionProvider, so the voice process would run "
-                "on the processor and not where the app runs it: install the app's runtime (pip install -r requirements.txt "
-                "-c instalador/travas.txt, in a venv of its own) or pass --provider cpu to measure the processor on purpose")
+        return (f"onnxruntime {onnxruntime.__version__} here has no DmlExecutionProvider, so the voice process would "
+                "run on the processor and not where the app runs it: install the app's runtime (pip install -r "
+                "requirements.txt -c instalador/travas.txt, in a venv of its own) or pass --provider cpu to measure "
+                "the processor on purpose")
     return None
 
 
@@ -49,10 +49,27 @@ def states(base, seconds):
 
 
 def hold(base, seconds):
-    return collections.deque(states(base, seconds), maxlen=1)
+    return list(states(base, seconds))
 
 
-def cycle_row(n, before, after, server_lines, voice_lines):
+def interruption(states_seen, mic):
+    for st in states_seen:
+        m = st["microfone"]
+        if not m["anel"] or m["leitores"] < 1 or st["active_devices"]["mic"] != mic:
+            return (f"the ring had no reader of {mic} ({m['leitores']} reader(s), microphone "
+                    f"{st['active_devices']['mic']})")
+    for a, b in zip(states_seen, states_seen[1:]):
+        a, b = a["microfone"], b["microfone"]
+        dropped = a["folga_min_ms"] is not None and (b["folga_min_ms"] is None or b["folga_min_ms"] > a["folga_min_ms"])
+        if b["secas"] < a["secas"] or b["volta_max_ms"] < a["volta_max_ms"] or dropped:
+            return "the ring's counters started over (the injector was opened again)"
+    return None
+
+
+def cycle_row(n, states_seen, mic, provider, server_lines, voice_lines):
+    broke = interruption(states_seen, mic)
+    if broke:
+        return None, f"cycle {n}: {broke}"
     if not any(ln.startswith("pedal_voz: pronto") for ln in server_lines):
         return None, f"cycle {n}: the voice process never said it was ready"
     errors = [ln for ln in server_lines if ln.startswith("pedal_voz: erro")]
@@ -61,6 +78,9 @@ def cycle_row(n, before, after, server_lines, voice_lines):
     ends = [json.loads(ln[4:]) for ln in voice_lines if ln.startswith("fim ")]
     if not ends or not ends[-1].get("blocos"):
         return None, f"cycle {n}: the voice process converted no block (its log has no fim with blocks)"
+    if provider == "dml" and set(ends[-1].get("provedores") or ["none"]) != {"DmlExecutionProvider"}:
+        return None, f"cycle {n}: the voice sessions ran on {ends[-1].get('provedores')}, not all on DirectML"
+    before, after = states_seen[0]["microfone"], states_seen[-1]["microfone"]
     rose = after["volta_max_ms"] > before["volta_max_ms"]
     return {"cycle": n, "dry_outs": after["secas"] - before["secas"],
             "dry_outs_while_starting": after["secas_pedal"] - before["secas_pedal"],
@@ -69,8 +89,8 @@ def cycle_row(n, before, after, server_lines, voice_lines):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Measures the microphone ring's dry-outs as the voice pedal turns on (#137), "
-                                             "on a real server of this checkout with temporary data.")
+    ap = argparse.ArgumentParser(description="Measures the microphone ring's dry-outs as the voice pedal turns on "
+                                             "(#137), on a real server of this checkout with temporary data.")
     ap.add_argument("mic", help="the microphone, as Windows names it (the one with the Ritmelli filter)")
     ap.add_argument("--cycles", type=int, default=16)
     ap.add_argument("--port", type=int, default=8970)
@@ -104,7 +124,8 @@ def main():
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return json.load(r)
 
-    with open(work / "server.out", "w", encoding="utf-8") as out, open(work / "server.err", "w", encoding="utf-8") as err:
+    server_err = work / "server.err"
+    with open(work / "server.out", "w", encoding="utf-8") as out, open(server_err, "w", encoding="utf-8") as err:
         proc, job = so_mock.start_job(cmd, cwd=ROOT, env=env, stdout=out, stderr=err)
         cycles = []
         try:
@@ -121,17 +142,19 @@ def main():
             if not any(st["microfone"]["leitores"] >= 1 for st in states(base, UP_S)):
                 sys.exit(f"the filter of {a.mic} never read the ring (see {work / 'server.err'})")
             state = call("GET", "/api/state")
-            print(f"microphone {state['active_devices']['mic']}, voice {voice}; before: {state['microfone']}", flush=True)
+            print(f"microphone {state['active_devices']['mic']}, voice {voice}; before: {state['microfone']}",
+                  flush=True)
             log = work / "local" / "Ritmelli" / "logs" / "pistavoz.log"
-            after = state["microfone"]
+            mic, last = state["active_devices"]["mic"], state
             for n in range(1, a.cycles + 1):
-                before, seen = after, len(lines(work / "server.err"))
+                seen = len(lines(work / "server.err"))
                 call("POST", "/api/settings", {"effect": "pistavoz"})
-                hold(base, ON_S)
+                during = hold(base, ON_S)
                 call("POST", "/api/settings", {"effect": "nenhum"})
-                hold(base, OFF_S)
-                after = call("GET", "/api/state")["microfone"]
-                c, problem = cycle_row(n, before, after, lines(work / "server.err")[seen:], lines(log))
+                during += hold(base, OFF_S)
+                states_seen = [last, *during, call("GET", "/api/state")]
+                last = states_seen[-1]
+                c, problem = cycle_row(n, states_seen, mic, a.provider, lines(work / "server.err")[seen:], lines(log))
                 if problem:
                     sys.exit(f"{problem} (see {work / 'server.err'} and {log})")
                 cycles.append(c)
@@ -152,14 +175,15 @@ def main():
     result = {"microphone": a.mic, "voice": voice, "provider": a.provider, "cycles": cycles,
               "dry_outs": sum(c["dry_outs"] for c in cycles),
               "dry_outs_while_starting": sum(c["dry_outs_while_starting"] for c in cycles),
-              "longest_return_ms_since_the_ring_opened": after["volta_max_ms"],
+              "longest_return_ms_since_the_ring_opened": last["microfone"]["volta_max_ms"],
               "voice_blocks": sum(c["voice_blocks"] or 0 for c in cycles),
               "voice_slowest_block_ms": max(blocks or [0.0]),
               "dry_out_lines": dry, "work": str(work)}
     a.out.write_text(json.dumps(result, indent=1, ensure_ascii=False), encoding="utf-8")
     print(f"{result['dry_outs']} dry-outs in {len(cycles)} cycles, {result['dry_outs_while_starting']} while the pedal "
-          f"was starting; longest return {result['longest_return_ms_since_the_ring_opened']} ms; voice: {result['voice_blocks']} blocks, the "
-          f"slowest {result['voice_slowest_block_ms']} ms; result: {a.out}", flush=True)
+          f"was starting; longest return {result['longest_return_ms_since_the_ring_opened']} ms; voice: "
+          f"{result['voice_blocks']} blocks, the slowest {result['voice_slowest_block_ms']} ms; result: {a.out}",
+          flush=True)
     return 0
 
 

@@ -9,7 +9,7 @@ PEDAL_LINES = 10
 class VoicePedalStart:
     def __init__(self, clock=time.monotonic):
         self.clock = clock
-        self.on_at = self.track_up_at = None
+        self.on_at = self.track_up_at = self._stamp = None
         self._live = False
 
     def pedal(self, on):
@@ -18,22 +18,25 @@ class VoicePedalStart:
         elif self.on_at is None:
             self.on_at = self.clock()
 
-    def track(self, live, up_s_ago=0.0):
-        if live and not self._live:
-            self.track_up_at = self.clock() - up_s_ago
-        self._live = live
+    def track(self, live, stamp=None, up_s_ago=0.0):
+        if live and (not self._live or stamp != self._stamp):
+            self.track_up_at, on_at = self.clock() - up_s_ago, self.on_at
+            if on_at is not None and self.track_up_at >= on_at:
+                print(f"voice pedal: its voice track came up {self.track_up_at - on_at:.2f} s after the pedal turned "
+                      "on", file=sys.stderr, flush=True)
+        self._live, self._stamp = live, stamp
         return live
 
     def starting(self):
         on_at, up_at = self.on_at, self.track_up_at
         if on_at is None:
-            return None
+            return on_at, None
         now = self.clock()
         if up_at is None or up_at < on_at:
-            return f"the pedal turned on {now - on_at:.2f} s ago, its voice track isn't up yet"
+            return on_at, f"the pedal turned on {now - on_at:.2f} s ago, its voice track isn't up yet"
         if now - up_at > AFTER_TRACK_S:
-            return None
-        return f"the pedal turned on {now - on_at:.2f} s ago, its voice track came up {now - up_at:.2f} s ago"
+            return on_at, None
+        return on_at, f"the pedal turned on {now - on_at:.2f} s ago, its voice track came up {now - up_at:.2f} s ago"
 
 
 class RingDryOuts:
@@ -44,7 +47,7 @@ class RingDryOuts:
         self._start, self._told_this_start = None, 0
 
     def ran_dry(self, back_s, count):
-        start, starting = self.pedal.on_at, self.pedal.starting()
+        start, starting = self.pedal.starting()
         if starting is not None:
             self.while_pedal_starting += 1
             if start != self._start:

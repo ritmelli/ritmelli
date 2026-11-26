@@ -88,6 +88,7 @@ class SemFiltro(RuntimeError):
 class Microfone:
     def __init__(self):
         self._h = self._p = None
+        self._pista_ligou = False
         h = k32.OpenFileMappingW(FILE_MAP_READ | FILE_MAP_WRITE, False, MAPA)
         if not h:
             raise SemFiltro(f"the ring {MAPA} doesn't exist (no microphone with the filter in use; error "
@@ -198,14 +199,17 @@ class Microfone:
         convertida fora do filtro), enquanto o escritor bate; sem bater por PISTA_MS, a voz do microfone volta.
         Desligada, a voz do microfone volta na hora. A leitura comeca do que for escrito a partir daqui: quem quer
         folga escreve um pouco de silencio logo depois de ligar, antes da voz."""
+        if ligada and not self._pista_ligou:
+            self.a.pista_ligou_ms = k32.GetTickCount64() & 0xFFFFFFFF
         self.a.pista_batida = k32.GetTickCount64()
         if ligada and not self.a.pista_ligada:
-            self.a.pista_ligou_ms = k32.GetTickCount64() & 0xFFFFFFFF
             self.a.pista_inicio = self.a.pista_escrito  # antes de ligar: o filtro so le a marca com a pista ligada
+        self._pista_ligou = ligada
         self.a.pista_ligada = 1 if ligada else 0
 
-    def pista_ligou_ha(self):
-        return (k32.GetTickCount64() - self.a.pista_ligou_ms) % 2**32 / 1000
+    def pista_ligou(self):
+        t = self.a.pista_ligou_ms
+        return t, (k32.GetTickCount64() - t) % 2**32 / 1000
 
     def pista_pulso(self):
         """O escritor da pista esta vivo (chamar a cada volta, mesmo sem ter o que escrever)."""
