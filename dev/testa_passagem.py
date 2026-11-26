@@ -14,10 +14,9 @@ Os pares:
   - seco: A corta 20 ms antes da batida que viria; B entra no tempo, a primeira batida dela no ultimo ataque de A (o
     golpe final), esticada no andamento de A (a 3%);
   - fade: A cai 6 dB num ataque e some em 7 s; B, a 2,5% de A, entra esticada no andamento de A, na batida da queda;
-  - dois: o mesmo fade, com B a 6% de A: A muda de andamento devagar antes e B estica o resto (with noise under A,
-    see the _fundo);
+  - dois: o mesmo fade, com B a 6% de A: A muda de andamento devagar antes e B estica o resto;
   - dois-106: the same, with B 6% faster than A (A speeds up, where "dois" slows it down);
-  - tone: "dois" with a single strong tone under A, instead of three tones and noise;
+  - tone: "dois" with a single strong tone under A, instead of three tones;
   - intro: the fade, with B at -30 dB for its first 13 beats (7.7 s): it comes in under A 12 of A's beats before the
     swap (heard under A from the switch on), its drop on A's beat at the swap;
   - meio: A a 70 BPM e B a 140, com um estalo forte e um fraco (12 dB abaixo): o forte cai na batida de A, o fraco no
@@ -34,7 +33,7 @@ negativo: o mesmo detector, com a mesma regua e a mesma amostra da virada, no si
 periodo da regua, tem de dar contratempo. In the intro pair, the beats judged are the first 4 of B's drop, and the
 first of them is on A's beat at the swap.
 
-Known failures: a pair with an issue shows a known engine defect (tone, #197). It runs and its result is shown, but
+Known failures: a pair with an issue shows a known engine defect. It runs and its result is shown, but
 its failure does not count; passing does, so the PR that fixes the defect takes the pair off the list.
 A pair that could not be judged (a timeout, too few attacks to measure), or that fails in a way other than its defect
 (SINTOMAS), fails all the same.
@@ -90,7 +89,6 @@ FAIXA_B = (3000.0, 6000.0)  # os de B
 SOS_A, SOS_B = filtro(FAIXA_A, SR), filtro(FAIXA_B, SR)
 TONS_A, TOM_B = (1013.0, 1201.0, 1427.0), 1800.0  # os tons fixos por baixo dos ataques
 SOS_TOM_A, SOS_TOM_B = filtro((1150.0, 1250.0), SR), filtro((1750.0, 1850.0), SR)  # um tom de A, e o de B
-RUIDO_A = (600.0, 1300.0)  # the noise under A, with its tones, where A is stretched (the _fundo)
 TAU_B = 0.1        # a primeira batida de B, depois do comeco do som dela (o tom de baixo comeca no 0)
 FOLGA_VIRADA = 0.010  # a virada medida pode cair isso fora da janela (um bloco)
 ALINHA = 0.020     # cada ataque forte de B nas primeiras batidas, no maximo isso da regua de A
@@ -107,27 +105,21 @@ INTRO_IN = 12      # A's beats before it
 INTRO_OUVE_DB = 6.0   # and from the switch on, B's band at least this above what leaks into it from A,
 INTRO_A_DB = 3.0      # with A at most this below where it was
 
-# o par: os andamentos, o fim de A ("seco": corta; "fade": cai 6 dB e some), o ramo esperado e o acento de B (o
-# estalo fraco no meio de cada batida, no par meio). Then the tones under A and whether noise goes with them, whether
-# B starts with a quiet intro, and the issue of a known engine defect the pair shows: it is expected to fail, and
-# passing makes the bench fail, so the fix takes it off the list
-Par = namedtuple("Par", "nome bpm_a bpm_b fim ramo meio tons_a ruido_a intro issue",
-                 defaults=(TONS_A, False, False, None))
+Par = namedtuple("Par", "nome bpm_a bpm_b fim ramo meio tons_a intro issue",
+                 defaults=(TONS_A, False, None))
 PARES = [
     Par("seco", 100.0, 103.0, "seco", "seco", False),
     Par("fade", 100.0, 102.5, "fade", "fade", False),
-    Par("dois", 100.0, 94.0, "fade", "dois", False, ruido_a=True),
-    Par("dois-106", 100.0, 106.0, "fade", "dois", False, ruido_a=True),
-    Par("tone", 100.0, 94.0, "fade", "dois", False, (1201.0,), issue=197),
+    Par("dois", 100.0, 94.0, "fade", "dois", False),
+    Par("dois-106", 100.0, 106.0, "fade", "dois", False),
+    Par("tone", 100.0, 94.0, "fade", "dois", False, (1201.0,)),
     Par("intro", 100.0, 102.5, "fade", "fade", False, intro=True),
     Par("meio", 70.0, 140.0, "fade", "fade", True),
     Par("recusada", 90.0, 110.0, "fade", "recusada", False),
 ]
 # the failures each known defect gives (regular expressions, from the start), the first of them always there: any
 # other failure in its pair, or the others without the first, is a regression, and counts
-SINTOMAS = {
-    197: (r"a virada caiu -[3-7]\d ms fora da janela$",),  # the switch 30 to 79 ms early
-}
+SINTOMAS = {}
 RECUSA = "transition: beats not aligned: tempos far apart,"  # a recusa por andamento no log do motor (par recusada)
 RAMOS = {"seco": "final seco no tempo", "fade": "fade-out no tempo, B esticada",
          "dois": "fade-out no tempo, os dois esticados", "recusada": "so de volume (o plano no tempo recusou)"}
@@ -154,19 +146,10 @@ def _estalo(rng, faixa):
     return 0.4 * x / np.abs(x).max()
 
 
-def _fundo(n, rms, freqs, rng=None):
-    """O som fixo por baixo dos ataques: tons de 1000 a 1800 Hz (fora das duas faixas e sem ataque), de rms dado. With
-    rng, half of the power is noise of RUIDO_A, under A in the pairs where A is stretched: tones alone repeat (three
-    of them almost do, every 53 ms), and the correlation with which the engine finds the Rubber Band delay
-    (esticar_saida) can land on a repeat, so the outgoing track plays ~50 ms before the position the engine gives it
-    (#197, the tone pair). The other pairs go without it: it leaks into the band of B's attacks."""
+def _fundo(n, rms, freqs):
+    """O som fixo por baixo dos ataques: tons de 1000 a 1800 Hz (fora das duas faixas e sem ataque), de rms dado."""
     t = np.arange(n) / SR
     x = sum(np.sin(2 * np.pi * f * t + k) for k, f in enumerate(freqs))
-    x = x / np.sqrt(np.mean(x * x))
-    if rng is not None:
-        from scipy import signal
-        r = signal.sosfilt(filtro(RUIDO_A, SR), rng.standard_normal(n + SR // 10))[SR // 10:]
-        x = x + r / np.sqrt(np.mean(r * r))
     return rms * x / np.sqrt(np.mean(x * x))
 
 
@@ -213,7 +196,7 @@ def monta(par, pasta):
         nivel = np.where(t < some, 10 ** (db / 20), 0.0)
         fixa.update(queda=queda, alvo=queda, inicio=queda - ANTES_S)
     n = int(dur * SR)
-    xa = _fundo(n, 0.14, par.tons_a, rng if par.ruido_a else None)
+    xa = _fundo(n, 0.14, par.tons_a)
     for t in ts_a:
         _poe(xa, _estalo(rng, FAIXA_A), t)
     xa *= nivel

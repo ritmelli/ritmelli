@@ -8,7 +8,9 @@ a que sai acelera para casar com a próxima, o trecho em que a fase dela é medi
 pelo menos `FASE_MIN_S` na saída já acelerada (#196): o começo dele é o `transicao.phase_excerpt_start`, que o motor
 chama. O `dev/testa_transicao.py` roda o `transicao.py` sobre as chamadas que o motor gravou nos pares da banca das
 passagens e roda o `phase_excerpt_start` com a que sai a `1 ± SAI_MAX`, conferindo que o trecho não entra na rampa
-dela (`transicao.rampa_saida`) e dura pelo menos `FASE_MIN_S` (#208).
+dela (`transicao.rampa_saida`) e dura pelo menos `FASE_MIN_S` (#208). O JSON guarda uma impressão digital da banca
+(os tokens do `dev/testa_passagem.py`, sem comentários e docstrings), e o teste reprova quando a banca mudou desde a
+gravação: o `--grava` regrava.
 
 `engine.py`: mistura em WASAPI 48 kHz, blocos de 10 ms; ffmpeg decodifica; voz com no
 máximo ~80 ms de atraso; `MockEngine` sem áudio para teste (o relógio de 10 ms dele chama o `_mixa`; com o
@@ -86,6 +88,13 @@ filtro, então o `audiodg` e um jogo de verdade ficam de fora. E nos pares da ba
 medido (a decisão não depende disso, porque não houve seca a tirar). Nos PCs de quem usa, quem diz se isso muda é o
 evento "audio" da telemetria (o `secas_esticamento`, as secas com a Rubber Band em curso): com secas ali, a medida
 se repete, com a mesma ferramenta, num Windows de teste com um jogo.
+
+A saída da Rubber Band vem alinhada com a entrada, mas só soa depois de uns 45 ms: o `esticar_saida` não mede atraso
+nenhum, e os primeiros `RUBBER_BAND_WARMUP` (60 ms) dele são o próprio áudio reamostrado, que passa para o da Rubber
+Band em `RUBBER_BAND_CROSSFADE`. O `dev/test_stretch_outgoing.py` confere a posição dos ataques com um tom forte por
+baixo deles (#197), o tom de volta ao original depois da rampa, o nível sem buraco no começo, com ruído de banda
+larga, e a entrada mais curta que o aquecimento. O mesmo nível no começo do `esticar`, o lado da próxima, que ainda
+sai mudo, roda ali como falha conhecida da #264: passa a contar quando passar.
 
 ## O bloco e a linha de reprodução
 
