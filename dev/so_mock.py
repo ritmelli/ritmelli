@@ -262,18 +262,26 @@ class _Job:
 
 
 @contextlib.contextmanager
-def _ctrl_c_held():
+def _ctrl_c_held(cleanup):
     caught = []
     try:
         previous = [signal.signal(signal.SIGINT, lambda *_: caught.append(True))]
     except ValueError:
         previous = []
     try:
-        yield
+        yield caught
+        if caught:
+            raise KeyboardInterrupt
+    except BaseException as ex:
+        cleanup()
+        if caught and not isinstance(ex, KeyboardInterrupt):
+            raise KeyboardInterrupt from ex
+        raise
     finally:
         for handler in previous:
             signal.signal(signal.SIGINT, handler)
     if caught:
+        cleanup()
         raise KeyboardInterrupt
 
 
@@ -296,20 +304,16 @@ def start_job(cmd, **popen):
     flags = popen.pop("creationflags", 0)
     proc = job = None
     assigned = False
-    try:
-        with _ctrl_c_held():
-            job = _Job()
-            proc = subprocess.Popen(cmd, creationflags=flags | 0x4, **popen)
-            handle = getattr(proc, "_handle", None)
-            if handle is not None:
-                job.assign(handle)
-                assigned = True
-                status = _resume(handle) & 0xFFFFFFFF
-                if status:
-                    raise Recusa(f"o servidor de teste nao foi retomado (NTSTATUS {status:#010x})")
-    except BaseException:
-        _drop(proc, job, assigned)
-        raise
+    with _ctrl_c_held(lambda: _drop(proc, job, assigned)):
+        job = _Job()
+        proc = subprocess.Popen(cmd, creationflags=flags | 0x4, **popen)
+        handle = getattr(proc, "_handle", None)
+        if handle is not None:
+            job.assign(handle)
+            assigned = True
+            status = _resume(handle) & 0xFFFFFFFF
+            if status:
+                raise Recusa(f"o servidor de teste nao foi retomado (NTSTATUS {status:#010x})")
     if not assigned:
         job.close()
         return proc, None
@@ -371,12 +375,11 @@ def sobe(cmd, porta, limite=30.0, **popen):
     if porta_responde(porta):
         raise Recusa(f"a porta {porta} ja responde: outro servidor esta nela")
     f = None
-    try:
-        with _ctrl_c_held():
-            proc, job = start_job(cmd, **popen)
-            f = Filho(proc, porta, job)
+    with _ctrl_c_held(lambda: f.mata() if f else None) as caught:
+        proc, job = start_job(cmd, **popen)
+        f = Filho(proc, porta, job)
         fim = time.monotonic() + limite
-        while True:
+        while not caught:
             if f.srv.poll() is not None:
                 raise Recusa(f"o servidor de teste saiu ao subir (codigo {f.srv.returncode})")
             try:
@@ -388,10 +391,6 @@ def sobe(cmd, porta, limite=30.0, **popen):
                 continue
             if f.srv.poll() is None:  # quem respondeu pode ser outro, e o filho ter caido por nao achar a porta
                 return f
-    except BaseException:
-        if f:
-            f.mata()
-        raise
 
 
 def sai_se_o_app_ligado(o_que):

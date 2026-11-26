@@ -28,6 +28,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 from pathlib import Path
 from unittest import mock
 
@@ -384,6 +385,22 @@ def the_tree():
             raised = ex
     check(isinstance(raised, KeyboardInterrupt) and made and made[0].poll() is not None,
           f"a Ctrl+C right after the Popen: the child is ended, not left suspended, and the Ctrl+C goes on ({raised!r})")
+    made.clear()
+    drop = so_mock._drop
+
+    def dropped_after_a_second_ctrl_c(*a):
+        signal.raise_signal(signal.SIGINT)
+        return drop(*a)
+
+    with mock.patch.object(so_mock.subprocess, "Popen", side_effect=interrupted), \
+            mock.patch.object(so_mock, "_drop", dropped_after_a_second_ctrl_c):
+        try:
+            so_mock.start_job([sys.executable, "-c", "import time; time.sleep(60)"])
+            raised = None
+        except KeyboardInterrupt as ex:
+            raised = ex
+    check(isinstance(raised, KeyboardInterrupt) and made and made[0].poll() is not None,
+          f"a second Ctrl+C as start_job starts its cleanup: the cleanup still ends the child ({raised!r})")
     restored = [signal.getsignal(signal.SIGINT) is signal.default_int_handler]
     with mock.patch.object(so_mock, "_Job", side_effect=so_mock.Recusa("no job")):
         refused(so_mock.start_job, [sys.executable, "-c", "pass"])
@@ -397,7 +414,14 @@ def the_tree():
 
         def resumed_then_interrupted(handle):
             status = resume(handle)
-            made[-1].stdout.readline()
+            if status:
+                return status
+            line = []
+            reader = threading.Thread(target=lambda: line.append(made[-1].stdout.readline()), daemon=True)
+            reader.start()
+            reader.join(10)
+            if [x.strip() for x in line] != [b"ready"]:
+                raise so_mock.Recusa(f"the child's own child did not say it holds the file in 10 s ({line})")
             signal.raise_signal(signal.SIGINT)
             return status
 
@@ -407,7 +431,7 @@ def the_tree():
                 so_mock.start_job([sys.executable, "-c", STARTS + "p.wait()", HOLDS, held],
                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE)
                 raised = None
-            except KeyboardInterrupt as ex:
+            except (KeyboardInterrupt, so_mock.Recusa) as ex:
                 raised = ex
         try:
             os.remove(held)
@@ -426,14 +450,40 @@ def the_tree():
         signal.raise_signal(signal.SIGINT)
         return started[-1]
 
-    with mock.patch.object(so_mock, "Filho", filho_then_interrupted):
+    mata = filho.mata
+
+    def mata_after_a_second_ctrl_c(self):
+        signal.raise_signal(signal.SIGINT)
+        return mata(self)
+
+    with mock.patch.object(so_mock, "Filho", filho_then_interrupted), \
+            mock.patch.object(filho, "mata", mata_after_a_second_ctrl_c):
         try:
             so_mock.sobe([sys.executable, "-c", "import time; time.sleep(60)"], so_mock.free_port(), limite=5)
             raised = None
         except KeyboardInterrupt as ex:
             raised = ex
     check(isinstance(raised, KeyboardInterrupt) and started and started[0].srv.poll() is not None,
-          f"a Ctrl+C once start_job has given the child back: sobe ends it, and the Ctrl+C goes on ({raised!r})")
+          f"a Ctrl+C once start_job has given the child back, and a second one as sobe starts its cleanup: sobe "
+          f"ends it, and the Ctrl+C goes on ({raised!r})")
+    started.clear()
+
+    def no_answer_yet(*a):
+        signal.raise_signal(signal.SIGINT)
+        raise OSError("not yet")
+
+    begun = time.monotonic()
+    with mock.patch.object(so_mock, "estado", no_answer_yet), \
+            mock.patch.object(so_mock, "Filho", lambda *a, **k: started.append(filho(*a, **k)) or started[-1]):
+        try:
+            so_mock.sobe([sys.executable, "-c", "import time; time.sleep(60)"], so_mock.free_port(), limite=30)
+            raised = None
+        except KeyboardInterrupt as ex:
+            raised = ex
+    took = time.monotonic() - begun
+    check(isinstance(raised, KeyboardInterrupt) and took < 10 and started and started[0].srv.poll() is not None,
+          f"a Ctrl+C while sobe waits for the answer: the wait stops at once, not at the end of limite, and the child "
+          f"is ended ({raised!r}, {took:.1f} s)")
     parent, job = so_mock.start_job([sys.executable, "-c", STARTS + "p.wait()", HOLDS, os.devnull],
                                     stdin=subprocess.PIPE, stdout=subprocess.PIPE)
     parent.stdout.readline()
