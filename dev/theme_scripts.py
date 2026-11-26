@@ -262,11 +262,11 @@ async def startup_with_the_search(tab):
     tab.holding.add(after)
     await missing_script.open_page(tab)
     state = await until(tab, "({on: document.getElementById('form-busca')?.inert === false,"
-                             " carregar: typeof carregar})", "s.on", PAGE_READY_S)
+                             " carregar: typeof carregar})", "s.on && s.carregar === 'function'", PAGE_READY_S)
     await tab.release(after, fail=False)
     return [(state.get("on") and state.get("carregar") == "function",
-             f"once ui-events.js turns the search on, carregar() is there for a pairing that ends ({after} held: "
-             f"{state})")]
+             f"with {after}, the first file after ui-events.js, held, carregar() is there by the time the search is on "
+             f"and a pairing can end ({state})")]
 
 
 def after_a_failure(missing, expected, off, page_checks):
