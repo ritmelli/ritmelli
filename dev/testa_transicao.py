@@ -10,8 +10,9 @@ transicao.py e o numpy. Toda funcao publica do transicao.py tem de ter ao menos 
 Regravar e para quando uma conta muda de proposito (o PR diz por que) ou quando a banca ganha par: a banca passa antes,
 e os casos novos saem do motor de verdade, nunca escritos a mao.
 
-The JSON keeps a fingerprint of the bench (its syntax tree without the docstrings), and the check fails when the
-bench changed since the recording: a pair that changed has to be recorded again.
+The JSON keeps a fingerprint of the bench (its tokens, without comments and docstrings, the same on every Python
+version), and the check fails when the bench changed since the recording: a pair that changed has to be recorded
+again.
 
 O nivel dos blocos (a lista (t0, quadros, rms) do leitor do motor) vai uma vez so, no "niveis", e cada chamada aponta
 para ele; as colunas dele (no "colunas", tambem uma vez cada) e os arrays vao em base64 dos bytes (zlib), para a volta
@@ -23,10 +24,12 @@ import ast
 import base64
 import hashlib
 import inspect
+import io
 import json
 import math
 import runpy
 import sys
+import tokenize
 import zlib
 from pathlib import Path
 
@@ -113,19 +116,20 @@ class Gravador:
         setattr(transicao, nome, gravado)
 
 
-class _NoDocstrings(ast.NodeTransformer):
-    def generic_visit(self, node):
-        super().generic_visit(node)
-        body = getattr(node, "body", None)
-        if (isinstance(body, list) and body and isinstance(body[0], ast.Expr)
-                and isinstance(body[0].value, ast.Constant) and isinstance(body[0].value.value, str)):
-            node.body = body[1:] or [ast.Pass()]
-        return node
+def _docstring_starts(tree):
+    return {(n.body[0].value.lineno, n.body[0].value.col_offset) for n in ast.walk(tree)
+            if isinstance(n, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and n.body
+            and isinstance(n.body[0], ast.Expr) and isinstance(n.body[0].value, ast.Constant)
+            and isinstance(n.body[0].value.value, str)}
 
 
 def bench_fingerprint(path=BANCA):
-    tree = _NoDocstrings().visit(ast.parse(path.read_text(encoding="utf-8")))
-    return hashlib.sha1(ast.dump(tree).encode()).hexdigest()
+    source = path.read_text(encoding="utf-8")
+    docstrings = _docstring_starts(ast.parse(source))
+    skip = {tokenize.COMMENT, tokenize.NL, tokenize.ENCODING, tokenize.ENDMARKER}
+    kept = [f"{tokenize.tok_name[t.type]} {t.string}" for t in tokenize.generate_tokens(io.StringIO(source).readline)
+            if t.type not in skip and not (t.type == tokenize.STRING and t.start in docstrings)]
+    return hashlib.sha1("\n".join(kept).encode()).hexdigest()
 
 
 def grava():
