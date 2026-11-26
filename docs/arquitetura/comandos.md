@@ -55,9 +55,10 @@ carregando) e só para o prato com a fila vazia e sem avanço de outro em curso,
 confere a reserva e a entrada antes de fechar a virada e tirar a passagem preparada: a que já não vale não tira a
 preparada de quem vale. Os Próximos sobrepostos (o segundo chega antes de o primeiro voltar, mesmo com o primeiro já
 trocando o disco) dividem o mesmo avanço (`App.proximo`), se o prato ainda é a linha dele ou a que a reserva dele
-publicou: um só toca, e todos respondem a entrada dele. Se tocar falha antes de publicar, o erro vai para todos eles
-(`Proximo.espera`); com a reserva já resolvida antes por outro (o Parar), o primeiro responde o mesmo que os outros, e o
-erro vai para a tela (`engine.error`). O Próximo depois de um Parar segue sozinho. O avanço já em curso que o Próximo
+publicou: um só toca, e todos respondem a entrada dele. Se tocar falha antes de publicar, o erro vai para todos eles (o
+primeiro levanta o dele, e cada um que espera, no `Proximo.espera`, um `QueuePlayFailed` causado por ele); com a reserva
+já resolvida antes por outro (o Parar), o primeiro responde o mesmo que os outros, e o erro vai para a tela
+(`engine.error`) se o prato segue parado. O Próximo depois de um Parar segue sozinho. O avanço já em curso que o Próximo
 encontra ao chegar (o do fim do disco) e a virada pendente que ele vê são o avanço dele, mesmo se terminarem antes de
 ele reservar, e também o que outro começa na linha dele antes de ele reservar; o prato que muda de linha antes disso
 fica como está se trocou de disco (o Parar), e com o mesmo disco (um seek) o Próximo segue, com o grupo passando para a
@@ -125,8 +126,10 @@ método do `App`, da `Engine`, do `Automatico`, da prateleira ou do `comandos.py
 que pegue o `_lock` ou o próprio `_qlock`); com a `fila_lock` na mão, o `_lock` só se tenta, com
 `acquire(blocking=False)` (o `with_engine`). As funções que outro roda com as travas na mão contam com elas: as do
 `change_queue`, do `close_switches` e do `concilia` (a `fila_lock` e o `_qlock`), a do `with_engine` (a `fila_lock` e o
-`_lock`) e o `pode` dos métodos do motor (o `_lock` e o `_qlock`), e as funções locais que elas chamam também. Com a
-`fila_lock` na mão, nem o código nem o que ele chama grava arquivo (`save_json`, `_save`, `write_text`, `write_bytes`).
+`_lock`) e o `pode` dos métodos do motor (o `_lock` e o `_qlock`), e as funções locais que elas chamam também; e confere
+essas travas no código que roda cada função (o `change_queue` chama a dele dentro do `_qlock`, e cada método público do
+motor que recebe um `pode` o roda sob o `_lock` e o `_qlock`, também pelo `_restart`). Com a `fila_lock`, o `_lock` ou o
+`_qlock` na mão, nem o código nem o que ele chama grava arquivo (`save_json`, `_save`, `write_text`, `write_bytes`).
 Confere também que o `_mixa` e os métodos e as funções do `engine.py` que ele chama, das travas do modelo, só pegam o
 `_qlock` (o `AudioLocks` do `Locks.tla`); o `_slock` dos sons por cima não entra no modelo.
 
@@ -136,11 +139,11 @@ O modelo TLA+ descreve as travas e o estado que elas guardam, e o TLC confere to
 posição do disco viram escolha não determinística, e os `qid` são simétricos (`SYMMETRY`). São duas configurações:
 
 - `Races211`: o download, o stream, a troca, o mixer, a preparação da passagem, a troca pela versão de áudio, o vigia da
-  passagem, o tocar de outro disco, o esquecer da prateleira e duas trocas de lugar na fila (a entrada sai da frente e
-  volta), com uma ou duas entradas e um job. Confere a ordem das travas; que nenhum prato fica carregando com o job já
-  terminado (em erro, ou baixado com ou sem o disco na prateleira) e o stream recusado; que o stream recusado só para ou
-  troca o disco daquela tentativa; e que a entrada da virada pendente tem a mesma versão que o prato toca (as duas
-  corridas da #211).
+  passagem, o tocar de outro disco, o esquecer da prateleira, duas trocas de lugar na fila (a entrada sai da frente e
+  volta) e o stream que abre sem dar áudio, com uma ou duas entradas e um job. Confere a ordem das travas; que nenhum
+  prato fica carregando com o job já terminado (em erro, ou baixado com ou sem o disco na prateleira) e o stream
+  recusado ou sem áudio; que o stream recusado só para ou troca o disco daquela tentativa; e que a entrada da virada
+  pendente tem a mesma versão que o prato toca (as duas corridas da #211).
 - `LocksAndSwitch`: dois Próximos (o tocar de cada um pode falhar antes de publicar), o mixer, o Parar ou uma mudança da
   fila, o vigia da passagem, uma segunda preparação da passagem e a reabertura do áudio segurando o `_lock` (o
   `with_engine` como tentativa com recuo), com duas entradas. Confere a ordem das travas, que das travas do modelo o

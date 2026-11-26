@@ -1361,7 +1361,7 @@ def avanco(A, E):
                 s.solta()
                 try:
                     return livre, await asyncio.wait_for(segundo, 5)
-                except ValueError as ex:
+                except cmd.QueuePlayFailed as ex:
                     return livre, ex
             livre, segundo = asyncio.run(corre())
             t.join(5)
@@ -1374,15 +1374,15 @@ def avanco(A, E):
             and no_prato(E) == "d2" and fila(A) == ["d3"],
             f"e os dois Proximos devolvem a mesma entrada: so uma sai da fila ({segundo[0]}, {fila(A)})")
     x, y, livre, segundo, res = dois_proximos(quebra=True)
-    confere(res and isinstance(res[0], ValueError) and type(segundo) is type(res[0]) and segundo.__cause__ is res[0]
-            and fila(A) == ["d3"],
+    confere(res and isinstance(res[0], ValueError) and type(segundo) is cmd.QueuePlayFailed
+            and segundo.__cause__ is res[0] and fila(A) == ["d3"],
             f"the broken entry: the Next that waited gets the same error as the first, and it leaves the queue "
             f"({segundo!r}, {res}, {fila(A)})")
     refused = i18n.Recusa("server.queue.empty", "The queue is empty: there's no next record.")
     x, y, livre, segundo, res = dois_proximos(quebra=refused)
-    confere(res == [refused] and type(segundo) is i18n.Recusa and segundo.msg == refused.msg
-            and segundo.__cause__ is refused and fila(A) == ["d3"],
-            f"an entry refused with a message for the screen: the Next that waited gets a copy with the same message "
+    confere(res == [refused] and type(segundo) is cmd.QueuePlayFailed and segundo.__cause__ is refused
+            and fila(A) == ["d3"],
+            f"an entry refused with a message for the screen: the Next that waited gets the failure, caused by it "
             f"({segundo!r}, {res}, {fila(A)})")
     x, y, livre, segundo, res = dois_proximos(invalida=lambda: E.load(arquivo(A, "d3")))
     confere(segundo[0] == 409 and res and res[0] is None and no_prato(E) == "d3" and fila(A) == ["d2", "d3"],
@@ -1417,7 +1417,7 @@ def avanco(A, E):
             f"o segundo Proximo com o primeiro no meio da troca: os dois devolvem a mesma entrada, e so ela sai da "
             f"fila ({no_prato(E)}, {fila(A)})")
 
-    def joined_next_and_a_play_that_raises(stops):
+    def joined_next_and_a_play_that_raises(stops, then_plays=False):
         limpa()
         toca("d1")
         E.error = None
@@ -1435,6 +1435,8 @@ def avanco(A, E):
             joined.wait(5)
             if stops:
                 cmd.parar(A)
+            if then_plays:
+                cmd.tocar(A, "d1")
             raise refused
         with mock.patch.object(cmd.Proximo, "espera", joins), mock.patch.object(A, "tocar_entrada", raises):
             t1, r1 = em_thread(cmd.pular, A)
@@ -1442,8 +1444,8 @@ def avanco(A, E):
             t2, r2 = em_thread(cmd.pular, A)
             t1.join(5)
             t2.join(5)
-        same = (r1 == r2 == [None] and E.error is not None) if stops else (
-            r1 == [refused] and len(r2) == 1 and type(r2[0]) is RuntimeError and r2[0].__cause__ is refused)
+        same = (r1 == r2 == [None] and (E.error is None) == then_plays) if stops else (
+            r1 == [refused] and len(r2) == 1 and type(r2[0]) is cmd.QueuePlayFailed and r2[0].__cause__ is refused)
         return joined.is_set() and same, (r1, r2, no_prato(E), fila(A), E.error)
     same, seen = joined_next_and_a_play_that_raises(stops=False)
     confere(same and seen[2:4] == ("d1", ["d3"]),
@@ -1453,6 +1455,11 @@ def avanco(A, E):
     confere(same and seen[2] is None and seen[3] == ["d3"],
             f"a Next joins one whose play raises after a Stop resolved the advance: both get the Stop's result, and "
             f"the error goes to the screen {seen}")
+    with contextlib.redirect_stderr(io.StringIO()):
+        same, seen = joined_next_and_a_play_that_raises(stops=True, then_plays=True)
+    confere(same and seen[2] == "d1" and seen[3] == ["d3"],
+            f"a Next joins one whose play raises after a Stop and another record: both get the Stop's result, and the "
+            f"error stays off the record playing now {seen}")
 
     # a fila muda no mesmo trecho do _qlock em que a passagem preparada sai: o motor, no bloco que chega bem nessa hora,
     # nao vira para a entrada que acabou de sair
@@ -1505,7 +1512,7 @@ def avanco(A, E):
             tp, _ = em_thread(cmd.parar, A)
             no_stop.wait(5)
             cap = E.captura()
-            tq, _ = em_thread(A._prepara, cap.track, x, (id(cap.track), x["qid"]), cap)
+            tq, _ = em_thread(A._prepara, cap.track, x, dict(x), (id(cap.track), x["qid"]), cap)
             tq.join(0.3)
             publicou = E._pronto is not None
             libera.set()

@@ -327,7 +327,7 @@ caso). O segundo que espera o avanço de outro (o que se junta ao grupo, ou o qu
 s e responde 409 se a espera terminar sem uma entrada: passado o prazo (o primeiro, que fez o avanço, ainda responde a
 entrada que tocou), ou com o avanço sem tocar nada. Se tocar a entrada falha antes de ela entrar no prato (a entrada
 quebrada, que sai da fila), o erro vai para o grupo todo: os dois respondem 500; se um Parar resolveu o avanço antes da
-falha, os dois respondem 409 e o erro vai para o `error` do estado:
+falha, os dois respondem 409 e o erro vai para o `error` do estado, se o prato segue parado:
 
 | o segundo roda | o prato entre os dois | o primeiro responde | o segundo responde |
 |---|---|---|---|
@@ -340,6 +340,7 @@ falha, os dois respondem 409 e o erro vai para o `error` do estado:
 | depois de o primeiro achar a fila vazia, antes de ele terminar | uma entrada entrou na fila | 409 | a entrada que entrou, que ele toca |
 | com o primeiro tocando uma entrada que não toca | nada mudou | 500 | 500, o mesmo erro |
 | com o primeiro tocando uma entrada que não toca | um Parar resolveu o avanço antes da falha | 409, com o erro no `error` do estado | 409 |
+| com o primeiro tocando uma entrada que não toca | um Parar e outro disco antes da falha | 409, sem erro no disco novo | 409 |
 
 O `dev/testa_comandos.py` confere cada linha desta tabela (nas duas últimas, o erro que a rota deixa passar, e que o
 servidor responde com 500, é o mesmo nos dois).

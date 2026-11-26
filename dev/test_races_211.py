@@ -134,6 +134,57 @@ def finished_download_forgotten_during_the_refusal(A, E, readers):
           f"({removed}, {j['status']}, {E.status()}, {tr.get('id')})")
 
 
+class SilentFfmpeg:
+    returncode = None
+
+    def __init__(self, reading, go):
+        self.reading, self.go, self.stdout = reading, go, self
+
+    def read(self, n):
+        self.reading.set()
+        self.go.wait(WAIT_S)
+        return b""
+
+    def kill(self):
+        self.returncode = 1
+
+    def wait(self):
+        return self.returncode
+
+
+def silent_stream_after_the_download_failed(A, E, readers):
+    check(play(A, E, readers, "d1"), "d1 is on the platter, read")
+    target = "ccccccccccc"
+    j = A.new_job("downloading", True, target)
+    reading, go, read = threading.Event(), threading.Event(), threading.Event()
+    fake = E._reader
+
+    def reader(gen, track, start, deck):
+        if not str(track.get("path") or "").startswith("http"):
+            return fake(gen, track, start, deck)
+        try:
+            eng.Engine._reader(E, gen, track, start, deck)
+        finally:
+            read.set()
+    meta = {"youtube_id": target, "title": "the silent one", "channel": "c", "duration": 200.0}
+    info = dict(meta, url="https://stream.invalid/audio", id=target)
+    stream = StreamThread(A)
+    with (contextlib.redirect_stderr(io.StringIO()), mock.patch.object(E, "_reader", reader),
+          mock.patch.object(A, "stream_info", return_value=(info, {})),
+          mock.patch.object(eng.subprocess, "Popen", lambda *a, **kw: SilentFfmpeg(reading, go))):
+        swapped = cmd.play_downloading(A, j, target, meta)
+        check(swapped and stream.ended.wait(WAIT_S) and reading.wait(WAIT_S),
+              "the swap put the job's record on the platter, its stream opened and the reader reads it")
+        with mock.patch.object(A, "download", side_effect=RuntimeError("boom")):
+            A.run_download(j, target)
+        check(j["status"] == "error" and E.track is not None and E.track.get("job") == j["id"],
+              "the download failed while the reader still read the stream, and left the platter to it")
+        go.set()
+        read.wait(WAIT_S)
+    del A._abre_stream
+    check(E.track is None, f"a stream that gives no audio after its download failed stops the platter ({E.track})")
+
+
 def warning_after_another_record_took_the_platter(A, E, readers):
     check(play(A, E, readers, "d1"), "d1 is on the platter, read")
     target = "ggggggggggg"
@@ -199,7 +250,7 @@ def prepared_similar(A, E, readers, qid):
         A.change_queue(lambda: A.fila.append(x))
     cap = E.captura()
     with contextlib.redirect_stderr(io.StringIO()):
-        A._prepara(cap.track, x, (id(cap.track), x["qid"]), cap)
+        A._prepara(cap.track, x, dict(x), (id(cap.track), x["qid"]), cap)
     check(E.pronto_tag == x["qid"] and readers.wait("d3"), "the similar track is prepared on the second deck, read")
     return x
 
@@ -268,7 +319,7 @@ def audio_version_while_the_passage_reads_the_source(A, E, readers):
     cap = E.captura()
     v = {"youtube_id": "fffffffffff", "duration": 200, "title": "similar", "channel": "c"}
     with mock.patch.object(A, "fonte_de", reads), contextlib.redirect_stderr(io.StringIO()):
-        t = threading.Thread(target=A._prepara, args=(cap.track, x, (id(cap.track), x["qid"]), cap))
+        t = threading.Thread(target=A._prepara, args=(cap.track, x, dict(x), (id(cap.track), x["qid"]), cap))
         t.start()
         read.wait(WAIT_S)
         cmd.mover_na_fila(A, y["qid"], 0)
@@ -323,6 +374,7 @@ def main():
                 finished_download_that_left_the_shelf(A, E, readers)
                 finished_download_forgotten_during_the_refusal(A, E, readers)
                 refused_stream_after_another_record(A, E, readers)
+                silent_stream_after_the_download_failed(A, E, readers)
                 warning_after_another_record_took_the_platter(A, E, readers)
                 audio_version_during_a_pending_switch(A, E, readers)
                 audio_version_while_the_engine_switches(A, E, readers)

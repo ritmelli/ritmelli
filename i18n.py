@@ -151,16 +151,6 @@ class Recusa(ValueError):
         self.msg = msg(chave, texto, **params)
         super().__init__(self.msg["text"])
 
-    @classmethod
-    def _from_msg(cls, m):
-        ex = cls.__new__(cls)
-        ex.msg = m
-        ValueError.__init__(ex, m["text"])
-        return ex
-
-    def __reduce__(self):
-        return type(self)._from_msg, (self.msg,)
-
 
 def motivo(ex, n=160):
     """O motivo de um erro para ir num param: a mensagem dele, se e uma Recusa (o tema traduz), senao o texto dele."""

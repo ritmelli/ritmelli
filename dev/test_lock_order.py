@@ -18,6 +18,8 @@ CALLBACKS = {
     ("server.py", "App", "close_switches"): {0: QUEUE_HELD, "read": QUEUE_HELD},
     ("comandos.py", None, "concilia"): {1: QUEUE_HELD, "under": QUEUE_HELD, 2: ["fila_lock"], "closed": ["fila_lock"]},
 }
+CALLER_HOLDS = {("server.py", "App", "change_queue"): {"fila_lock"}, ("server.py", "App", "close_switches"): {"fila_lock"},
+                ("comandos.py", None, "concilia"): {"fila_lock"}}
 ENGINE_GUARD = ["_lock", "_qlock"]
 WRITERS = {"save_json", "_save", "write_text", "write_bytes"}
 WRITES = "a file write"
@@ -273,6 +275,105 @@ class Walker(ast.NodeVisitor):
         self.generic_visit(node)
 
 
+def defined(tree, cls, name):
+    body = tree.body if cls is None else next(
+        (n.body for n in tree.body if isinstance(n, ast.ClassDef) and n.name == cls), [])
+    return next((f for f in body if isinstance(f, ast.FunctionDef) and f.name == name), None)
+
+
+def calls_with_locks(node, cls, held, out, passed):
+    if isinstance(node, ast.With):
+        held = held | {lock_of(i.context_expr, cls) for i in node.items} - {None}
+    elif isinstance(node, ast.FunctionDef) and node.name in passed:
+        held = passed[node.name]
+    if isinstance(node, ast.Call):
+        out.append((node, held))
+    if isinstance(node, ast.If) and acquired(node.test, cls):
+        calls_with_locks(node.test, cls, held, out, passed)
+        for child in node.body:
+            calls_with_locks(child, cls, held | {acquired(node.test, cls)}, out, passed)
+        for child in node.orelse:
+            calls_with_locks(child, cls, held, out, passed)
+        return
+    for child in ast.iter_child_nodes(node):
+        calls_with_locks(child, cls, held, out, passed)
+
+
+def passed_callbacks(func):
+    out = {}
+    for call in ast.walk(func):
+        if not isinstance(call, ast.Call):
+            continue
+        name = call.func.attr if isinstance(call.func, ast.Attribute) else getattr(call.func, "id", None)
+        for key, slots in CALLBACKS.items():
+            if key[2] != name:
+                continue
+            args = list(enumerate(call.args)) + [(kw.arg, kw.value) for kw in call.keywords]
+            for slot, arg in args:
+                if slot in slots and isinstance(arg, ast.Name):
+                    out[arg.id] = set(slots[slot]) | CALLER_HOLDS.get(key, set())
+    return out
+
+
+def uses_pode(value):
+    return any(isinstance(n, ast.Name) and n.id == "pode" for n in ast.walk(value))
+
+
+def pode_guarantees(tree):
+    funcs = methods(tree, "Engine")
+    memo = {}
+
+    def guarantee(name):
+        if name in memo:
+            return memo[name]
+        memo[name] = set()
+        sites, got = [], None
+        calls_with_locks(funcs[name], "Engine", set(), sites, {})
+        forwarded = {id(n) for c, _ in sites for kw in c.keywords if kw.arg == "pode" and isinstance(kw.value, ast.Lambda)
+                     for n in ast.walk(kw.value)}
+        for call, held in sites:
+            f = call.func
+            if isinstance(f, ast.Name) and f.id == "pode" and id(call) not in forwarded:
+                here = held
+            elif (isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name) and f.value.id == "self"
+                  and f.attr in funcs and any(kw.arg == "pode" and uses_pode(kw.value) for kw in call.keywords)):
+                here = held | guarantee(f.attr)
+            else:
+                continue
+            got = here if got is None else got & here
+        memo[name] = got or set()
+        return memo[name]
+    return {name: guarantee(name) for name, f in funcs.items()
+            if not name.startswith("_") and "pode" in [a.arg for a in f.args.args + f.args.kwonlyargs]}
+
+
+def pode_failures(tree):
+    return [f"Engine.{name} runs its pode under {sorted(held)}, not under {ENGINE_GUARD}"
+            for name, held in pode_guarantees(tree).items() if not set(ENGINE_GUARD) <= held]
+
+
+def scope_failures(trees):
+    out = []
+    for key, slots in CALLBACKS.items():
+        module, cls, name = key
+        func = defined(trees[module], cls, name)
+        if func is None:
+            out.append(f"{name} is not in {module}")
+            continue
+        params = [a.arg for a in func.args.args]
+        found = []
+        calls_with_locks(func, cls, set(), found, passed_callbacks(func))
+        for slot, locks in slots.items():
+            if not isinstance(slot, str):
+                continue
+            sites = [h for c, h in found if isinstance(c.func, ast.Name) and c.func.id == slot]
+            need = set(locks) - CALLER_HOLDS.get(key, set())
+            if slot not in params or not sites or any(not need <= h for h in sites):
+                out.append(f"{module}: {name} runs its {slot} with {[sorted(h) for h in sites]}, not with "
+                           f"{sorted(need)} (the caller holds {sorted(CALLER_HOLDS.get(key, set()))})")
+    return out
+
+
 def scan(sources, order, before):
     trees = {name: ast.parse(text, name) for name, text in sources.items()}
     table = function_table(trees)
@@ -454,6 +555,26 @@ def main():
                    f"through the calls made with a lock held and the callbacks run under one ({nested} nested "
                    f"acquisitions, {followed} calls followed, {walked} callbacks; {bad})")
     check(used == set(order) | before, f"the code takes exactly the locks the model declares ({sorted(used)})")
+    trees = {m: ast.parse(sources[m], m) for m in MODULES}
+    scope = scope_failures(trees)
+    check(not scope, f"each callback the check follows runs, in the code that calls it, under the locks the check "
+                     f"gives it ({len(CALLBACKS)} functions; {scope})")
+    moved = sources["server.py"].replace("        with self.engine._qlock:\n            r = change()\n",
+                                         "        r = change()\n        with self.engine._qlock:\n")
+    scope = scope_failures(dict(trees, **{"server.py": ast.parse(moved)}))
+    check(moved != sources["server.py"] and len(scope) == 1,
+          f"with the change_queue running its change before taking the _qlock, the scope check fails ({scope})")
+    guarded = pode_guarantees(trees["engine.py"])
+    check(len(guarded) >= 5 and not pode_failures(trees["engine.py"]),
+          f"every Engine method that takes a pode runs it under the _lock and the _qlock, also through the methods it "
+          f"hands it to ({sorted(guarded)}; {pode_failures(trees['engine.py'])})")
+    early = sources["engine.py"].replace("        with self._qlock:\n            if pode is not None and not pode():\n"
+                                         "                return None, None\n",
+                                         "        if pode is not None and not pode():\n            return None, None\n"
+                                         "        with self._qlock:\n")
+    check(early != sources["engine.py"] and len(pode_failures(ast.parse(early))) >= 3,
+          f"with the _restart running the pode before the _qlock, the check fails for the methods that hand it on "
+          f"({pode_failures(ast.parse(early))})")
     seen, taken = audio_locks(sources["engine.py"])
     check(set(taken) == audio, f"the audio thread ({'.'.join(AUDIO)} and the {len(seen) - 1} Engine methods it calls) "
                                f"takes only the AudioLocks of the model, {sorted(audio)} "

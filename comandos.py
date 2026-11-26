@@ -11,7 +11,6 @@ parado (_volta_auto) e o enfileirar com o prato parado passam por ela, com uma r
 The platter's line is read and checked through the engine's interface (Engine.line, Engine.on_line, with the deck
 and line a Captura already carries), and the switch the engine made on its own is reconciled in one loop
 (concilia)."""
-import copy
 import sys
 import threading
 
@@ -73,6 +72,10 @@ class Reserva:
         return self.entrada
 
 
+class QueuePlayFailed(RuntimeError):
+    pass
+
+
 class Proximo(Reserva):
     """Os Proximos sobrepostos de uma linha do prato (App.proximo): o primeiro avanca, e os outros esperam o resultado
     dele. r: a reserva que ele fez ou espera."""
@@ -91,7 +94,7 @@ class Proximo(Reserva):
     def espera(self, prazo=None):
         x = super().espera(prazo)
         if self.error is not None:
-            raise copy.copy(self.error).with_traceback(None) from self.error
+            raise QueuePlayFailed(str(self.error)) from self.error
         return x
 
     def liga(self, r):
@@ -349,9 +352,14 @@ def avanca(A, virada=None, historico=True, na_tela=False, visto=None, entrada=No
             A.release_reservation(r, None, None if na_tela else ex)
         if not na_tela and (grupo is None or r.error is ex):
             raise
-        E.error = i18n.msg("server.queue.playFailed", "Couldn't play \"{title}\" from the queue ({reason}).",
-                           title=r.x.get("title") or "?", reason=i18n.motivo(ex, 120))
-        return r.x if na_tela else r.entrada
+        aviso = i18n.msg("server.queue.playFailed", "Couldn't play \"{title}\" from the queue ({reason}).",
+                         title=r.x.get("title") or "?", reason=i18n.motivo(ex, 120))
+        if na_tela:
+            E.error = aviso
+            return r.x
+        if not E.warn_on(None, aviso):
+            print(f"queue: {r.x.get('title')!r} failed after its advance was resolved: {ex}", file=sys.stderr, flush=True)
+        return r.entrada
     if not tocou:  # a reserva foi invalidada no meio (o prato trocou, ou a entrada saiu da fila)
         with A.fila_lock:
             A.release_reservation(r, None)

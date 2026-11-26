@@ -649,6 +649,7 @@ class App:
             self.engine.relogio = relogio
         self.engine.porta = port  # a mina chama a API daqui pelas ferramentas dela
         self.engine.religar_stream = self.religar_stream
+        self.engine.stream_silent = lambda tr: self._stream_refused(tr, "the stream gave no audio")
         self.engine.sonoridade_de, self.engine.mediu = self.sonoridade_de, self.mediu
         self.engine.volume_auto = bool(self.cfg.get("volume_auto", True))
         self.cfg.pop("mic_vol", None)  # o nivel da voz e o do Windows, que guarda sozinho (18/10)
@@ -1601,15 +1602,13 @@ class App:
         self.canal_depois(d)
         return d
 
-    def _prepara(self, tr, x, chave, cap):
+    def _prepara(self, tr, x, seen, chave, cap):
         """A fonte da entrada x e o ganho dela saem fora das travas (o endereco do stream leva 1 a 3 s). A publicacao e
         sob a fila_lock, e confere de novo: x ainda e a primeira da fila; e, sob o _qlock, nenhuma virada pendente nem
         avanco reservado em curso nesta linha, e o prato ainda e o deck e a linha que a volta viu (cap), com tr, sem o
         Repetir, sem ter acabado e sem nada preparado. Quem fecha a virada e troca o disco do prato sob a fila_lock (o
         Parar, a troca) nao ve uma preparacao nova entrar no meio."""
         try:
-            with self.fila_lock:
-                seen = dict(x)
             novo = self.fonte_de(seen)
             if novo is None:
                 self.passagem_falhou = chave
@@ -1655,6 +1654,7 @@ class App:
         tr = cap.track
         with self.fila_lock:
             x = self.fila[0] if self.fila else None
+            seen = dict(x or {})
         if e.pronto_falhou is not None:
             self.passagem_falhou, e.pronto_falhou = (id(tr), e.pronto_falhou), None
         dur = tr.get("duration") if tr else None
@@ -1668,7 +1668,7 @@ class App:
         if self.preparando is not None or chave == self.passagem_falhou:
             return
         self.preparando = chave
-        threading.Thread(target=self._prepara, args=(tr, x, chave, cap), daemon=True).start()
+        threading.Thread(target=self._prepara, args=(tr, x, seen, chave, cap), daemon=True).start()
 
     # Automatico -------------------------------------------
     def mix_do(self, yid):

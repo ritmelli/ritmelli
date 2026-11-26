@@ -1300,6 +1300,7 @@ class Engine:
         # o servidor religa a parecida do Automatico cujo stream caiu: religar_stream(disco, onde parou, desistir), na
         # thread do leitor; sem ele (ou desistindo), o disco acaba e a fila segue, como antes
         self.religar_stream = None
+        self.stream_silent = None
         # o volume automatico (sonoridade.py): as musicas mais baixas sobem ate o alvo, com o limitador na musica (a
         # musica sai sonoridade.LIMITE_ANTES amostras atrasada, sempre). O servidor diz a medida que ja tem de um disco
         # (sonoridade_de(disco) -> LUFS ou None) e guarda a que o motor mede (mediu(disco, LUFS)); sem os dois, a
@@ -2366,8 +2367,11 @@ class Engine:
                 # o arquivo de onde parou; se o download falhar, o servidor para o prato (esperando_arquivo). So o
                 # leitor que ainda e o do prato marca: o substituido nao apaga a espera do novo
                 with self._qlock:
-                    if deck is self._deck and deck.gen == gen:
+                    waits = deck is self._deck and deck.gen == gen
+                    if waits:
                         self._espera_arquivo = gen
+                if waits and self.stream_silent is not None:
+                    self.stream_silent(track)
                 return
             if n == 0 and deck is not self._deck:  # a proxima que nao decodifica so nao entra
                 self._fim_do_leitor(deck, gen)

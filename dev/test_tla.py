@@ -51,6 +51,8 @@ RUNS = (
     Run("mutant: the passage publishes a source whose entry changed version while it was read", "Races211",
         "invariant SwitchEntryMatchesPlatter", invariants=("SwitchEntryMatchesPlatter",),
         constants=(("PrepareChecksTheVersion", "FALSE"),)),
+    Run("mutant: a stream that gives no audio waits for the file without asking the App", "Races211",
+        "invariant NoOrphanLoading", invariants=("NoOrphanLoading",), constants=(("SilentStreamGoesToTheApp", "FALSE"),)),
     Run("LocksAndSwitch, the code as it is", "LocksAndSwitch"),
     Run("LocksAndSwitch, the code as it is: every reservation resolves (weak fairness, no symmetry)",
         "LocksAndSwitch", invariants=(), properties=("ReservationsResolve",), specification="FairSpec",
