@@ -27,13 +27,14 @@ até 80 linhas (o `dev/garden.py` confere as duas).
 - Rota nova do `server.py` entra na tabela do `permissao.py`, que o `guard` confere: rota fora da tabela é só do PC, e o
   `dev/testa_mock.py` falha enquanto ela não entra.
 - As travas do servidor se pegam numa ordem só: a de [comandos.md](docs/arquitetura/comandos.md#as-travas).
-- O `dev/testa_ganchos.py` conta os ganchos do `engine.py` para o módulo opcional de fora do repo, as rotas do grupo
-  `OUT_OF_REPO` do `permissao.py`, os acessos dos outros módulos da raiz aos privados do motor, do `App` e do
-  Automático, os do resto do `server.py` aos privados da `Library` e as escritas diretas no estado do `App` e do motor;
-  o `dev/garden.py` segura cada conta no seu teto ([fx.md](docs/arquitetura/fx.md),
+- O `dev/testa_ganchos.py` conta os ganchos do `engine.py` para o módulo de fora do repo, as rotas `OUT_OF_REPO` do
+  `permissao.py`, os acessos de fora aos privados do motor, do `App`, do Automático e da `Library` e as escritas diretas
+  no estado do `App` e do motor; o `dev/garden.py` segura cada conta no seu teto ([fx.md](docs/arquitetura/fx.md),
   [comandos.md](docs/arquitetura/comandos.md)).
 - As linhas dentro dos blocos `<style>` e `<script>` do `themes/ritmelli/index.html` não sobem: o teto
   `theme_inline_lines` do `dev/garden.py`.
+- PR que só muda código do tema de lugar: `python dev/theme_rebuild.py origin/main` sai 0 só se ele só move código, 1 se
+  muda algo e 3 se a página sai da forma estrita (o `dev/test_theme_rebuild.py` confere a ferramenta).
 - O PR que mexe na montagem (o `BUILD_PATHS` do `dev/testa_tudo.py`) só passa no "Testa o PR" com uma execução aprovada
   do "Monta o instalador" (`monta.yml`) no head: rode-o na branch (o "Verdict", provado pelo `dev/test_ci_workflow.py`).
 - O contrato da montagem com a publicação do `ritmelli-server` tem três verificações: o `dev/test_monta_contract.py` (os
@@ -50,8 +51,7 @@ até 80 linhas (o `dev/garden.py` confere as duas).
 | Servidor e YouTube | `server.py`, `comandos.py`, `automatico.py`, `music.py` (as funções puras de música), `yt_fora.py`, `yt_erros.py` | `testa_comandos`, `testa_automatico`, `testa_adianta`, `testa_rapido`, `testa_vivo`, `testa_musica` |
 | `--mock` | `server.py`, `pastas.py`, `dev/so_mock.py` (a trava que tira as ferramentas de `dev/` da 8799) | `testa_mock`, `testa_so_mock` |
 | Gravação dos dados | `pastas.py` (`save_json`), o `grava_cfg` do `server.py` | `testa_grava` (o `save_json`), `test_grava_cfg` (o `grava_cfg` grava sob a trava, de várias threads) |
-| Pasta protegida | `pastas.py` (`pasta_protegida`, `create_task`, `disarm`) e quem os chama (`microfone/microfone.py`, `atualizador.py`, `atualizacao.py`, `migra.py`) | `testa_pasta_protegida` (em memória; o `--disco` precisa de administrador e cria pasta em Program Files), `testa_mfx`, `testa_atualizador`, `testa_atualizacao`, `testa_migra` |
-| A regra no setup | `instalador/protegida.ps1` | `testa_pasta_protegida --disco` (roda o `instalador/protegida.ps1` em cada caso e exige o mesmo veredito do `pastas.py`) |
+| Pasta protegida | `pastas.py` (`pasta_protegida`, `create_task`, `disarm`), quem os chama (`microfone/microfone.py`, `atualizador.py`, `atualizacao.py`, `migra.py`) e a regra no setup (`instalador/protegida.ps1`) | `testa_pasta_protegida` (em memória; o `--disco` precisa de administrador, cria pasta em Program Files e exige do `instalador/protegida.ps1` o mesmo veredito do `pastas.py` em cada caso), `testa_mfx`, `testa_atualizador`, `testa_atualizacao`, `testa_migra` |
 | Pareamento e permissões | `pareamento.py`, `permissao.py`, o `guard` do `server.py` | `testa_pareamento`, `testa_mock`, `testa_protocolo` |
 | Protocolo da sessão remota | `docs/protocolo-remoto.md`, `docs/protocolo-remoto/v1/` | `testa_protocolo` (`--gera` escreve as fixtures de novo) |
 | Filtro e efeitos | `microfone/`, `fx.py`, `instalador/mudos.iss`, `winvol.py` | `testa_filtro`, `testa_mfx`, `testa_microfone`, `testa_anel`, `testa_aparelho_mudo` (os casos do setup de teste precisam do Inno Setup 6: sem ele, pulam no PC e reprovam no GitHub), `testa_voz` e `microfone/apo/teste/teste_reamostra.py` (este, o `testa_filtro`, o `testa_microfone` e o `testa_voz` precisam das DLLs do `microfone\apo\compila.bat teste`), `test_winvol` (o volume do microfone, com aparelhos falsos do Windows) |
