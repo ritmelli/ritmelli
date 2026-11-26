@@ -18,9 +18,11 @@ que roda: um `<script src="arquivo.js"></script>` por script e um `<link rel="st
 folha, sem outros atributos. O servidor (o `build` do `theme_page.py`, que o `server.py` chama) troca cada um por um `<script>` ou um `<style>`
 com o texto do arquivo, e a página não pede ao servidor nenhum script nem nenhuma folha: não existe página com um
 arquivo faltando. O arquivo que falta ou que sai da pasta, o que traz o que fecharia o elemento em volta dele (`</script`
-ou `<!--` num script, `</style` ou `@import` numa folha), a folha de outra pasta com um `url()` relativo (que a página leria a partir
-da pasta dela) e a tag de arquivo escrita de outro jeito param a montagem no servidor, que
-responde 500 e põe no log o nome do arquivo; o `dev/testa_mock.py` confere cada um desses casos. O
+ou `<!--` num script, `</style` ou `@import` numa folha), a folha de outra pasta com um `url()` relativo (que a página
+leria a partir da pasta dela) e a tag de arquivo escrita de outro jeito param a montagem no servidor, que responde 500
+e põe no log o nome do arquivo. A folha se lê com os escapes de CSS decodificados, também nos comentários e nas
+strings, e o `@import` ou o `url()` relativo que aparece em qualquer lugar dela, mesmo só num comentário ou numa
+string, para a montagem: o que a montagem não distingue com certeza de uma busca, ela recusa; o `dev/testa_mock.py` confere cada um desses casos. O
 `dev/missing_script.py`, que o `--tela` do `dev/testa_tudo.py` roda, lê a página e a galeria como o servidor as manda,
 nas duas línguas, de um `--mock` como o PC e de outro como o celular, e reprova com um `<script src>` ou um
 `<link rel="stylesheet">` nelas. O `dev/garden.py` conta as linhas de CSS e JS escritas no próprio `index.html` e
