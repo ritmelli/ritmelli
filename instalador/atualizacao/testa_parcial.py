@@ -228,6 +228,7 @@ VERSION_FILE, VERSION_LINES = re.subn(r'^VERSAO = "[^"\r\n]*"', 'VERSAO = "<vers
 caso("the fake versao.py is the real one with only the VERSAO line swapped", VERSION_LINES == 1)
 RECORDED_MANIFEST = '{"recorded": true}'
 PARTIAL_INFO = json.dumps({"de": "0.3.3", "arquivos": ["ritmelli.exe"], "apaga": ["_internal/sai.pyd"]})
+CHANGES_ONLY_INFO = json.dumps({"de": "0.3.3", "arquivos": ["ritmelli.exe"], "apaga": []})
 RECORDER = f"""import argparse
 import json
 import runpy
@@ -284,7 +285,8 @@ def manifest_call(source, version="0.3.4", notas=None, notas_en=None, partial=Fa
     if partial:
         (output / f"Ritmelli-{version}-parcial.exe").write_bytes(b"setup parcial")
     if partial_info:
-        (output / f"PARCIAL-{version}.json").write_text(PARTIAL_INFO, encoding="utf-8")
+        (output / f"PARCIAL-{version}.json").write_text(PARTIAL_INFO if partial_info is True else partial_info,
+                                                         encoding="utf-8")
     laid_out = {f.name: f.read_bytes() for f in output.iterdir()}
     env = {k: v for k, v in os.environ.items() if k.upper() not in ("NOTAS", "NOTAS_EN", "PYTHONUTF8")}
     env.update({k: v for k, v in (("NOTAS", notas), ("NOTAS_EN", notas_en)) if v is not None})
@@ -346,8 +348,9 @@ def no_partial_case(source):
 
 
 def partial_case(source):
-    runs = ((VERSIONS[0], {}), (VERSIONS[1], dict(notas="Nota", notas_en="Note")))
-    results = [(v, manifest_call(source, version=v, partial=True, partial_info=True, **notes)) for v, notes in runs]
+    runs = ((VERSIONS[0], dict(partial_info=CHANGES_ONLY_INFO)),
+            (VERSIONS[1], dict(notas="Nota", notas_en="Note", partial_info=True)))
+    results = [(v, manifest_call(source, version=v, partial=True, **inputs)) for v, inputs in runs]
     return all(code == 0 and options.get("parcial") == (output / f"Ritmelli-{v}-parcial.exe").as_posix()
                and options.get("parcial_info") == (output / f"PARCIAL-{v}.json").as_posix()
                and options.get("setup") == (output / f"Ritmelli-{v}-setup.exe").as_posix()
@@ -422,6 +425,8 @@ MANIFEST_CASES = {
         ("if partial.exists():", 'if partial.exists() or not (OUTPUT / f"PARCIAL-{version}.json").exists():')]),
     "--parcial and --parcial-info with the partial setup": (partial_case, [
         ("if partial.exists():", "if not partial.exists():"),
+        ("if partial.exists():", 'if partial.exists() and __import__("json").loads((OUTPUT / f"PARCIAL-{version}.json")'
+                                 '.read_text(encoding="utf-8")).get("apaga"):'),
         ('f"Ritmelli-{version}-parcial.exe"', 'f"Ritmelli-{version}-partial.exe"'),
         ('f"PARCIAL-{version}.json"', 'f"PARCIAL.json"'),
         ('f"PARCIAL-{version}.json"', '"PARCIAL-0.3.4.json"'),
