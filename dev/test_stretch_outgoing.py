@@ -14,7 +14,7 @@ Each runs at a speed below and one above 1 (A slowed down and sped up, as in the
 
     python dev/test_stretch_outgoing.py
 
-Each verdict also goes to the PR summary (the "-- summary:" lines of dev/testa_tudo.py), with its numbers.
+One line with the measured numbers also goes to the PR summary (the "-- summary:" line of dev/testa_tudo.py).
 
 Exits 1 if anything fails."""
 import sys
@@ -49,7 +49,6 @@ failures = []
 
 def check(ok, msg):
     print(("ok    " if ok else "FAIL  ") + msg)
-    print(f"-- summary: {'ok' if ok else 'FAIL'} {msg}")
     if not ok:
         failures.append(msg)
 
@@ -100,11 +99,12 @@ def position(speed, rng):
     tail = z[ramp + SR // 4:ramp + SR // 4 + SR, 0]
     if len(tail) != SR:
         check(False, f"pitch at speed {speed:.4f}: {len(tail)} frames after the ramp, where {SR} were expected")
-        return
+        return worst, None
     peak_hz = float(np.fft.rfftfreq(len(tail), 1 / SR)[int(np.argmax(np.abs(np.fft.rfft(tail))))])
     check(abs(peak_hz - TONE_HZ) <= PITCH_TOLERANCE_HZ,
           f"pitch at speed {speed:.4f}: the steady tone after the ramp is at {peak_hz:.1f} Hz (its own {TONE_HZ:.0f} Hz, "
           f"at most {PITCH_TOLERANCE_HZ} Hz off)")
+    return worst, peak_hz
 
 
 def level(speed, rng):
@@ -119,6 +119,7 @@ def level(speed, rng):
           f"level at speed {speed:.4f}: the quietest {LEVEL_WINDOW_MS:.0f} ms window of the first "
           f"{LEVEL_CHECKED_S * 1000:.0f} ms, at {worst * LEVEL_WINDOW_MS:.0f} ms, is {drops[worst]:+.1f} dB from the "
           f"input (at least -{LEVEL_DROP_DB} dB)")
+    return drops[worst]
 
 
 def short(ms, rng):
@@ -131,11 +132,16 @@ def short(ms, rng):
 
 
 def main():
+    positions, pitches, levels = [], [], []
     for speed in SPEEDS:
-        position(speed, np.random.default_rng(7))
-        level(speed, np.random.default_rng(11))
+        worst, hz = position(speed, np.random.default_rng(7))
+        positions.append(f"{worst:+.1f} ms")
+        pitches.append("short tail" if hz is None else f"{hz:.1f} Hz")
+        levels.append(f"{level(speed, np.random.default_rng(11)):+.1f} dB")
     for ms in SHORT_MS:
         short(ms, np.random.default_rng(13))
+    print(f"-- summary: {'FAIL' if failures else 'ok'} at speeds {' / '.join(f'{s:.2f}' for s in SPEEDS)}: position "
+          f"{' / '.join(positions)}, pitch {' / '.join(pitches)}, level {' / '.join(levels)}")
     print(f"{len(failures)} failure(s)" if failures else "all passed")
     return 1 if failures else 0
 
