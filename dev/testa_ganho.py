@@ -296,12 +296,12 @@ class TestaMotor(unittest.TestCase):
             self.e._mixa(B)
             ts.append(time.perf_counter() - t0)
         ms = np.array(ts) * 1000
-        print(f"\n  _mixa com ganho e limitador: {np.median(ms):.3f} ms na mediana, {ms.mean():.3f} em media, "
-              f"{np.percentile(ms, 99):.3f} no p99", file=sys.stderr)
-        # the median: a call or two the runner stalls for tens of ms moves the mean, not what each call costs; the mean
-        # without the 4 slowest still catches a slowdown that comes back every few calls
-        self.assertLess(float(np.median(ms)), 0.15)
-        self.assertLess(float(np.sort(ms)[:-4].mean()), 0.3)
+        median, trimmed = float(np.median(ms)), float(np.sort(ms)[:-4].mean())
+        print(f"\n  _mixa with gain and limiter: median {median:.3f} ms, mean without the 4 slowest {trimmed:.3f}, "
+              f"mean {ms.mean():.3f}, p99 {np.percentile(ms, 99):.3f}", file=sys.stderr)
+        # a call or two the runner stalls moves the mean, not the cost of each call; a slowdown that recurs still fails
+        self.assertLess(median, 0.15)
+        self.assertLess(trimmed, 0.3)
 
 
 if __name__ == "__main__":
