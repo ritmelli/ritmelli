@@ -1272,9 +1272,10 @@ def failures_leave_at_the_switch(A, E, readers):
 
 def failure_kept_through_the_file_handover_at_the_stream_end(A, E, readers):
     check(play(A, E, readers, "d1"), "d1 is on the platter, read")
-    x, _ = two_entries(A, 21)
+    target = "ttttttttttt"
+    j = A.new_job("downloading", True, target)
     held, go, mede = threading.Event(), threading.Event(), E._mede
-    launches, old = Launches(), E.captura().track
+    launches = Launches()
 
     def decodes_nothing(gen, track, start, deck):
         with E._qlock:
@@ -1284,24 +1285,71 @@ def failure_kept_through_the_file_handover_at_the_stream_end(A, E, readers):
         held.set()
         go.wait(WAIT_S)
         return mede(*a)
-    with mock.patch.object(eng, "TRANS_PREP_S", 1e6), contextlib.redirect_stderr(io.StringIO()), \
-            mock.patch.object(E, "_reader", decodes_nothing), mock.patch.object(E, "_mede", gated):
+    reader, ended = real_stream_reader(E, decodes_nothing)
+    meta = {"youtube_id": target, "title": "the stream that ends", "channel": "c", "duration": 1.0}
+    stream = StreamThread(A)
+    with (contextlib.redirect_stderr(io.StringIO()), mock.patch.object(E, "_reader", reader),
+          mock.patch.object(A, "stream_info", return_value=(dict(meta, url="https://stream.invalid/t", id=target), {})),
+          mock.patch.object(eng.subprocess, "Popen", lambda *a, **kw: AudioFfmpeg(2)),
+          mock.patch.object(eng, "TRANS_PREP_S", 1e6), mock.patch.object(E, "_mede", gated)):
+        opened = cmd.play_downloading(A, j, target, meta) and stream.ended.wait(WAIT_S)
+        at_the_end = (ended.nth(0).wait(WAIT_S) and str(E.track.get("path", "")).startswith("http")
+                      and E._deck.eof_gen == E._deck.gen)
+        x, _ = two_entries(A, 21)
         A._volta_passagem()
         deck = E._pronto if held.wait(WAIT_S) else None
-        key = carried_key(A, x)
-        with E.state_section():
-            E._deck.eof_gen = E._deck.gen
-        handed = E.trocar_fonte(old, dict(old, title="the file"))
-        kept = deck is not None and E._pronto is deck and E.captura().track is not old
+        key, before = carried_key(A, x), E.captura().play
+        with mock.patch.object(A, "download", return_value=A.lib.get("d2")):
+            A.run_download(j, target)
+        kept = (deck is not None and E._pronto is deck and str(E.track.get("path", "")).endswith("d2.m4a")
+                and E.captura().play == before)
         go.set()
-        failed = harness.ate(lambda: E._prepare_failure is not None) and E._prepare_failure == key
-        with mock.patch.object(A, "stream_info") as opens:
-            watch(A, launches)
+        failed = (harness.ate(lambda: A.preparando is None) and harness.ate(lambda: E._prepare_failure is not None)
+                  and E._prepare_failure == key)
+        watch(A, launches)
+    del A._abre_stream
+    recorded = key in A.failed_passages
     A.failed_passages.clear()
-    check(handed and kept and failed and launches.qids == [] and not opens.called,
-          f"the file handover at the end of the platter's reader keeps the deck prepared before it, the deck that "
-          f"decodes nothing then fails with the key its prepare carried, and the watcher does not start that source "
-          f"again in the same play (handed {handed}, kept {kept}, failed {failed}, launched {launches.qids})")
+    check(opened and at_the_end and kept and failed and recorded and launches.qids == [],
+          f"a job's stream whose reader reached its end hands over to the shelf file in the same play and keeps the deck "
+          f"prepared before it; the deck that decodes nothing then fails with the key its prepare carried, and the "
+          f"watcher does not start that source again (opened {opened}, at the end {at_the_end}, kept {kept}, failed "
+          f"{failed}, recorded {recorded}, launched {launches.qids})")
+
+
+def failures_leave_when_a_stream_enters(A, E, readers):
+    check(play(A, E, readers, "d1"), "d1 is on the platter, read")
+    x, _ = two_entries(A, 24)
+    launches, key, before = Launches(), carried_key(A, x), E.captura().play
+    A.failed_passages.add(key)
+    waiting = {"id": "job-s24", "title": "loading", "job": None, "path": None, "stream": True, "duration": 600.0}
+    E.espera(waiting)
+    entered = E.captura().track is waiting and E.captura().play == before + 1
+    with mock.patch.object(eng, "TRANS_PREP_S", 1e6):
+        watch(A, launches)
+    pruned = key not in A.failed_passages
+    A.failed_passages.clear()
+    check(entered and pruned,
+          f"a record entering the platter through espera, still waiting for its stream, is a new play, and the "
+          f"failures of the play before it leave (entered {entered}, pruned {pruned})")
+
+
+def failure_kept_through_a_resume_from_the_end(A, E, readers):
+    check(play(A, E, readers, "d1"), "d1 is on the platter, read")
+    x, _ = two_entries(A, 25)
+    launches, key, before = Launches(), carried_key(A, x), E.captura().play
+    A.failed_passages.add(key)
+    with E.state_section():
+        E.ended = True
+    E.resume()
+    again = readers.wait("d1") and E.captura().play == before
+    with mock.patch.object(eng, "TRANS_PREP_S", 1e6):
+        watch(A, launches)
+    kept = key in A.failed_passages
+    A.failed_passages.clear()
+    check(again and kept and launches.qids == [],
+          f"the record that ended and starts again from the top (resume, as the Repeat does) is the same play, and its "
+          f"failures still block their source (again {again}, kept {kept}, launched {launches.qids})")
 
 
 def failure_kept_through_a_seek(A, E, readers):
@@ -1546,6 +1594,8 @@ def main():
                 failure_kept_through_the_file_handover_at_the_stream_end(A, E, readers)
                 failure_kept_through_a_seek(A, E, readers)
                 failures_leave_at_the_switch(A, E, readers)
+                failures_leave_when_a_stream_enters(A, E, readers)
+                failure_kept_through_a_resume_from_the_end(A, E, readers)
                 replacement_shelf_file_after_its_predecessor_failed(A, E, readers)
                 engine_failure_through_the_real_prepare(A, E, readers)
                 audio_version_entries(A, E)
