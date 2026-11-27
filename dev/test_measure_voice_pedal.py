@@ -294,6 +294,13 @@ class Main(unittest.TestCase):
         self.assertIn("the filter of IN 1 never read the ring", why)
         self.assertNotIn(("POST", "/api/settings"), sent)
 
+    def test_a_headroom_measured_at_0_0_ms_is_a_base(self):
+        why, sent, result = self.run_main(state(), "--cycles", "1",
+                                          events=[(1.0, state(folga=0.0)), (15.0, state(folga=0.0)), (25.0, None)])
+        self.assertIsNone(why, "a read of a frame or two shows as 0.0 ms, measured")
+        self.assertIn(("POST", "/api/settings"), sent)
+        self.assertEqual(result["cycles"][0]["dry_outs"], 0)
+
     def test_a_ring_never_open_stops_before_the_pedal(self):
         why, sent, _ = self.run_main(state(), events=[(1.0, state(anel=False)), (70.0, state(anel=False))])
         self.assertIn("the filter of IN 1 never read the ring", why)

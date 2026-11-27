@@ -816,12 +816,19 @@ async def papeis_no_guard():
         # do envio, e o snapshot base e montado uma vez por volta para todas as conexoes (server.Voltas). Dois PCs
         # ligados: o envio do primeiro fica suspenso logo depois do state, e a virada acontece ali (a faixa nova, com a
         # posicao dela); o segundo segue livre e recebe a virada enquanto o primeiro esta parado
-        capturas, lidas, comeco = [({"status": "playing", "track": {"id": "t1"}}, 100.0)], [], time.monotonic()
+        capturas, lidas, horas, comeco = [({"status": "playing", "track": {"id": "t1"}}, 100.0)], [], [], time.monotonic()
+
+        def hora():
+            horas.append(int(time.monotonic() * 1000) / 1000 + 0.0004)
+            return horas[-1]
 
         def leitura():
-            lidas.append(time.monotonic())
+            lidas.append(horas[-1] if horas else None)
             return capturas[-1]
         A.leitura, E.pos = leitura, 100.0
+        relogio = mock.patch.object(server, "time", types.SimpleNamespace(
+            **{**{n: getattr(time, n) for n in dir(time) if not n.startswith("_")}, "monotonic": hora}))
+        relogio.start()
         no_state, solta = asyncio.Event(), asyncio.Event()
 
         def cliente(suspende):
@@ -879,6 +886,7 @@ async def papeis_no_guard():
             await ate(lambda: com_t2(escrito1))
             await asyncio.sleep(5 * server.TICK)  # algumas voltas com os dois livres
         finally:
+            relogio.stop()
             solta.set()
             A.closing = True
             for tarefa in tarefas:
@@ -891,8 +899,7 @@ async def papeis_no_guard():
                     f"volta dela ({p})")
         ts = [d.get("t") for e, d in eventos(escrito2) if e == "tick"]
         confere(ts and all(isinstance(x, float) for x in ts) and all(a < b for a, b in zip(ts, ts[1:]))
-                and comeco <= ts[0] <= ts[-1] <= time.monotonic()
-                and all(any(0 <= r - x < 0.002 for r in lidas) for x in ts),
+                and comeco <= ts[0] <= ts[-1] <= time.monotonic() and all(x in lidas for x in ts),
                 f"o tick leva a hora da captura da volta dele, no time.monotonic e sem arredondar ({ts[:3]})")
         numeros = {nome: [d.get("n") for e, d in eventos(escrito) if e == "tick"]
                    for nome, escrito in (("suspenso", escrito1), ("livre", escrito2))}
