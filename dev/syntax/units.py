@@ -4,7 +4,8 @@ import re
 import tokenize
 from dataclasses import dataclass, field
 
-from . import ir
+from . import css, html, ir
+from . import javascript as js
 from . import powershell as ps
 from . import yaml
 from .text import Source, SyntaxProblem
@@ -51,8 +52,12 @@ def offsets_line_of(source, offsets, fallback):
     return line_of
 
 
+TOO_DEEP = {"python": ("Python", 1), "powershell": ("PowerShell", 0), "javascript": ("JavaScript", 0),
+            "html": ("JavaScript", 0)}
+
+
 def too_deep(piece):
-    reader, start = ("Python", 1) if piece.language == "python" else ("PowerShell", 0)
+    reader, start = TOO_DEEP[piece.language]
     return f"{piece.path}:{piece.line_of(start)}: the {reader} reader stops here: a nesting too deep to read"
 
 
@@ -647,3 +652,94 @@ def python_embedded(path, text, line_of):
     if piece.tree is None:
         return [piece]
     return [piece, *embedded_powershell(path, piece.tree, text, by_line)]
+
+
+def masked_code(text, regions, cuts, line_of):
+    mask = bytearray(len(text))
+    for start, end in regions:
+        mask[start:end] = b"\x01" * (end - start)
+    for start, end in cuts:
+        mask[start:end] = bytes(end - start)
+    code, i = {}, mask.find(1)
+    while i >= 0:
+        j = mask.find(0, i)
+        j = len(text) if j < 0 else j
+        at = i
+        for chunk in text[i:j].split("\n"):
+            if chunk.strip():
+                line = line_of(at)
+                code[line] = code.get(line, "") + chunk + " "
+            at += len(chunk) + 1
+        i = mask.find(1, j)
+    return code
+
+
+class Embedded:
+    def __init__(self, piece, source):
+        self.piece, self.source, self.regions, self.cuts, self.scripts = piece, source, [], [], []
+
+    def comments(self, comments, offset):
+        for c in comments:
+            start, last = offset(c.span.start), offset(max(c.span.start, c.span.end - 1))
+            self.piece.comments.append((self.source.line(start), self.source.line(last), c.text, c.block))
+            self.cuts.append((start, offset(c.span.end)))
+
+    def javascript(self, text, offset, function_body=False, module=None):
+        script = js.parse(text, self.piece.path, function_body=function_body, module=module)
+        self.comments(script.comments, offset)
+
+        def line_of(k):
+            return self.source.line(offset(k))
+        self.piece.strings += [(line_of(n.start), n.value) for n in js.walk(script.program)
+                               if n.type == "Literal" and isinstance(n.value, str)]
+        self.scripts.append((script, line_of))
+
+    def css(self, text, offset):
+        self.comments(css.parse(text, self.piece.path).comments, offset)
+
+
+def web_piece(path, text, language, module=None):
+    source = Source(text, path)
+    piece = Piece(path, language, text, source.line)
+    embedded = Embedded(piece, source)
+    reader, where = language, (lambda k: k)
+    try:
+        if language == "html":
+            document = html.parse(text, path)
+            piece.tree = document
+            embedded.comments(document.comments, lambda k: k)
+            embedded.regions += [(tag.span.start, tag.span.end) for tag in document.tags]
+            for kind, found in (("javascript", document.scripts), ("css", document.styles)):
+                for tag, content in found:
+                    reader, where = kind, content.offset
+                    embedded.regions.append((content.offset(0), content.offset(len(content.value))))
+                    if kind == "javascript":
+                        embedded.javascript(content.value, content.offset, module=html.script_type(tag) == "module")
+                    else:
+                        embedded.css(content.value, content.offset)
+            for tag, attribute in document.handlers:
+                reader, where = "javascript", attribute.value.offset
+                embedded.javascript(attribute.value.value, attribute.value.offset, True)
+            for tag, attribute in document.style_attributes:
+                reader, where = "css", attribute.value.offset
+                embedded.css(attribute.value.value, attribute.value.offset)
+        else:
+            embedded.regions.append((0, len(text)))
+            if language == "javascript":
+                embedded.javascript(text, lambda k: k, module=module)
+                piece.tree = embedded.scripts[0][0]
+            else:
+                embedded.css(text, lambda k: k)
+    except SyntaxProblem as ex:
+        name = {"javascript": "JavaScript", "css": "CSS", "html": "HTML"}[reader]
+        piece.problem = f"{path}:{source.line(where(ex.offset))}: the {name} reader stops here: {ex.message}"
+        return piece
+    except RecursionError:
+        return Piece(path, language, text, source.line, problem=too_deep(piece))
+    piece.code_lines = masked_code(text, embedded.regions, embedded.cuts, source.line)
+    if embedded.scripts:
+        try:
+            piece.unit = ir.javascript_unit(embedded.scripts)
+        except RecursionError:
+            return Piece(path, language, text, source.line, problem=too_deep(piece))
+    return piece

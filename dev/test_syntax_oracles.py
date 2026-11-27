@@ -10,6 +10,8 @@ import yaml as pyyaml
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "dev"))
 import garden
+from syntax import html
+from syntax import javascript as js
 from syntax import powershell as ps
 from syntax import yaml
 
@@ -226,7 +228,266 @@ def test_powershell():
                                          f"assignments and variables ({len(items)} scripts, {wrong[:3]})")
 
 
+JAVASCRIPT_HARD_CASES = [
+    "const a = x => x * 2, b = async (y, ...z) => { await y; return z?.[0] ?? null; };\n",
+    "label: for (let i = 0, j = 1; i < 3; i++, j--) { if (i) continue label; else break label; }\n",
+    "for (const [k, v] of Object.entries({a: 1, 'b': 2, [c]: 3, d() {}, get e() { return 1; }, set e(v) {}, ...rest})) {}\n",
+    "for (x in y) ;\n",
+    "async function f() { for await (const q of r) {} }\n",
+    "var re = /[/\\]]+/gi.test(s) ? a / b / c : `t${a}x${`n${b}`}`;\n",
+    "tag`hello ${world}`;\n",
+    "({a, b: [c, d = 1], ...e} = f);\n",
+    "[a, , b = 2, ...c] = d;\n",
+    "new Foo;\nnew Foo.Bar(1)(2);\n",
+    "function g() { return new.target; }\n",
+    "class A extends B { static #x = 1; #y; constructor() { super(); this.#y = 2; } static { init(); } "
+    "get z() { return this.#y; } async *gen() { yield* other(); } }\n",
+    "switch (x) { case 1: a(); break; default: b(); }\n",
+    "try { a(); } catch { b(); } finally { c(); }\n",
+    "try { a(); } catch ({message}) { b(message); }\n",
+    "do x++; while (x < 10)\n",
+    "if (a) b(); else if (c) d(); else { e(); }\n",
+    "x = a ? b : c ? d : e;\n",
+    "y = (a, b);\n",
+    "z = a?.b.c?.(d)?.[e];\n",
+    "w = void 0, typeof x === 'undefined', delete o.p, !a, ~b, -c, +d, ++e, f--;\n",
+    "v = a ** b ** c;\n",
+    "u = (async function* () {})();\n",
+    "t = function named() {};\n",
+    "s = { async a() {}, *b() {}, async *c() {}, 'd': 1, 1: 2, [e]: 3, f, async: 1, get: 2, set: 3 };\n",
+    "r = a => ({ b: a });\n",
+    "q = () => {};\n",
+    "p = (a = 1, { b } = {}, [c] = []) => a + b + c;\n",
+    "o = 0x1F + 0o17 + 0b101 + 1_000 + .5 + 5. + 1e3 + 10n;\n",
+    "n = 'it\\'s' + \"a\\\"b\" + '\\u00e9\\x41\\n';\n",
+    "// line comment\n/* block\n   comment */\nm = 1;\n",
+    "m = a\n++b\n",
+    "l = a\n(b)\n",
+    "k = /=/.test(c)\n",
+    "a = b\n/hi/g.exec(c)\n",
+    "if (a) /re/.test(b)\n",
+    "x = y / 2 / z\n",
+    "x = (a) / 2\n",
+    "x = a++ / 2\n",
+    "x = {} / 1\n",
+    "({}) / 1\n",
+    "x = function () {} / 1\n",
+    "let\nx = 1\n",
+    "var let = 1; let[0] = 2;\n",
+    "async\nfunction f() {}\n",
+    "x = async\n(y) => y\n",
+    "for (var i = 0 in o) ;\n",
+    "for (let of of []) ;\n",
+    "for (async of => 1; ;) break;\n",
+    "a = b ? (c) : d => e;\n",
+    "a = b ? c => d : e => f;\n",
+    "x = `a${b}c${d}e`;\n",
+    "x = `\n${a}\n`;\n",
+    "x = '\\\n';\n",
+    "x = a\n?.b\n",
+    "throw new Error('x');\n",
+    "x = class { [a] = 1; static async *[b]() {} };\n",
+    "x = { __proto__: null, 'a b': 1 };\n",
+    "x = a in b, c instanceof d;\n",
+    "for (const x of a, b) ;\n",
+    "x = a?.b`c`;\n",
+    "while (a) if (b) break; else continue;\n",
+    "x = y => z => w;\n",
+    "x = (a, b) => (c, d);\n",
+    "x = async x => await x;\n",
+    "x = () => ({}).a;\n",
+    "x = a ?? b;\n",
+    "x &&= 1; y ||= 2; z ??= 3; w **= 2; v >>>= 1;\n",
+    "x = <!-- y\n",
+    "x = 1 // comment\n",
+    "\"use strict\";\nx = 1;\n",
+    "function h(a, b = a, ...c) { return c; }\n",
+    "function h2(a) { 'use strict'; return a; }\n",
+    "x = /[\\]/]/;\n",
+    "x = a.if.class.new;\n",
+    "x = { if: 1, class: 2, new: 3 };\n",
+    "with (o) { a; }\n",
+    "debugger;\n",
+    "x = 1;;;\n",
+    "{ }\n",
+    "x = typeof typeof a;\n",
+    "x = -(-a);\n",
+    "x = a - -b;\n",
+    "x = a + +b;\n",
+    "x = !function () {}();\n",
+    "x = new (a.b)();\n",
+    "x = new a.b.c;\n",
+    "x = new new a()();\n",
+    "x = a[b](c)[d];\n",
+    "x = (function () { return this; })();\n",
+    "x = yield;\n",
+    "function* g() { const y = yield; yield a, b; }\n",
+    "x = await;\n",
+    "x = \"\\u{1F600}\";\n",
+    "x = '😀' + a;\n",
+    "x = 1 /* c */ / 2;\n",
+    "x = a\n/b/i\n",
+    "x = [\n1,\n2,\n];\n",
+    "x = { a, };\n",
+    "f(a, b,);\n",
+    "function k(a, b,) {}\n",
+    "x = (a, b,) => a;\n",
+    "x = a ? b : c\n",
+    "x = (((a)));\n",
+    "x = (a)(b);\n",
+    "x = (a).b;\n",
+    "(a) = 1;\n",
+    "(a.b) = 1;\n",
+    "[(a)] = b;\n",
+    "({ a: (b) } = c);\n",
+    'class C { static get x() { return 1; } get() {} static() {} set(v) {} static static() {} }\n',
+    '{}\n/re/.test(x)\n',
+    'function r1() { return\nx; }\n',
+    'function* g2() { var yield2 = 1; } var yield = 1;\n',
+    'var await = 1; x = await;\n',
+    'x = `${ {a: 1}.a }`;\n',
+    'x = a?.();\n',
+    'for (var x = (a in b); ;) break;\n',
+    'x = a\n.b\n.c();\n',
+    'outer: while (1) { inner: for (;;) { continue outer; } }\n',
+    'x = function* () { yield\na; };\n',
+    'if (a) function f3() {}\n',
+    'x = { get [a]() { return 1; }, set [b](v) {} };\n',
+    'x = (a = 1) => a;\n',
+    'x = ([a, b]) => a + b;\n',
+    'x = ({a: {b}}) => b;\n',
+    'x = async () => { for await (const y of z) {} };\n',
+    'x = a\n++\nb\n',
+    'x = /a/g\n.test(b)\n',
+    'x = 1.5.toFixed(1) + 1..toString() + 1 .toString();\n',
+    'x = 0.1e-5 + 0E0 + 0x0n;\n',
+    "x = '\\0' + '\\x00' + '\\u{10FFFF}';\n",
+    'a = ;\n',
+    'if (a b) c;\n',
+    'x = `unclosed;\n',
+    'x = 1 2;\n',
+    "x = 'unclosed\n",
+    'function () {}\n',
+    'return 1;\n',
+    'break;\n',
+    'x = { a: 1 b: 2 };\n',
+    'throw\nx;\n',
+    "import a from './a.js';\nimport * as b from \"b.js\";\nimport c, {d, e as f, \"g-h\" as g} from 'c.js';\n",
+    "import 'side.js';\nimport x, * as y from 'z.js';\n",
+    "export const a = 1, b = 2;\nexport function c() {}\nexport async function d() { await e(); }\nexport class F {}\n",
+    "const a = 1, b = 2, d = 3;\nexport {a, b as c, d as default};\nexport {e} from './e.js';\nexport * from 'f.js';\nexport * as g from 'g.js';\n",
+    "export default function () { return 1; }\n",
+    "export default class extends A {}\n",
+    "export default a ? b : c;\n",
+    "export const x = await load();\nfor await (const y of z) {}\nconsole.log(import.meta.url);\n",
+    "import {default as x} from 'x.js';\nexport {x as \"a b\"};\n",
+    "if (a) { import b from 'b.js'; }\n",
+    "export default function () {}\nexport default 1;\nexport = 2;\n",
+    "import {default} from 'x.js';\n",
+]
+
+
+JAVASCRIPT_ORACLE = r"""
+const fs = require("fs");
+const acorn = require("internal/deps/acorn/acorn/dist/acorn");
+const out = [];
+for (const item of JSON.parse(fs.readFileSync(process.argv[2], "utf8"))) {
+  const comments = [];
+  try {
+    const read = (sourceType) => acorn.parse(item.text, {ecmaVersion: 2022, sourceType, allowHashBang: true,
+                                                         allowReturnOutsideFunction: item.body, onComment: comments});
+    let tree;
+    if (item.module === null) {
+      try {
+        tree = read("script");
+      } catch (e) {
+        if (!String(e.message).includes("sourceType: module")) throw e;
+        comments.length = 0;
+        tree = read("module");
+      }
+    } else {
+      tree = read(item.module ? "module" : "script");
+    }
+    const nodes = [];
+    const visit = (node) => {
+      if (!node || typeof node.type !== "string") return;
+      nodes.push([node.type, node.start, node.end]);
+      for (const value of Object.values(node)) {
+        if (Array.isArray(value)) value.forEach(visit);
+        else if (value && typeof value === "object" && typeof value.type === "string") visit(value);
+      }
+    };
+    visit(tree);
+    out.push({id: item.id, nodes, comments: comments.map(c => [c.type === "Block", c.start, c.end])});
+  } catch (e) {
+    out.push({id: item.id, error: String(e.message)});
+  }
+}
+fs.writeFileSync(process.argv[3], JSON.stringify(out));
+"""
+
+
+def our_javascript(text, body, module):
+    script = js.parse(text, function_body=body, module=module)
+    u = utf16(text)
+    return (sorted([n.type, u[n.start], u[n.end]] for n in js.walk(script.program)),
+            sorted([c.block, u[c.span.start], u[c.span.end]] for c in script.comments))
+
+
+def javascript_corpus():
+    files = garden.working_tree(ROOT)
+    kinds = garden.Tree(files).script_kinds()
+    for path, text in sorted(files.items()):
+        if path.endswith(".js"):
+            yield path, text, False, kinds.get(path)
+        elif path.endswith(".html"):
+            document = html.parse(text, path)
+            for k, (tag, content) in enumerate(document.scripts):
+                yield f"{path} script {k}", content.value, False, html.script_type(tag) == "module"
+            for k, (_, attribute) in enumerate(document.handlers):
+                yield f"{path} {attribute.name} {k}", attribute.value.value, True, False
+    for k, text in enumerate(JAVASCRIPT_HARD_CASES):
+        yield f"case {k}", text, False, None
+
+
+def test_javascript():
+    items = list(javascript_corpus())
+    with tempfile.TemporaryDirectory() as d:
+        folder = Path(d)
+        (folder / "oracle.js").write_text(JAVASCRIPT_ORACLE, encoding="utf-8")
+        (folder / "in.json").write_text(json.dumps([{"id": i, "text": t, "body": b, "module": m} for i, t, b, m in items]),
+                                        encoding="utf-8")
+        run = subprocess.run(["node", "--expose-internals", str(folder / "oracle.js"), str(folder / "in.json"),
+                              str(folder / "out.json")], capture_output=True, text=True, encoding="utf-8",
+                             errors="replace")
+        check(run.returncode == 0, f"acorn, the JavaScript parser of Node, reads the corpus ({run.stderr.strip()[:200]})")
+        if run.returncode:
+            return
+        oracle = {o["id"]: o for o in json.loads((folder / "out.json").read_text(encoding="utf-8"))}
+    wrong, refused = [], []
+    for ident, text, body, module in items:
+        item = oracle[ident]
+        try:
+            mine = our_javascript(text, body, module)
+        except js.JavaScriptError as ex:
+            mine = str(ex)
+        if "error" in item or isinstance(mine, str):
+            if "error" in item and isinstance(mine, str) and ident.startswith("case "):
+                refused.append(ident)
+            else:
+                wrong.append(f"{ident}: {item.get('error') or mine}")
+            continue
+        if mine != (sorted(map(list, item["nodes"])), sorted(map(list, item["comments"]))):
+            wrong.append(ident)
+    check(len(items) > 200 and not wrong, f"every JavaScript of the repo, the scripts and event attributes of its "
+                                          f"pages, and the hard cases read as acorn reads them: every node with its "
+                                          f"type and place, and the comments, in UTF-16 ({len(items)} pieces, "
+                                          f"{wrong[:3]})")
+    check(len(refused) == 18, f"the 18 invalid hard cases are refused by both readers ({len(refused)})")
+
+
 test_yaml()
 test_powershell()
+test_javascript()
 print(f"{len(failures)} failure(s)" if failures else "ok    the readers agree with the oracles")
 sys.exit(1 if failures else 0)

@@ -8,6 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "dev"))
 import garden
+from syntax import css, html
 from syntax import powershell as ps
 from syntax import units
 from syntax import yaml
@@ -246,10 +247,100 @@ def test_lossless():
                                   f"scripts, {bad[:3]})")
 
 
+def handler(document, k=0):
+    return document.handlers[k][1].value
+
+
+HTML_CASES = [
+    ("a script keeps the offsets of its text", "<p>\n<script>\nlet a = 1;\n</script>\n",
+     lambda d, t: d.scripts[0][1].value == "\nlet a = 1;\n" and d.scripts[0][1].offset(1) == t.index("let")),
+    ("an entity in an event attribute is decoded and keeps its place", "<b onclick=\"f(&quot;x&quot;)\">",
+     lambda d, t: handler(d).value == "f(\"x\")" and handler(d).offset(2) == t.index("&quot;")
+     and handler(d).offset(3) == t.index("x&")),
+    ("a comment keeps its text", "<!-- a -- b -->\n", lambda d, t: [c.text for c in d.comments] == [" a -- b "]),
+    ("a script of another type is no JavaScript", "<script type=\"application/json\">{\"a\": 1}</script>\n",
+     lambda d, t: d.scripts == []),
+    ("a module is JavaScript", "<script type=\"module\">x();</script>\n", lambda d, t: len(d.scripts) == 1),
+    ("a closing tag in another case closes the script", "<SCRIPT>x();</Script>\n",
+     lambda d, t: [c.value for _, c in d.scripts] == ["x();"]),
+    ("a style and a style attribute", "<style>a { b: c }</style><p style=\"color: red\">",
+     lambda d, t: len(d.styles) == 1 and [a.value.value for _, a in d.style_attributes] == ["color: red"]),
+    ("only an on attribute is an event", "<p onclick=\"f()\" title=\"g()\" one=\"h()\">",
+     lambda d, t: [a.name for _, a in d.handlers] == ["onclick", "one"]),
+    ("an unquoted attribute", "<p onclick=f()>", lambda d, t: handler(d).value == "f()"),
+]
+HTML_ERRORS = [("a comment that is never closed", "<p>\n<!-- x\n"),
+               ("an attribute value that is never closed", "<p title=\"x>\n"),
+               ("a script that is never closed", "<script>\nx();\n")]
+CSS_CASES = [
+    ("a comment keeps its text", "a { b: c } /* why */\n", lambda s: [c.text for c in s.comments] == [" why "]),
+    ("a comment in a string is no comment", "a { content: '/* no */'; }\n", lambda s: s.comments == []),
+    ("a url without quotes keeps its slashes", "a { b: url(//x/y) }\n", lambda s: s.comments == []),
+    ("blocks inside blocks", "@media x { a { b: c } }\n", lambda s: s.comments == []),
+]
+CSS_ERRORS = [("a block that is never closed", "a { b: c\n"), ("a block closed twice", "a { b: c } }\n"),
+              ("a comment that is never closed", "/* x\n"), ("a string that runs into the end of the line", "a { b: 'x\n }\n")]
+
+
+def test_web():
+    for label, text, ok in HTML_CASES:
+        try:
+            check(ok(html.parse(text), text), f"html: {label}")
+        except SyntaxProblem as ex:
+            check(False, f"html: {label} ({ex})")
+    for label, text, ok in CSS_CASES:
+        try:
+            check(ok(css.parse(text)), f"css: {label}")
+        except SyntaxProblem as ex:
+            check(False, f"css: {label} ({ex})")
+    for reader, cases in ((html, HTML_ERRORS), (css, CSS_ERRORS)):
+        for label, text in cases:
+            try:
+                reader.parse(text)
+                raised = False
+            except SyntaxProblem:
+                raised = True
+            check(raised, f"{reader.__name__.split('.')[-1]} refuses {label}")
+    piece = units.web_piece("a.html", "<p>\n<button onclick=\"f() // why\n\">\n<!-- page -->\n<script>\n/* a\n b */ x();\n"
+                                      "</script>\n", "html")
+    check(sorted(c[:3] for c in piece.comments) == [(2, 2, " why"), (4, 4, " page "), (6, 7, " a\n b ")],
+          f"the comments of a page, of its scripts and of its event attributes sit on their lines ({piece.comments})")
+    check(sorted(piece.code_lines) == [1, 2, 3, 5, 7, 8], f"the code of a page is its tags and its scripts, "
+                                                           f"without the comments ({piece.code_lines})")
+
+    piece = units.web_piece("a.html", "<b onclick=\"f() // a &amp;\">\n", "html")
+    check(piece.code_lines.get(1, "").split() == ["<b", "onclick=\"f()", '">'],
+          f"a comment that ends in an entity is cut out whole ({piece.code_lines})")
+
+
+def test_web_files():
+    count, bad = 0, []
+    for path, text in sorted(garden.working_tree(ROOT).items()):
+        if garden.suffix(path) not in garden.WEB:
+            continue
+        count += 1
+        piece = units.web_piece(path, text, garden.WEB[garden.suffix(path)])
+        if piece.problem:
+            bad.append(piece.problem)
+            continue
+        if garden.suffix(path) == ".html":
+            continue
+        covered = set(piece.code_lines)
+        for first, last, _, _ in piece.comments:
+            covered |= set(range(first, last + 1))
+        missing = [n for n, line in enumerate(text.splitlines(), 1) if line.strip() and n not in covered]
+        if missing:
+            bad.append(f"{path}:{missing[0]}")
+    check(count > 60 and not bad, f"every JavaScript, sheet and page of the repo reads, and the code and the comments "
+                                  f"of each JavaScript and sheet cover every line ({count} files, {bad[:3]})")
+
+
 test_yaml()
 test_yaml_offsets()
 test_powershell()
 test_lossless()
 test_python_literals()
+test_web()
+test_web_files()
 print(f"{len(failures)} failure(s)" if failures else "ok    all syntax cases")
 sys.exit(1 if failures else 0)

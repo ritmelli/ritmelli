@@ -3,6 +3,7 @@ import re
 from collections import deque
 from dataclasses import dataclass, field
 
+from . import javascript as js
 from . import powershell as ps
 
 PYTHON_BROAD = {"Exception", "BaseException"}
@@ -56,6 +57,7 @@ class If(Node):
     condition: Node = None
     then: Block = None
     otherwise: Block = None
+    fails: bool = False
 
 
 @dataclass(eq=False)
@@ -79,6 +81,7 @@ class Call(Node):
     sleep: bool = False
     parts: list = field(default_factory=list)
     target: str = ""
+    schedules: tuple = ()
 
 
 @dataclass(eq=False)
@@ -752,3 +755,410 @@ def python_unit(tree, line_of=None):
 
 def powershell_unit(script, line_of):
     return PowerShellLowering(script, line_of).unit()
+
+
+JS_FUNCTIONS = {"FunctionDeclaration", "FunctionExpression", "ArrowFunctionExpression"}
+JS_LOOPS = {"ForStatement", "ForInStatement", "ForOfStatement", "WhileStatement", "DoWhileStatement"}
+JS_RESCHEDULE = "setTimeout"
+JS_REJECTION = {"catch", "aoFalhar"}
+JS_ERROR_EVENTS = {"error", "unhandledrejection"}
+
+
+def js_name(node):
+    if node is None:
+        return ""
+    if node.type == "Identifier":
+        return node.name
+    if node.type == "Literal" and isinstance(node.value, str):
+        return node.value
+    return ""
+
+
+def js_callee(node):
+    return node.expression if node.type == "ChainExpression" else node
+
+
+def js_does_nothing(node):
+    if node.type == "BlockStatement":
+        return all(js_does_nothing(s) for s in node.body)
+    if node.type == "EmptyStatement":
+        return True
+    if node.type == "ExpressionStatement":
+        return js_does_nothing(node.expression)
+    if node.type == "UnaryExpression" and node.operator == "void":
+        return node.argument.type in ("Identifier", "Literal")
+    return node.type in ("Identifier", "Literal")
+
+
+def js_swallows(callback):
+    return callback is not None and callback.type in JS_FUNCTIONS and js_does_nothing(callback.body)
+
+
+def reaches(functions):
+    calls = {name: {c.target for c in walk(f.body) if isinstance(c, Call) and c.target} for name, f in functions.items()}
+    found = {}
+    for name in functions:
+        seen, stack = set(), [name]
+        while stack:
+            for target in calls.get(stack.pop(), ()):
+                if target not in seen:
+                    seen.add(target)
+                    stack.append(target)
+        found[name] = seen
+    return found
+
+
+def unconditional(node):
+    for child in children(node):
+        if child is None or isinstance(child, (Function, Loop, If, Try, Handler)):
+            continue
+        yield child
+        yield from unconditional(child)
+
+
+def reschedules(unit):
+    reach, found = reaches(unit.functions), []
+
+    def polled(function, name):
+        return any(isinstance(n, Call) and name in n.schedules for n in unconditional(function.body))
+
+    def visit(node, enclosing, failing):
+        if node is None:
+            return
+        if isinstance(node, Call) and node.schedules and failing and enclosing:
+            if any(any(s == e.name or e.name in reach.get(s, ()) for e in enclosing) and not polled(enclosing[-1], s)
+                   for s in node.schedules):
+                found.append(node.line)
+        if isinstance(node, Function):
+            enclosing = (*enclosing, node) if node.name else enclosing
+        if isinstance(node, Handler):
+            failing = True
+        if isinstance(node, If):
+            visit(node.condition, enclosing, failing)
+            visit(node.then, enclosing, failing or node.fails and last_leave(node.then) == "return")
+            visit(node.otherwise, enclosing, failing)
+            return
+        for child in children(node):
+            visit(child, enclosing, failing)
+
+    visit(unit.body, (), False)
+    return found
+
+
+def last_leave(block):
+    last = last_item(block)
+    return last.kind if isinstance(last, Leave) else None
+
+
+def js_only_expression(body):
+    if body.type != "BlockStatement":
+        return body
+    if len(body.body) == 1 and body.body[0].type in ("ExpressionStatement", "ReturnStatement"):
+        statement = body.body[0]
+        return statement.expression if statement.type == "ExpressionStatement" else statement.argument
+    return None
+
+
+def js_failure_test(test):
+    if test.type == "UnaryExpression" and test.operator == "!":
+        return True
+    if test.type == "LogicalExpression":
+        return js_failure_test(test.left) or js_failure_test(test.right)
+    if test.type == "BinaryExpression" and test.operator in ("==", "==="):
+        return any(js_absent(side) for side in (test.left, test.right))
+    return False
+
+
+def js_absent(node):
+    if node.type == "Identifier":
+        return node.name == "undefined"
+    if node.type == "Literal":
+        return node.value is None or node.value == "undefined"
+    return node.type == "UnaryExpression" and node.operator == "void"
+
+
+def js_references(node):
+    stack = [node]
+    while stack:
+        n = stack.pop()
+        if n.type == "Identifier":
+            yield n.name
+            continue
+        for key, value in n.__dict__.items():
+            if key == "property" and n.type == "MemberExpression" and not n.computed or \
+                    key == "key" and n.type in ("Property", "MethodDefinition", "PropertyDefinition") \
+                    and not n.computed and not getattr(n, "shorthand", False):
+                continue
+            for child in value if isinstance(value, list) else [value]:
+                if isinstance(child, js.Node):
+                    stack.append(child)
+
+
+def calls_named(unit, names):
+    return [n.line for n in walk(unit.body) if isinstance(n, Call) and n.name in names]
+
+
+class JavaScriptLowering:
+    def __init__(self, scripts):
+        self.scripts = scripts
+        self.functions = {}
+        self.line_of = None
+
+    def unit(self):
+        items = []
+        for script, line_of in self.scripts:
+            self.line_of = line_of
+            body = self.statements(script.program.body, script.program)
+            items.append(body)
+        return Unit("javascript", Block(items[0].line if items else 1, items), self.functions)
+
+    def line(self, node):
+        return self.line_of(node.start)
+
+    def statements(self, nodes, at):
+        return Block(self.line(nodes[0] if nodes else at), [self.statement(s) for s in nodes])
+
+    def body(self, node):
+        if node is None:
+            return None
+        if node.type == "BlockStatement":
+            return self.statements(node.body, node)
+        return Block(self.line(node), [self.statement(node)])
+
+    def function(self, node, name="", register=False):
+        if node.body.type == "BlockStatement":
+            body = self.statements(node.body.body, node.body)
+        else:
+            body = Block(self.line(node.body), [Block(self.line(node.body), [*self.expression(node.body),
+                                                                            Leave(self.line(node.body), "return")])])
+        defaults = [c for p in node.params for c in self.expression(p)]
+        if defaults:
+            body.items.insert(0, Other(self.line(node), defaults))
+        function = Function(self.line(node), name, body)
+        if register and name:
+            self.functions[name] = function
+        return function
+
+    def condition(self, test):
+        if test is None:
+            return None
+        if test.type == "Identifier":
+            return Name(self.line(test), test.name)
+        if test.type == "UnaryExpression" and test.operator == "!":
+            return Not(self.line(test), self.condition(test.argument))
+        if test.type == "LogicalExpression" and test.operator in ("&&", "||"):
+            return Condition(self.line(test), [self.condition(test.left), self.condition(test.right)])
+        if test.type == "AwaitExpression":
+            return self.condition(test.argument)
+        if test.type == "AssignmentExpression" and test.operator == "=" and test.left.type == "Identifier":
+            return Condition(self.line(test), [self.condition(test.right), self.assigned(test)])
+        if test.type == "ChainExpression":
+            return self.condition(test.expression)
+        return Condition(self.line(test), self.expression(test), test.type not in ("CallExpression",))
+
+    def assigned(self, node):
+        value = node.right if node.type == "AssignmentExpression" else node.init
+        known = value is not None and value.type == "Literal" and not isinstance(value.value, dict)
+        target = node.left if node.type == "AssignmentExpression" else node.id
+        return Assign(self.line(node), target.name, known, value.value if known else None)
+
+    def statement(self, s):
+        line, kind = self.line(s), s.type
+        if kind == "BlockStatement":
+            return self.statements(s.body, s)
+        if kind == "FunctionDeclaration":
+            return self.function(s, s.id.name if s.id else "", register=True)
+        if kind == "VariableDeclaration":
+            return Block(line, [Block(self.line(d), self.declarator(d)) for d in s.declarations])
+        if kind in ("ClassDeclaration", "ClassExpression"):
+            return Block(line, self.class_items(s))
+        if kind == "IfStatement":
+            return If(line, self.condition(s.test), self.body(s.consequent), self.body(s.alternate),
+                      js_failure_test(s.test))
+        if kind == "ForStatement":
+            update = [Other(self.line(s.update), self.expression(s.update))] if s.update else []
+            body = self.body(s.body)
+            body.items += update
+            prepare = [] if s.init is None else [self.statement(s.init) if s.init.type == "VariableDeclaration"
+                                                 else Other(line, self.expression(s.init))]
+            return Block(line, [*prepare, Loop(line, self.condition(s.test), body)])
+        if kind in ("ForInStatement", "ForOfStatement"):
+            return Block(line, [Other(line, self.expression(s.right)),
+                                Loop(line, None, self.body(s.body), self.counts_attempts(s))])
+        if kind in ("WhileStatement", "DoWhileStatement"):
+            return Loop(line, self.condition(s.test), self.body(s.body))
+        if kind == "TryStatement":
+            handlers = []
+            if s.handler is not None:
+                handlers.append(Handler(self.line(s.handler), js_does_nothing(s.handler.body),
+                                        self.statements(s.handler.body.body, s.handler.body)))
+            return Try(line, self.statements(s.block.body, s.block), handlers, None,
+                       self.statements(s.finalizer.body, s.finalizer) if s.finalizer else None, None)
+        if kind == "ReturnStatement":
+            return Block(line, [Other(line, self.expression(s.argument) if s.argument else []), Leave(line, "return")])
+        if kind == "ThrowStatement":
+            return Block(line, [Other(line, self.expression(s.argument)), Leave(line, "throw")])
+        if kind in ("BreakStatement", "ContinueStatement"):
+            return Leave(line, "break" if kind == "BreakStatement" else "continue", s.label.name if s.label else None)
+        if kind == "SwitchStatement":
+            return self.switch(s, None)
+        if kind == "LabeledStatement":
+            if s.body.type == "SwitchStatement":
+                return self.switch(s.body, s.label.name)
+            return self.body(s.body)
+        if kind == "ExpressionStatement":
+            if s.expression.type == "AssignmentExpression" and s.expression.operator == "=" and \
+                    s.expression.left.type == "Identifier" and s.expression.right.type not in JS_FUNCTIONS:
+                return Block(line, [self.condition(s.expression.right), self.assigned(s.expression)])
+            return Block(line, [Other(line, self.expression(s.expression))])
+        if kind in ("EmptyStatement", "DebuggerStatement", "ImportDeclaration", "ExportAllDeclaration"):
+            return Block(line, [])
+        if kind in ("ExportNamedDeclaration", "ExportDefaultDeclaration") and s.declaration is not None:
+            if s.declaration.type in ("FunctionDeclaration", "ClassDeclaration", "VariableDeclaration"):
+                return self.statement(s.declaration)
+            return Block(line, [Other(line, self.expression(s.declaration))])
+        if kind == "ExportNamedDeclaration":
+            return Block(line, [])
+        if kind == "WithStatement":
+            return Block(line, [Other(line, self.expression(s.object)), self.body(s.body)])
+        return Block(line, [Other(line, self.parts(s))])
+
+    def switch(self, s, label):
+        cases = []
+        for case in s.cases:
+            block = self.statements(case.consequent, case)
+            for n in [block, *local(block)]:
+                if isinstance(n, Leave) and n.kind == "break" and n.label in (None, label):
+                    n.kind = "switch"
+            test = Condition(self.line(case), self.expression(case.test), True) if case.test is not None else None
+            cases.append(If(self.line(case), test, block, None))
+        return Block(self.line(s), [Other(self.line(s), self.expression(s.discriminant)), *cases])
+
+    def declarator(self, d):
+        if d.init is None:
+            return []
+        if d.id.type == "Identifier" and d.init.type in JS_FUNCTIONS:
+            return [self.function(d.init, d.id.name, register=True)]
+        if d.id.type == "Identifier":
+            return [self.condition(d.init), self.assigned(d)]
+        return [Other(self.line(d), [*self.expression(d.id), *self.expression(d.init)])]
+
+    def class_items(self, node):
+        items = [Other(self.line(node), self.expression(node.superClass))] if node.superClass else []
+        for member in node.body.body:
+            if member.type == "MethodDefinition":
+                key = [] if not member.computed else self.expression(member.key)
+                items += [Other(self.line(member), key), self.function(member.value, js_name(member.key))]
+            elif member.type == "PropertyDefinition":
+                items.append(Other(self.line(member), [*(self.expression(member.key) if member.computed else []),
+                                                        *(self.expression(member.value) if member.value else [])]))
+            elif member.type == "StaticBlock":
+                items.append(self.statements(member.body, member))
+        return items
+
+    def parts(self, node):
+        return [n for child in js.children(node) for n in self.expression(child)]
+
+    def expression(self, e):
+        if e is None:
+            return []
+        kind = e.type
+        if kind in JS_FUNCTIONS:
+            return [self.function(e, e.id.name if getattr(e, "id", None) else "")]
+        if kind in ("ClassDeclaration", "ClassExpression"):
+            return [Other(self.line(e), self.class_items(e))]
+        if kind == "Identifier":
+            return [Name(self.line(e), e.name)]
+        if kind in ("CallExpression", "NewExpression"):
+            return [self.call(e)]
+        if kind == "ChainExpression":
+            return self.expression(e.expression)
+        if kind == "MemberExpression":
+            return [*self.expression(e.object), *(self.expression(e.property) if e.computed else [])]
+        if kind == "Property":
+            return [*(self.expression(e.key) if e.computed else []), *self.property_value(e)]
+        if kind == "AssignmentExpression":
+            return self.assignment(e)
+        if kind == "TaggedTemplateExpression":
+            return [Call(self.line(e), "", False, [*self.expression(e.tag), *self.expression(e.quasi)])]
+        return self.parts(e)
+
+    def property_value(self, e):
+        if e.value.type in JS_FUNCTIONS:
+            return [self.function(e.value, js_name(e.key) if not e.computed else "")]
+        return self.expression(e.value)
+
+    def assignment(self, e):
+        target, value = e.left, e.right
+        named = target.type == "Identifier"
+        handler = target.type == "MemberExpression" and not target.computed and js_name(target.property) == "onerror" \
+            or named and target.name == "onerror"
+        if value.type in JS_FUNCTIONS:
+            function = self.function(value, target.name if named else "", register=named and e.operator == "=")
+            left = [] if named else self.expression(target)
+            return [*left, Handler(self.line(value), False, Block(function.line, [function])) if handler else function]
+        if named and e.operator == "=":
+            return [Condition(self.line(e), [self.condition(value), self.assigned(e)])]
+        out = [*([] if named else self.expression(target)), *self.expression(value)]
+        if named:
+            out.append(Assign(self.line(e), target.name))
+        return out
+
+    def call(self, e):
+        callee = js_callee(e.callee)
+        name = callee.name if callee.type == "Identifier" else \
+            js_name(callee.property) if callee.type == "MemberExpression" and not callee.computed else ""
+        line = self.line(callee.property if callee.type == "MemberExpression" and not callee.computed else callee)
+        parts = [] if callee.type == "Identifier" else self.expression(callee)
+        for k, argument in enumerate(e.arguments):
+            lowered = self.expression(argument)
+            rejection = callee.type == "MemberExpression" and (name in JS_REJECTION and k == 0 or name == "then" and k == 1)
+            rejection = rejection or name == "addEventListener" and k == 1 and \
+                js_name(e.arguments[0]) in JS_ERROR_EVENTS
+            if rejection and argument.type in JS_FUNCTIONS:
+                parts.append(Handler(line, name in ("catch", "then") and js_swallows(argument),
+                                     Block(self.line(argument), lowered)))
+            else:
+                parts += lowered
+        target = callee.name if callee.type == "Identifier" else ""
+        schedules = self.scheduled(e) if name == JS_RESCHEDULE and e.type == "CallExpression" else ()
+        return Call(line, name, self.is_wait(e), parts, target, schedules)
+
+    def scheduled(self, e):
+        callback = e.arguments[0] if e.arguments else None
+        if callback is None:
+            return ()
+        if callback.type == "Identifier":
+            return (callback.name,)
+        if callback.type in JS_FUNCTIONS:
+            return tuple(sorted({js_callee(n.callee).name for n in js.walk(callback.body)
+                                 if n.type == "CallExpression" and js_callee(n.callee).type == "Identifier"}))
+        return ()
+
+    def is_wait(self, e):
+        if e.type != "NewExpression" or e.callee.type != "Identifier" or e.callee.name != "Promise":
+            return False
+        executor = e.arguments[0] if e.arguments else None
+        if executor is None or executor.type not in JS_FUNCTIONS or not executor.params:
+            return False
+        resolve = executor.params[0]
+        body = js_only_expression(executor.body)
+        if resolve.type != "Identifier" or body is None or body.type != "CallExpression" or \
+                js_callee(body.callee).type != "Identifier" or js_callee(body.callee).name != JS_RESCHEDULE or \
+                not body.arguments:
+            return False
+        callback = body.arguments[0]
+        if callback.type == "Identifier":
+            return callback.name == resolve.name
+        inner = js_only_expression(callback.body) if callback.type in JS_FUNCTIONS else None
+        return inner is not None and inner.type == "CallExpression" and js_callee(inner.callee).type == "Identifier" \
+            and js_callee(inner.callee).name == resolve.name
+
+    def counts_attempts(self, loop):
+        targets = set(js_references(loop.left))
+        used = set(js_references(loop.body))
+        return not (targets - {"_"}) & used
+
+
+def javascript_unit(scripts):
+    return JavaScriptLowering(scripts).unit()

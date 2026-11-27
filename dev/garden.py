@@ -3,6 +3,7 @@ import importlib.util
 import io
 import json
 import os
+import posixpath
 import re
 import subprocess
 import sys
@@ -13,7 +14,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "dev"))
-from syntax import ir, units
+from syntax import html, ir, units
 from syntax.text import Source
 
 USAGE = """The garden scoreboard: counts the weeds of the repo and holds each count to its ceiling in dev/garden.json.
@@ -56,8 +57,8 @@ SILENTLY_CONTINUE = re.compile(r"-ErrorAction\s+SilentlyContinue\b", re.I)
 START_SLEEP = re.compile(r"\bStart-Sleep\b", re.I)
 SHELL_PIECES = ("bash", "cmd", "unknown")
 QUIET_ERRORS = {"silentlycontinue", "ignore", "0", "4"}
-THEME_TIMER = re.compile(r"\b(?:setTimeout|setInterval|requestIdleCallback)\s*\(")
-ANIMATION_FRAME = re.compile(r"\brequestAnimationFrame\s*\(")
+THEME_TIMERS = {"setTimeout", "setInterval", "requestIdleCallback"}
+ANIMATION_FRAMES = {"requestAnimationFrame"}
 TODO = re.compile(r"\b(?:TODO|FIXME|HACK|XXX)\b")
 PROSE = re.compile(r"\b(?:risco\s+aceito|accepted\s+risk|sem\s+prova|por\s+enquanto|for\s+now|known\s+issue"
                    r"|sem\s+teste|have\s+no\s+test\s+yet|como\s+antes)\b", re.I)
@@ -208,15 +209,11 @@ class Scanner:
                 self.take(1)
 
 
-def lex_c(text, js=False, css=False, pascal=False):
+def lex_c(text, pascal=False):
     s = Scanner(text)
-    last = ""
     while s.i < len(text):
         c = text[s.i]
-        if not css and not pascal and s.peek("//"):
-            s.i += 2
-            s.comment_until("\n")
-        elif pascal and s.peek("//"):
+        if s.peek("//"):
             s.i += 2
             s.comment_until("\n")
         elif not pascal and s.peek("/*"):
@@ -230,43 +227,11 @@ def lex_c(text, js=False, css=False, pascal=False):
             s.comment_until("}")
         elif pascal and c == "'":
             s.string("'", escape=None, doubled=True)
-            last = "'"
-        elif not pascal and c in "\"'" or (js and c == "`"):
+        elif not pascal and c in "\"'":
             s.string(c)
-            last = c
-        elif js and c == "/" and regex_can_start(s.out.code.get(s.line, ""), last):
-            s.take(1)
-            in_class = False
-            while s.i < len(text) and text[s.i] != "\n":
-                ch = text[s.i]
-                if ch == "\\":
-                    s.take(2)
-                    continue
-                if ch == "[":
-                    in_class = True
-                elif ch == "]":
-                    in_class = False
-                elif ch == "/" and not in_class:
-                    s.take(1)
-                    break
-                s.take(1)
-            last = "/"
         else:
-            if not c.isspace():
-                last = c
             s.take(1)
     return s.out
-
-
-JS_KEYWORDS_BEFORE_REGEX = {"return", "typeof", "case", "do", "else", "in", "of", "new", "delete", "void", "throw",
-                            "yield", "await"}
-
-
-def regex_can_start(code_line, last):
-    if not last or last in "(,=:[!&|?{};+-*%<>~^":
-        return True
-    word = re.search(r"([A-Za-z_$][\w$]*)\s*$", code_line)
-    return bool(word) and word.group(1) in JS_KEYWORDS_BEFORE_REGEX and code_line.rstrip().endswith(word.group(1))
 
 
 def lex_bat(text):
@@ -310,32 +275,20 @@ def lex_iss(text):
     return out
 
 
-def lex_html(text):
-    out = Lexed()
-    for m in re.finditer(r"<!--(.*?)-->|<(script|style)\b[^>]*>(.*?)</\2\s*>", text, re.S | re.I):
-        if m.group(2) is None:
-            start = text.count("\n", 0, m.start()) + 1
-            out.comments.append(Comment(start, start + m.group(0).count("\n"), m.group(1)))
-            continue
-        offset = text.count("\n", 0, m.start(3))
-        kind = m.group(2).lower()
-        shift(lex_c(m.group(3), js=kind == "script", css=kind == "style"), offset, out)
-    for n in range(1, text.count("\n") + 2):
-        out.code.setdefault(n, "")
-    return out
-
-
 STRUCTURED = (".ps1", ".psd1", ".yml", ".yaml")
+WEB = {".js": "javascript", ".css": "css", ".html": "html"}
 PYTHON = (".py", ".spec")
 TEST_JOB = re.compile(r"^(?:test|testa|teste)s?(?:[-_][\w-]+)?$")
 
 
-def read_pieces(path, text):
+def read_pieces(path, text, module=None):
     s = suffix(path)
     if s in (".yml", ".yaml"):
         return units.yaml_pieces(path, text, TEST_JOB)
     if s in (".ps1", ".psd1"):
         return [units.powershell_piece(path, text, Source(text, path).line)]
+    if s in WEB:
+        return [units.web_piece(path, text, WEB[s], module)]
     if s in PYTHON:
         top = units.python_piece(path, text, tokens=False)
         if top.tree is None or path in GARDEN_FILES:
@@ -369,9 +322,9 @@ def lexed_from_pieces(pieces):
     return out
 
 
-LEXERS = {".py": lex_python, ".spec": lex_python, ".js": lambda t: lex_c(t, js=True), ".css": lambda t: lex_c(t, css=True),
-          ".cpp": lex_c, ".h": lex_c, ".rc": lex_c, ".ps1": None, ".psd1": None, ".yml": None, ".yaml": None,
-          ".iss": lex_iss, ".isl": lex_semicolon, ".bat": lex_bat, ".html": lex_html, ".sh": lex_hash,
+LEXERS = {".py": lex_python, ".spec": lex_python, ".cpp": lex_c, ".h": lex_c, ".rc": lex_c, ".ps1": None,
+          ".psd1": None, ".yml": None, ".yaml": None, ".js": None, ".css": None, ".html": None,
+          ".iss": lex_iss, ".isl": lex_semicolon, ".bat": lex_bat, ".sh": lex_hash,
           ".toml": lex_hash, ".properties": lex_properties}
 
 
@@ -393,24 +346,34 @@ def kept(path, lexed, comment):
 class Tree:
     def __init__(self, files):
         self.files = files
-        self._lexed, self._ast, self._hooks, self._pieces = {}, {}, None, {}
+        self._lexed, self._ast, self._hooks, self._pieces, self._kinds = {}, {}, None, {}, None
 
     def pieces(self, path):
         if path not in self._pieces:
-            self._pieces[path] = read_pieces(path, self.files[path])
+            module = self.script_kinds().get(path) if suffix(path) == ".js" else None
+            self._pieces[path] = read_pieces(path, self.files[path], module)
         return self._pieces[path]
+
+    def script_kinds(self):
+        if self._kinds is None:
+            self._kinds = {}
+            for page in self.paths(".html"):
+                for path, module in script_tags(self, page):
+                    self._kinds[path] = self._kinds.get(path, False) or module
+        return self._kinds
 
     def units(self, path):
         return [piece for piece in self.pieces(path) if piece.unit is not None]
 
     def problems(self):
-        return [piece.problem for path in sorted(self.files) if suffix(path) in (*STRUCTURED, *PYTHON)
+        return [piece.problem for path in sorted(self.files) if suffix(path) in (*STRUCTURED, *PYTHON, *WEB)
                 for piece in self.pieces(path) if piece.problem]
 
     def lexed(self, path):
         if path not in self._lexed:
             s = suffix(path)
-            self._lexed[path] = lexed_from_pieces(self.pieces(path)) if s in STRUCTURED else LEXERS[s](self.files[path])
+            self._lexed[path] = lexed_from_pieces(self.pieces(path)) if s in STRUCTURED or s in WEB else \
+                LEXERS[s](self.files[path])
         return self._lexed[path]
 
     def tree(self, path):
@@ -577,7 +540,7 @@ def suppressions(t):
                 items += [(p, n) for n in piece.continue_on_error]
                 if piece.language == "powershell" and piece.tree is not None:
                     items += [(p, n) for n in quiet_errors(piece)]
-        for n, code in foreign_code(t, p) if suffix(p) in STRUCTURED else code_lines(t, p):
+        for n, code in foreign_code(t, p) if suffix(p) in STRUCTURED or suffix(p) in WEB else code_lines(t, p):
             hits = len(PRAGMA_DISABLE.findall(code))
             if suffix(p) not in PYTHON:
                 hits += len(SILENTLY_CONTINUE.findall(code))
@@ -605,7 +568,7 @@ def unit_items(t, suffixes, rule):
 
 
 def foreign_code(t, path):
-    if suffix(path) in PYTHON:
+    if suffix(path) in PYTHON or suffix(path) in WEB:
         return []
     if suffix(path) in STRUCTURED:
         return sorted(lexed_from_pieces([p for p in t.pieces(path) if p.language in SHELL_PIECES]).code.items())
@@ -637,155 +600,32 @@ def sleeps_dev(t):
     return [i for i in sleeps(t) if is_dev(i[0]) and not in_test(t, i)]
 
 
-def theme_code(t, pattern):
-    items = []
-    for p in t.paths(".js", ".html"):
-        if p.startswith("themes/"):
-            lexed = t.lexed(p)
-            in_strings = {}
-            for n, text in lexed.strings:
-                in_strings[n] = in_strings.get(n, 0) + len(pattern.findall(text))
-            for n, code in sorted(lexed.code.items()):
-                items += [(p, n)] * (len(pattern.findall(code)) - in_strings.get(n, 0))
-    return items
+def theme_code(t, names):
+    return [item for item in unit_items(t, (".js", ".html"), lambda unit: ir.calls_named(unit, names))
+            if item[0].startswith("themes/")]
 
 
 def theme_timers(t):
-    return theme_code(t, THEME_TIMER)
+    return theme_code(t, THEME_TIMERS)
 
 
 def theme_animation_frames(t):
-    return theme_code(t, ANIMATION_FRAME)
+    return theme_code(t, ANIMATION_FRAMES)
 
 
-def closing(code, start, opening, close):
-    depth = 0
-    for i in range(start, len(code)):
-        if code[i] == opening:
-            depth += 1
-        elif code[i] == close:
-            depth -= 1
-            if depth == 0:
-                return i
-    return len(code) - 1
-
-
-JS_HANDLER = re.compile(r"\bonerror\s*=\s*(?:function\b[^(]*\([^)]*\)\s*|(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>\s*)"
-                        r"|\bcatch\s*(?:\([^)]*\))?\s*(?=\{)|\.(?:catch|aoFalhar)\s*(?=\()")
-JS_RESCHEDULE = re.compile(r"\bsetTimeout\s*\(\s*(?:(?P<name>[A-Za-z_$][\w$]*)\s*,"
-                           r"|(?:\(\s*\)|[A-Za-z_$][\w$]*)\s*=>\s*\{?\s*(?P<called>[A-Za-z_$][\w$]*)\s*\()")
-
-
-def rescheduled(r):
-    return r.group("name") or r.group("called")
-
-
-def handler_body(code, start):
-    i = start
-    while i < len(code) and code[i].isspace():
-        i += 1
-    if i < len(code) and code[i] in "{(":
-        end = closing(code, i, code[i], "}" if code[i] == "{" else ")")
-        return i, code[i:end + 1]
-    stop = min((p for p in (code.find(";", i), code.find("\n", i)) if p >= 0), default=len(code))
-    return i, code[i:stop]
-
-
-def mask_js_strings(code):
-    out, quote, i = [], None, 0
-    while i < len(code):
-        c = code[i]
-        if quote:
-            if c == "\\" and i + 1 < len(code):
-                out.append("  " if code[i + 1] != "\n" else " \n")
-                i += 2
-                continue
-            if c == quote:
-                quote = None
-                out.append(c)
-            else:
-                out.append("\n" if c == "\n" else " ")
-            if c == "\n" and quote != "`":
-                quote = None
-        else:
-            if c in "'\"`":
-                quote = c
-            out.append(c)
-        i += 1
-    return "".join(out)
-
-
-JS_FUNCTION = re.compile(r"\bfunction\s+([A-Za-z_$][\w$]*)\s*\([^)]*\)\s*(?=\{)"
-                         r"|\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?"
-                         r"(?:function\b[^{]*|\([^)]*\)\s*=>|[A-Za-z_$][\w$]*\s*=>)\s*(?=\{)")
-
-
-def js_functions(code):
-    spans = []
-    for m in JS_FUNCTION.finditer(code):
-        start = m.end()
-        spans.append((m.group(1) or m.group(2), start, closing(code, start, "{", "}")))
-    return spans
-
-
-JS_CATCH_BLOCK = re.compile(r"\bcatch\s*(?:\([^)]*\))?\s*\{")
-JS_CATCH_CALL = re.compile(r"\.catch\s*\(")
-JS_EMPTY_CALLBACK = re.compile(r"^\s*(?:(?:async\s*)?(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>\s*\{\s*\}"
-                               r"|(?:async\s+)?function\s*[\w$]*\s*\([^)]*\)\s*\{\s*\})\s*,?\s*$")
-
-
-def js_swallowed(code):
-    code = mask_js_strings(code)
-    found = []
-    for m in JS_CATCH_BLOCK.finditer(code):
-        if not code[m.end():closing(code, m.end() - 1, "{", "}")].strip():
-            found.append(code.count("\n", 0, m.start()) + 1)
-    for m in JS_CATCH_CALL.finditer(code):
-        if JS_EMPTY_CALLBACK.match(code[m.end():closing(code, m.end() - 1, "(", ")")]):
-            found.append(code.count("\n", 0, m.start()) + 1)
-    return found
-
-
-def js_retries(code):
-    found = []
-    code = mask_js_strings(code)
-    functions = js_functions(code)
-    calls = {}
-    for name, a, b in functions:
-        body = code[a:b]
-        calls.setdefault(name, set()).update(
-            m.group(1) for m in re.finditer(r"(?<![\w$])([A-Za-z_$][\w$]*)\s*\(", body)
-            if not body[:m.start()].rstrip().endswith("."))
-    for m in JS_HANDLER.finditer(code):
-        start, body = handler_body(code, m.end())
-        around = [(a, b) for _, a, b in functions if a < m.start() < b]
-        enclosing = {name for name, a, b in functions if a < m.start() < b}
-        found += [code.count("\n", 0, start + r.start()) + 1 for r in JS_RESCHEDULE.finditer(body)
-                  if (rescheduled(r) in enclosing or enclosing & calls.get(rescheduled(r), set()))
-                  and not (around and rescheduled_anyway(code, max(around), rescheduled(r), (start, start + len(body))))]
-    return found
-
-
-def rescheduled_anyway(code, span, name, handler):
-    a, b = span
-    for r in JS_RESCHEDULE.finditer(code, a, b):
-        if rescheduled(r) == name and not handler[0] <= r.start() < handler[1]:
-            between = code[a:r.start()]
-            if between.count("{") - between.count("}") == 1:
-                return True
-    return False
-
-
-def joined_code(lexed):
-    lines = lexed.code
-    return "\n".join(lines.get(n, "") for n in range(1, max(lines, default=0) + 1))
+def script_tags(t, page):
+    pieces = t.pieces(page)
+    for tag in pieces[0].tree.tags if pieces and pieces[0].tree is not None else []:
+        src = tag.attribute("src")
+        if tag.name == "script" and not tag.end and src is not None and src.value is not None:
+            path = posixpath.normpath(posixpath.join(posixpath.dirname(page), src.value.value.split("?")[0]))
+            if suffix(path) == ".js" and path in t.files:
+                yield path, html.script_type(tag) == "module"
 
 
 def retries(t):
-    items = unit_items(t, (*PYTHON, *STRUCTURED), ir.retries)
-    for p in t.paths(".js", ".html"):
-        items += [(p, n) for n in js_retries(joined_code(t.lexed(p)))]
-    return items
+    return unit_items(t, (*PYTHON, *STRUCTURED), ir.retries) + \
+        unit_items(t, (".js", ".html"), lambda unit: ir.retries(unit) + ir.reschedules(unit))
 
 
 def workflow_python(t, path):
@@ -795,9 +635,7 @@ def workflow_python(t, path):
 
 
 def broad_excepts(t):
-    items = unit_items(t, (*PYTHON, *STRUCTURED), ir.broad_handlers)
-    for p in t.paths(".js", ".html"):
-        items += [(p, n) for n in js_swallowed(joined_code(t.lexed(p)))]
+    items = unit_items(t, (*PYTHON, *STRUCTURED, ".js", ".html"), ir.broad_handlers)
     for p in t.paths(".iss"):
         lexed = t.lexed(p)
         code_start = next((n for n, c in sorted(lexed.code.items()) if c.strip().lower() == "[code]"), None)

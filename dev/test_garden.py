@@ -56,6 +56,13 @@ COMPOSITE_PYTHON_STEP = "runs:\n  using: composite\n  steps:\n    - shell: pytho
 
 CASES = {
     "comment_lines": [
+        ("a url in capitals keeps its slashes", {"a.css": "a { b: URL(http://x/*y*/) }\n"},
+         {"a.css": "a { b: c } /* why */\n"}),
+        ("a comment in an event attribute", {"a.html": "<button onclick=\"f()\"></button>\n"},
+         {"a.html": "<button onclick=\"f() /* why */\"></button>\n"}),
+        ("a comment in a style attribute", {"a.html": "<p style=\"color: red\"></p>\n"},
+         {"a.html": "<p style=\"color: red /* why */\"></p>\n"}),
+        ("a comment beside a tag", {"a.html": "<p>x</p>\n"}, {"a.html": "<p>x</p> <!-- why -->\n"}),
         ("a quoted run that goes on to the next line",
          {"action.yml": "runs:\n  steps:\n    - shell: pwsh\n      run: \"Write-Output 'a #b'\n        'c'\"\n"},
          {"action.yml": "runs:\n  steps:\n    - shell: pwsh\n      run: \"Write-Output 'a #b'\n        # why\"\n"}),
@@ -160,6 +167,7 @@ CASES = {
          {"a.py": "ps = 'Get-Item x -ErrorAction SilentlyContinue'\n" + RUN_PS}),
     ],
     "sleeps_app": [
+        ("Start-Sleep in a JavaScript string", {"a.js": "const s = 'Start-Sleep 1';\n"}, {"a.ps1": "Start-Sleep 1\n"}),
         ("Start-Sleep in a Python string that is no PowerShell", {"a.py": "x = 'Start-Sleep 1'\n"},
          {"a.py": 'import subprocess\nsubprocess.run(["powershell", "-Command", "Start-Sleep 1"])\n'}),
         ("the sleep alias", {"a.ps1": "Write-Output sleep\n"}, {"a.ps1": "sleep 1\n"}),
@@ -383,6 +391,19 @@ CASES = {
          {".github/workflows/w.yml": ALIASED_JOB.replace("RUN", "Start-Sleep 1")}),
     ],
     "theme_timers": [
+        ("a timer in a module the page loads, with an await at the top",
+         {"themes/t/index.html": "<script type=\"module\" src=\"a.js\"></script>\n", "themes/t/a.js": "await f();\n"},
+         {"themes/t/index.html": "<script type=\"module\" src=\"a.js\"></script>\n",
+          "themes/t/a.js": "await f();\nsetTimeout(g, 1);\n"}),
+        ("a timer in a module script of the page",
+         {"themes/t/index.html": "<script type=\"module\">\nimport {f} from 'f.js';\nf();\n</script>\n"},
+         {"themes/t/index.html": "<script type=\"module\">\nimport {f} from 'f.js';\nsetTimeout(f, 1);\n</script>\n"}),
+        ("a timer in a template field", {"themes/t/a.js": "const s = `setTimeout(f, 1)`;\n"},
+         {"themes/t/a.js": "const s = `${setTimeout(f, 1)}`;\n"}),
+        ("a timer in an event attribute", {"themes/t/index.html": "<button onclick=\"f()\"></button>\n"},
+         {"themes/t/index.html": "<button onclick=\"setTimeout(f, 1)\"></button>\n"}),
+        ("a method named like a timer", {"themes/t/a.js": "const o = { setTimeout(f) { return f; } };\n"},
+         {"themes/t/a.js": "o.setTimeout(f, 1);\n"}),
         ("setTimeout", {"themes/t/a.js": "// setTimeout(f, 1)\nconst s = 'setTimeout(';\n"},
          {"themes/t/a.js": "setTimeout(f, 1);\n"}),
         ("setInterval in index.html", {"themes/t/index.html": "<script>\nf();\n</script>\n"},
@@ -475,6 +496,88 @@ CASES = {
                    "    if (($done) >$null) { break }\n    Start-Sleep 1\n}\n"},
          {"a.ps1": "function attempt { try { Get-Date } catch { $null } }\nwhile ($true) {\n    $done = attempt\n"
                    "    if (($done) 2>$null) { break }\n    Start-Sleep 1\n}\n"}),
+        ("an exported function that tries again",
+         {"a.js": "import {f} from 'f.js';\nexport function conectar() {\n  try { f(); } catch (e) { report(e); }\n}\n"},
+         {"a.js": "import {f} from 'f.js';\nexport function conectar() {\n  try { f(); } catch (e) { setTimeout(conectar, 1000); }\n}\n"}),
+        ("a scheduled function that reaches the caller two calls deep",
+         {"a.js": "function conectar() {\n  try { f(); } catch (e) { setTimeout(religar, 1000); }\n}\n"
+                  "function religar() { preparar(); }\nfunction preparar() { avisar(); }\n"},
+         {"a.js": "function conectar() {\n  try { f(); } catch (e) { setTimeout(religar, 1000); }\n}\n"
+                  "function religar() { preparar(); }\nfunction preparar() { conectar(); }\n"}),
+        ("an if that leaves after scheduling again, on a test that is no failure",
+         {"a.js": "function tick() {\n  if (ativo) { setTimeout(tick, 16); return; }\n  parar();\n}\n"},
+         {"a.js": "function tick() {\n  if (typeof T === 'undefined') { setTimeout(tick, 16); return; }\n  parar();\n}\n"}),
+        ("an error listener that tries again",
+         {"a.js": "function load() {\n  img.addEventListener('load', () => setTimeout(load, 1000));\n}\n"},
+         {"a.js": "function load() {\n  img.addEventListener('error', () => setTimeout(load, 1000));\n}\n"}),
+        ("a retry that also schedules something polled",
+         {"a.js": "function conectar() {\n  try { f(); } catch (e) { setTimeout(() => { log(); conectar(); }, 1000); }\n"
+                  "  setTimeout(conectar, 5000);\n}\n"},
+         {"a.js": "function conectar() {\n  try { f(); } catch (e) { setTimeout(() => { log(); conectar(); }, 1000); }\n"
+                  "  setTimeout(log, 5000);\n}\n"}),
+        ("two declarations in one statement keep their own polarity",
+         {"a.js": "function tenta() { try { f(); return true; } catch (e) { return false; } }\nasync function loop() {\n  while (true) {\n    const a = outro(), ok = tenta();\n"
+                  "    if (a) break;\n    await new Promise(r => setTimeout(r, 1000));\n  }\n}\n"},
+         {"a.js": "function tenta() { try { f(); return true; } catch (e) { return false; } }\nasync function loop() {\n  while (true) {\n    const a = outro(), ok = tenta();\n"
+                  "    if (ok) break;\n    await new Promise(r => setTimeout(r, 1000));\n  }\n}\n"}),
+        ("an assignment inside a comparison keeps its own polarity",
+         {"a.js": "function tenta() { try { f(); return true; } catch (e) { return false; } }\nasync function loop() {\n  let s;\n  while (true) {\n"
+                  "    if ((s = outro()) == tenta()) {}\n    if (s) break;\n    await new Promise(r => setTimeout(r, 1000));\n  }\n}\n"},
+         {"a.js": "function tenta() { try { f(); return true; } catch (e) { return false; } }\nasync function loop() {\n  let s;\n  while (true) {\n"
+                  "    s = tenta();\n    if (s) break;\n    await new Promise(r => setTimeout(r, 1000));\n  }\n}\n"}),
+        ("a for of whose variable is only a key",
+         {"a.js": "function tenta() { try { f(); return true; } catch (e) { return false; } }\nasync function loop() {\n  for (const x of items) {\n    send(x);\n"
+                  "    if (tenta()) break;\n    await new Promise(r => setTimeout(r, 1000));\n  }\n}\n"},
+         {"a.js": "function tenta() { try { f(); return true; } catch (e) { return false; } }\nasync function loop() {\n  for (const x of items) {\n    send({ x: 1 });\n"
+                  "    if (tenta()) break;\n    await new Promise(r => setTimeout(r, 1000));\n  }\n}\n"}),
+        ("a for of whose variable is only a property name",
+         {"a.js": "function tenta() { try { f(); return true; } catch (e) { return false; } }\nasync function loop() {\n  for (const x of items) {\n    send(x);\n"
+                  "    if (tenta()) break;\n    await new Promise(r => setTimeout(r, 1000));\n  }\n}\n"},
+         {"a.js": "function tenta() { try { f(); return true; } catch (e) { return false; } }\nasync function loop() {\n  for (const x of items) {\n    send(o.x);\n"
+                  "    if (tenta()) break;\n    await new Promise(r => setTimeout(r, 1000));\n  }\n}\n"}),
+        ("a wait that resolves in an arrow",
+         {"a.js": "async function f() {\n  for (let i = 0; i < 3; i++) {\n    try { await send(); break; } catch (e) {\n"
+                  "      await new Promise(r => later(() => r(), 1000));\n    }\n  }\n}\n"},
+         {"a.js": "async function f() {\n  for (let i = 0; i < 3; i++) {\n    try { await send(); break; } catch (e) {\n"
+                  "      await new Promise(r => setTimeout(() => r(), 1000));\n    }\n  }\n}\n"}),
+        ("a JavaScript failure told by an if that leaves",
+         {"a.js": "function carregarTransporte() {\n  s.onload = () => {\n"
+                  "    if (typeof TRANSPORTE === 'undefined') { s.remove(); avisar(); return; }\n"
+                  "    carregar();\n  };\n}\nfunction conectar() {\n  carregarTransporte();\n}\n"},
+         {"a.js": "function carregarTransporte() {\n  s.onload = () => {\n"
+                  "    if (typeof TRANSPORTE === 'undefined') { s.remove(); reconT = setTimeout(conectar, 3000); return; }\n"
+                  "    carregar();\n  };\n}\nfunction conectar() {\n  carregarTransporte();\n}\n"}),
+        ("a function inside another that schedules the outer one from its catch",
+         {"a.js": "function conectar() {\n  function tentar() {\n    try { f(); } catch (e) { setTimeout(avisar, 1000); }\n"
+                  "  }\n  fila.push(tentar);\n}\n"},
+         {"a.js": "function conectar() {\n  function tentar() {\n    try { f(); } catch (e) { setTimeout(conectar, 1000); }\n"
+                  "  }\n  fila.push(tentar);\n}\n"}),
+        ("an if on a failure test that schedules again without leaving is polling",
+         {"a.js": "function load() {\n  if (!ready()) setTimeout(load, 100);\n  go();\n}\n"},
+         {"a.js": "function load() {\n  if (!ready()) { setTimeout(load, 100); return; }\n  go();\n}\n"}),
+        ("an if that schedules again without leaving is polling",
+         {"a.js": "function tick() {\n  if (playing) setTimeout(tick, 16);\n}\n"},
+         {"a.js": "function load() {\n  if (!ready()) { setTimeout(load, 100); return; }\n  go();\n}\n"}),
+        ("the rejection callback of a then that tries again",
+         {"a.js": "function go() { fetch(u).then(ok, () => report()); }\n"},
+         {"a.js": "function go() { fetch(u).then(ok, () => setTimeout(go, 3000)); }\n"}),
+        ("a JavaScript loop with a try and a wait",
+         {"a.js": "async function f() {\n  for (let i = 0; i < 3; i++) {\n    try { await send(); } catch (e) { report(e); }\n"
+                  "  }\n}\n"},
+         {"a.js": "async function f() {\n  for (let i = 0; i < 3; i++) {\n    try { await send(); break; } catch (e) {\n"
+                  "      await new Promise(r => setTimeout(r, 1000));\n    }\n  }\n}\n"}),
+        ("a JavaScript break inside a switch leaves only the switch",
+         {"a.js": "function tenta() { try { f(); return true; } catch (e) { return false; } }\nasync function loop() {\n"
+                  "  while (true) {\n    if (tenta()) { switch (k) { case 1: break; } }\n"
+                  "    await new Promise(r => setTimeout(r, 1000));\n  }\n}\n"},
+         {"a.js": "function tenta() { try { f(); return true; } catch (e) { return false; } }\nasync function loop() {\n"
+                  "  while (true) {\n    if (tenta()) break;\n"
+                  "    await new Promise(r => setTimeout(r, 1000));\n  }\n}\n"}),
+        ("a JavaScript wait through a helper of the file",
+         {"a.js": "const esperar = ms => log(ms);\nasync function f() {\n  while (true) {\n"
+                  "    try { await send(); break; } catch (e) { await esperar(1000); }\n  }\n}\n"},
+         {"a.js": "const esperar = ms => new Promise(r => setTimeout(r, ms));\nasync function f() {\n  while (true) {\n"
+                  "    try { await send(); break; } catch (e) { await esperar(1000); }\n  }\n}\n"}),
         ("a loop that stops on the flag its helper sets",
          {"a.py": "import time\ndef attempt():\n    try:\n        return f()\n    except OSError:\n        return None\n"
                   "while not done:\n    other = attempt()\n    time.sleep(1)\n"},
@@ -843,6 +946,25 @@ CASES = {
          {"a.ps1": ATTEMPT_PS + "while ($true) { if ([bool]$s = attempt) { }; if ($s) { break }; Start-Sleep 1 }\n"}),
     ],
     "broad_excepts": [
+        ("a catch in the default export of a module",
+         {"a.js": "export default function () {\n  try { f(); } catch (e) { mostrar(e); }\n}\n"},
+         {"a.js": "export default function () {\n  try { f(); } catch (e) {}\n}\n"}),
+        ("a JavaScript catch that only names its error", {"a.js": "try { f(); } catch (e) { mostrar(e); }\n"},
+         {"a.js": "try { f(); } catch (e) { e; }\n"}),
+        ("a catch inside a with", {"a.js": "with (o) { try { f(); } catch (e) { mostrar(e); } }\n"},
+         {"a.js": "with (o) { try { f(); } catch (e) {} }\n"}),
+        ("an error listener is no catch", {"a.js": "img.addEventListener('error', () => mostrar());\n"},
+         {"a.js": "p.catch(() => {});\n"}),
+        ("a JavaScript catch that handles nothing but is not empty",
+         {"a.js": "try { f(); } catch (e) { report(e); }\n"}, {"a.js": "try { f(); } catch (e) { void e; }\n"}),
+        ("the rejection callback of a then that does nothing", {"a.js": "p.then(ok, e => mostrar(e));\n"},
+         {"a.js": "p.then(ok, () => {});\n"}),
+        ("a promise catch that gives back undefined", {"a.js": "p.catch(e => mostrar(e));\n"},
+         {"a.js": "p.catch(() => undefined);\n"}),
+        ("a catch written in a string", {"a.js": "const s = 'try { f(); } catch (e) {}';\n"},
+         {"a.js": "try { f(); } catch (e) {}\n"}),
+        ("a catch in an event attribute", {"a.html": "<button onclick=\"f()\"></button>\n"},
+         {"a.html": "<button onclick=\"try { f(); } catch (e) {}\"></button>\n"}),
         ("a PowerShell catch with no type", {"a.ps1": "try { f } catch [IO.IOException] { }\n"},
          {"a.ps1": "try { f } catch { }\n"}),
         ("a PowerShell catch of System.Exception", {"a.ps1": "try { f } catch [IO.IOException] { }\n"},
@@ -1111,16 +1233,6 @@ CASES = {
 KNOWN_MISSES_ISSUE = "https://github.com/ritmelli/ritmelli/issues/254"
 POWERSHELL_SOURCES = (".ps1", ".psd1", ".yml", ".yaml", ".py")
 KNOWN_MISSES = [
-    ("broad_excepts", "a JavaScript catch that handles nothing but is not empty",
-     {"a.js": "try { f(); } catch (e) { void e; }\n"},
-     ((".js", ".html"), r"catch\s*(?:\([^)]*\))?\s*\{\s*void\s+[\w$]+\s*;?\s*\}")),
-
-    ("retries", "a JavaScript failure told by an if (index.html, the transport not loaded)",
-     {"a.js": "function carregarTransporte() {\n  s.onload = () => {\n"
-              "    if (typeof TRANSPORTE === 'undefined') { s.remove(); reconT = setTimeout(conectar, 3000); return; }\n"
-              "    carregar();\n  };\n}\nfunction conectar() {\n  carregarTransporte();\n}\n"},
-     ((".js", ".html"), r"onload\s*=[^;]*?\{[^}]*?if\s*\([^)]*\)\s*\{[^}]*setTimeout\(")),
-
     ("suppressions", "a quiet -ErrorAction in parentheses",
      {"a.ps1": "Get-Item x -ErrorAction ('SilentlyContinue')\n"},
      (POWERSHELL_SOURCES, r"(?i)-(?:erroraction|ea)\s*:?\s*\(\s*['\"]")),
@@ -1354,6 +1466,32 @@ def test_unreadable():
              {"a.py": "s0 = 'Get-Date'\n" + "".join(f"s{i} = '\\n'.join([s{i - 1}])\n" for i in range(1, 1101))
                       + "run(['powershell', '-Command', s1100])\n"},
              "a.py:1: the Python reader stops here"),
+            ("JavaScript file", {"a.js": "x();\nlet = ;\n"}, "a.js:2: the JavaScript reader stops here"),
+            ("script of a page", {"a.html": "<p>\n<script>\nx();\nlet = ;\n</script>\n"},
+             "a.html:4: the JavaScript reader stops here"),
+            ("event attribute", {"a.html": "<p>\n<button onclick=\"f(\"></button>\n"},
+             "a.html:2: the JavaScript reader stops here"),
+            ("page", {"a.html": "<p>\n<script>\nx();\n"}, "a.html:2: the HTML reader stops here"),
+            ("CSS file", {"a.css": "a { color: red; }\nb { color: red;\n"}, "a.css:2: the CSS reader stops here"),
+            ("style attribute", {"a.html": "<p>\n<p style=\"a { \"></p>\n"}, "a.html:2: the CSS reader stops here"),
+            ("JavaScript string with an escape that is no escape", {"a.js": "x();\ny = '\\xZZ';\n"},
+             "a.js:2: the JavaScript reader stops here"),
+            ("import in a script of a page that is no module",
+             {"a.html": "<p>\n<script>\nimport {f} from 'f.js';\n</script>\n"}, "a.html:3: the JavaScript reader stops here"),
+            ("import inside a block of a module", {"a.js": "export const a = 1;\nif (a) {\n  import b from 'b.js';\n}\n"},
+             "a.js:3: the JavaScript reader stops here"),
+            ("module that a classic tag loads",
+             {"themes/t/index.html": "<script src=\"a.js\"></script>\n", "themes/t/a.js": "x();\nexport const a = 1;\n"},
+             "themes/t/a.js:2: the JavaScript reader stops here"),
+            ("JavaScript too deep for its reader", {"a.js": "x = " + "(" * 400 + "a" + ")" * 400 + ";\n"},
+             "a.js:1: the JavaScript reader stops here"),
+            ("script of a page too deep for its reader",
+             {"a.html": "<p>\n<script>\nx = " + "(" * 400 + "a" + ")" * 400 + ";\n</script>\n"},
+             "a.html:2: the JavaScript reader stops here"),
+            ("JavaScript too deep to walk", {"a.js": "x = " + "a+" * 1500 + "a;\n"},
+             "a.js:1: the JavaScript reader stops here"),
+            ("JavaScript too deep to lower", {"a.js": "x = " + "a+" * 600 + "a;\n"},
+             "a.js:1: the JavaScript reader stops here"),
             ("Python step of a composite action",
              {"action.yml": "runs:\n  steps:\n    - shell: python\n      run: this is not Python!\n"},
              "action.yml:4: the Python reader stops here")):
