@@ -972,24 +972,23 @@ def samples():
         }
         page = "".join(f'<script type="module" src="{name}"></script>\n' for name in ("a.js", "b.js", "d.js", "e.js"))
         page = '<script src="c.js"></script>\n' + page
-        changed = []
+        rewritten_wrong = []
 
-        def verdicts(texts, verdict):
-            for name, text in texts.items():
-                (folder / name).write_text(text, encoding="utf-8")
-            found = verdict()
+        def judged(what, texts, verdict, holds):
             for name, text in texts.items():
                 (folder / name).write_text(noisy(text), encoding="utf-8")
-            if (again := verdict()) != found:
-                changed.append((found, again))
+            if not holds(again := verdict()):
+                rewritten_wrong.append((what, again))
             for name, text in texts.items():
                 (folder / name).write_text(text, encoding="utf-8")
-            return found
+            return verdict()
+
+        def as_expected(expected):
+            return lambda found: len(found) == len(expected) and all(any(e in p for p in found) for e in expected)
 
         for what, (texts, expected) in cases.items():
-            found = verdicts(texts, lambda: sorted(module_problems(folder, page)))
-            results.append((len(found) == len(expected) and all(any(e in p for p in found) for e in expected),
-                            f"{what}: {found or 'no problem'}"))
+            found = judged(what, texts, lambda: module_problems(folder, page), as_expected(expected))
+            results.append((as_expected(expected)(found), f"{what}: {found or 'no problem'}"))
         refused = {
             'import b from "b.js";\nb();\n': "identifier", 'import * as n from "b.js";\nn.b();\n': "namespace_import",
             'import { b as c } from "b.js";\nc();\n': "import_specifier",
@@ -1006,8 +1005,11 @@ def samples():
             "{ export const q = 1; }\n" + uses_b: "export_statement",
         }
         for text, kind in refused.items():
-            found = verdicts(files(text, b, d='import { b } from "b.js";\nb();\n'), lambda: sorted(module_problems(folder, page)))
-            results.append((any(p.startswith(f"a.js: has a {kind} at line ") and "does not judge" in p for p in found),
+            def refuses(found, kind=kind):
+                return any(p.startswith(f"a.js: has a {kind} at line ") and "does not judge" in p for p in found)
+            found = judged(text, files(text, b, d='import { b } from "b.js";\nb();\n'),
+                           lambda: module_problems(folder, page), refuses)
+            results.append((refuses(found),
                             f"an import or export outside the rule, {text.splitlines()[0]!r}, is a form the check "
                             f"does not judge: {found}"))
         for name, text in files(uses_b, b).items():
@@ -1022,18 +1024,22 @@ def samples():
             shared = module_problems(folder, '<script src="/t/other/x.js"></script>\n' + page)
         results.append((len(shared) == 1 and "/t/other/x.js: a dynamic import()" in shared[0],
                         f"a dynamic import() in a classic script of another theme's folder: {shared}"))
-        families, loads = verdicts(
-            {"pixel.js": "const FONTES = { j: { fam: '\"Jersey 10\"', S: 300 } };\n",
+        def loaded_outside(found):
+            return found[0] == {"Jersey 10"} and [x.split(": ")[0] for x in found[1]] == [
+                "c.js:1", "c.js:3", "c.js:4", "c.js:5", "c.js:6"]
+        families, loads = found = judged(
+            "the engine's fonts", {"pixel.js": "const FONTES = { j: { fam: '\"Jersey 10\"', S: 300 } };\n",
              "c.js": 'document.fonts.load(`300px "Jersey 10"`);\n// document.fonts.load("Jersey 10")\n'
                      'document.fonts.load(/* the deck */ \'300px "Jersey 10"\');\n'
                      'document.fonts /* the deck */ .load(\'300px "Jersey 10"\');\n'
                      'document.fonts[\'load\'](\'300px "Jersey 10"\');\n'
-                     'document.fonts.load(\'300px "Jersey\\x2010"\');\n'}, lambda: [sorted(found) for found in engine_fonts(folder)])
-        results.append((families == ["Jersey 10"] and [x.split(": ")[0] for x in loads] == ["c.js:1", "c.js:3", "c.js:4", "c.js:5", "c.js:6"],
+                     'document.fonts.load(\'300px "Jersey\\x2010"\');\n'}, lambda: engine_fonts(folder), loaded_outside)
+        results.append((loaded_outside(found),
                         f"a font of the engine loaded outside it, in a template and after a comment, in the argument or "
                         f"in the call, by a string index and with an escape, and none read in a comment: {loads}"))
-        results.append((not changed, f"each case, with a comment between every two tokens and parentheses around every "
-                                     f"expression where JavaScript takes them, keeps its verdict ({changed or 'all do'})"))
+        results.append((not rewritten_wrong, f"each case, with a comment between every two tokens and parentheses around "
+                                             f"every expression in the places the check reads, gives its expected verdict "
+                                             f"({rewritten_wrong or 'all do'})"))
     return results
 
 

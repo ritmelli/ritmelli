@@ -9,6 +9,8 @@ import urllib.parse
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+i18n = importlib.import_module("i18n")
 compara = importlib.import_module("compara")
 so_mock = importlib.import_module("so_mock")
 missing_script = importlib.import_module("missing_script")
@@ -120,7 +122,7 @@ MODULES_RAN = ("(async () => { const map = document.querySelector('script[type=i
 NO_IMPORT_MAP = {"a browser without HTMLScriptElement.supports": "delete HTMLScriptElement.supports;",
                  "a browser whose HTMLScriptElement.supports refuses importmap":
                  "HTMLScriptElement.supports = () => false;"}
-STOPPED = ("({text: document.body ? document.body.textContent : '', wanted: I18N.t('app.noImportMap'),"
+STOPPED = ("({text: document.body ? document.body.textContent : '', language: (window.I18N_DADOS || {}).lingua,"
            " started: typeof MESA !== 'undefined' || typeof carregar !== 'undefined',"
            " shown: document.documentElement.classList.contains('i18n-ok')})")
 PAGE_READY_S = 15.0
@@ -266,7 +268,8 @@ async def checks(tab):
             node = (await tab.cmd("Runtime.evaluate", expression=target))["result"]["objectId"]
             listeners += [x["type"] for x in (await tab.cmd("DOMDebugger.getEventListeners", objectId=node))["listeners"]]
         await tab.cmd("Page.removeScriptToEvaluateOnNewDocument", identifier=added["identifier"])
-        results.append((stopped.get("text") == stopped.get("wanted") != "app.noImportMap" and stopped.get("shown")
+        texts = i18n.ler(i18n.arquivo(tab.raiz / "themes" / "ritmelli" / "i18n", stopped.get("language") or "en"))
+        results.append((stopped.get("text") == texts["app.noImportMap"] and stopped.get("shown")
                         and not stopped.get("started") and not listeners,
                         f"{browser} gets the page's message and nothing of the page starts "
                         f"({stopped}, listeners: {listeners or 'none'})"))
@@ -298,7 +301,7 @@ def main(argv=None):
                 files = inline_scripts(args.raiz.resolve())
 
                 async def run(tab):
-                    tab.files = files
+                    tab.files, tab.raiz = files, args.raiz.resolve()
                     return await checks(tab)
                 results += asyncio.run(missing_script.with_tab(srv, run))
             finally:
