@@ -10,7 +10,7 @@ CONSTANTS Qids, NoQid, StreamFailureChecksJob, AudioSwapThroughChangeQueue, Stre
           PassageFileKeepsTheJob, WithTheRename, RenameReplacesTheTrack, RenameReachesThePreparedDeck,
           RecordBuiltUnderTheLock, WithTheJobOnThePlatter, TheJobIsPlayedBeforeItsDownloadEnds,
           DownloadOutcomes, StreamReaderStartsWith, QueueLengths, WithTheOtherOnTheShelf, WithTheCleanEnd,
-          TheEndKeepsThePrepared
+          TheEndKeepsThePrepared, WithTheRedownload, RefusedStreamTriesTheFileAgain
 
 VARIABLES pc, track, nextId, line, pronto, nearEnd, noReader, gen,
           jobStatus, shelf, stream, swTr, dlSaw, wrongTrack, fileWait, stGen, refusedPlaying,
@@ -380,12 +380,27 @@ StreamRefusedChecksJob ==
           /\ LET noFile == jobStatus = "error" \/ (RefusedStreamStopsWithoutTheFile /\ jobStatus = "done" /\ ~shelf)
              IN \/ ActsOn(noFile /\ Waits) /\ StopPlatter /\ Flags /\ Refuses /\ Goto("StreamReader", "done")
                 \/ /\ ~ActsOn(noFile /\ Waits) /\ UNCHANGED <<platVars, wrongTrack, refusedPlaying, shelfName, dlName>>
-                   /\ Goto("StreamReader", IF RefusedStreamTriesTheFileFirst THEN "st_warn" ELSE "st_read_shelf")
+                   /\ Goto("StreamReader", IF ~RefusedStreamTriesTheFileFirst THEN "st_read_shelf"
+                                           ELSE IF RefusedStreamTriesTheFileAgain THEN "st_again_read" ELSE "st_warn")
           /\ UNCHANGED <<jobStatus, shelf, stream, swTr, dlSaw, fileWait, stGen, queueVars, localVars, shelfName, dlName>>
        \/ /\ At("StreamReader", "st_read_shelf")
           /\ Goto("StreamReader", IF FileReady THEN "st_file_lock" ELSE "st_warn")
           /\ srName' = IF FileReady THEN shelfName ELSE srName
           /\ UNCHANGED <<lockVars, platVars, jobVars, queueVars, prX, prVer, prLine, prTrack, prGen, prJob, prPath, stalePrepared, keptHead, pwSeen, resQ, resVer, prName, plName, stName>>
+       \/ /\ At("StreamReader", "st_again_read")
+          /\ Goto("StreamReader", IF FileReady THEN "st_again_lock" ELSE "st_warn")
+          /\ srName' = IF FileReady THEN shelfName ELSE srName
+          /\ UNCHANGED <<lockVars, platVars, jobVars, queueVars, prX, prVer, prLine, prTrack, prGen, prJob, prPath, stalePrepared, keptHead, pwSeen, resQ, resVer, prName, plName, stName>>
+       \/ /\ At("StreamReader", "st_again_lock")
+          /\ Acquire("StreamReader", "_lock")
+          /\ Goto("StreamReader", "st_again")
+          /\ UNCHANGED <<platVars, jobVars, queueVars, localVars>>
+       \/ /\ At("StreamReader", "st_again")
+          /\ SectionThenRelease("StreamReader", "_qlock", {"_lock"})
+          /\ \/ /\ ActsOn(TRUE) /\ FileHandoverNamed(IF RecordBuiltUnderTheLock THEN shelfName ELSE srName)
+                /\ Flags /\ Goto("StreamReader", "done")
+             \/ /\ ~ActsOn(TRUE) /\ UNCHANGED <<platVars, wrongTrack, shelfName, dlName>> /\ Goto("StreamReader", "st_warn")
+          /\ UNCHANGED <<jobStatus, shelf, stream, swTr, dlSaw, fileWait, stGen, refusedPlaying, queueVars, localVars, shelfName, dlName>>
        \/ /\ At("StreamReader", "st_warn")
           /\ Section("StreamReader", "_qlock")
           /\ \/ ActsOn(Waits) /\ Flags /\ Refuses
@@ -414,6 +429,13 @@ PlaySwaps ==
 ForgetsTheRecord ==
     /\ At("Forget", "fg_start")
     /\ shelf' = FALSE
+    /\ Goto("Forget", IF WithTheRedownload THEN "fg_back" ELSE "done")
+    /\ UNCHANGED <<lockVars, platVars, jobStatus, stream, swTr, dlSaw, wrongTrack, fileWait, stGen, refusedPlaying, queueVars, localVars, shelfName, dlName>>
+
+RecordDownloadedAgain ==
+    /\ At("Forget", "fg_back")
+    /\ \/ stream = "refused" /\ shelf' = TRUE
+       \/ UNCHANGED shelf
     /\ Goto("Forget", "done")
     /\ UNCHANGED <<lockVars, platVars, jobStatus, stream, swTr, dlSaw, wrongTrack, fileWait, stGen, refusedPlaying, queueVars, localVars, shelfName, dlName>>
 
@@ -636,7 +658,7 @@ Step ==
     \/ SwapChooses \/ SwapFileLocks \/ SwapPublishesTheFile \/ SwapLocks \/ SwapCloses \/ SwapPublishes \/ SwapReleases
     \/ StreamTries \/ StreamOpened \/ StreamReaderStarts \/ StreamReaderEnds \/ StreamReaderReachesItsEnd
     \/ StreamRefusedToday \/ StreamRefusedChecksJob
-    \/ PlayLocks \/ PlaySwaps \/ ForgetsTheRecord \/ MoveSwaps \/ Reserves \/ Seeks
+    \/ PlayLocks \/ PlaySwaps \/ ForgetsTheRecord \/ RecordDownloadedAgain \/ MoveSwaps \/ Reserves \/ Seeks
     \/ MixerTime \/ MixerSwitches
     \/ PrepareReads \/ PrepareMarks \/ PrepareSource \/ PrepareLocks \/ PreparePublishes \/ PrepareReleases
     \/ AudioVersionLocks \/ AudioVersionToday \/ AudioVersionThroughChangeQueue

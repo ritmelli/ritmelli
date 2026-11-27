@@ -52,6 +52,8 @@ WITNESSES = {"Races211": {"NoSwitchToAKeptDeck", "SwapLeavesTheShelfFileOff"}}
 DROP = (("WithTheDrop", "TRUE"), ("WithTheMoves", "FALSE"), ("WithTheSeek", "FALSE"), ("WithThePlay", "FALSE"),
         ("WithTheForget", "FALSE"))
 TWO_FILES = (("Files", "{f1, f2}"), ("Sources", "{s1}"))
+REDOWNLOAD = (("WithTheRedownload", "TRUE"), ("WithTheMoves", "FALSE"), ("WithTheSeek", "FALSE"),
+              ("WithThePlay", "FALSE"))
 PLAYS = (("Last", "1"), ("Sources", "{s1}"))
 REQUIRED = {
     "Races211": {"TypeOK", "LockOrderKept", "NoOrphanLoading", "NoStaleLoading", "SwitchEntryMatchesPlatter",
@@ -102,6 +104,11 @@ RUNS = (
         constants=CLEAN_END + (("TheEndKeepsThePrepared", "FALSE"),)),
     Run("Races211, the code as it is: the download, the stream and the swap, with the record leaving the shelf",
         "Races211", constants=(("WithTheMoves", "FALSE"), ("WithTheSeek", "FALSE"), ("WithThePlay", "FALSE"))),
+    Run("Races211, the code as it is: the download, the stream and the swap, with the record leaving the shelf and "
+        "a second download putting it back", "Races211", constants=REDOWNLOAD),
+    Run("mutant: a refused stream whose stop is declined because the shelf has the file again warns and keeps loading",
+        "Races211", "invariant NoStaleLoading", invariants=("NoStaleLoading",),
+        constants=REDOWNLOAD + (("RefusedStreamTriesTheFileAgain", "FALSE"),)),
     Run("Races211, the code as it is: the download, the stream and a seek", "Races211",
         constants=(("WithTheMoves", "FALSE"), ("WithThePlay", "FALSE"), ("WithTheForget", "FALSE"))),
     Run("Races211, the code as it is: the queue moves, the passage and the audio version", "Races211",
@@ -527,8 +534,8 @@ def main():
             ("the schedule has no passing run of PassageFailure",
              [r for r in RUNS if not (r.spec == "PassageFailure" and r.expect == "pass")]),
             ("the passing run of PassageFailure has one source only",
-             [replace(r, constants=(("Sources", "{s1}"),)) if r.spec == "PassageFailure" and r.expect == "pass" else r
-              for r in RUNS]),
+             [replace(r, constants=(("Sources", "{s1}"),)) if r.spec == "PassageFailure" and r.expect == "pass"
+              and not r.constants else r for r in RUNS]),
             ("the passing run of PassageFailure with two sources has no shelf file",
              [replace(r, constants=(("Files", "{}"),)) if r.spec == "PassageFailure" and r.expect == "pass"
               and not r.constants else r for r in RUNS]),
@@ -552,9 +559,9 @@ def main():
               and not r.constants else r for r in RUNS]),
             ("the passing run of PassageFailure with two files has no source",
              [replace(r, constants=(("Files", "{f1, f2}"), ("Sources", "{}"))) if r.spec == "PassageFailure"
-              and r.expect == "pass" and r.constants else r for r in RUNS]),
+              and r.expect == "pass" and r.constants == TWO_FILES else r for r in RUNS]),
             ("the passing run of PassageFailure with two files is gone, and its mutant still runs",
-             [r for r in RUNS if not (r.spec == "PassageFailure" and r.expect == "pass" and r.constants)]),
+             [r for r in RUNS if not (r.spec == "PassageFailure" and r.expect == "pass" and r.constants == TWO_FILES)]),
             ("the passing runs of PassageFailure turn on a mutant's switch",
              [replace(r, constants=r.constants + (("FileKeyedByName", "TRUE"),))
               if r.spec == "PassageFailure" and r.expect == "pass" else r for r in RUNS]),

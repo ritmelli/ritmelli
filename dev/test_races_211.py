@@ -149,6 +149,27 @@ def finished_download_that_left_the_shelf(A, E, readers):
           f"({j['status']}, {E.status()})")
 
 
+def finished_download_put_back_before_the_stop(A, E, readers):
+    back = {"id": "back", "title": "back", "file": "back.m4a", "duration": 120.0, "youtube_id": None, "lufs": -14.0,
+            "last_pos": 0}
+    stop, landed = E.stop, []
+
+    def second_download_lands_first(*a, **kw):
+        if kw.get("pode") is not None and A.lib.get("back") is None and (E.track or {}).get("job"):
+            A.lib.add(dict(back))
+            landed.append(True)
+        return stop(*a, **kw)
+    with mock.patch.object(E, "stop", second_download_lands_first):
+        j, loading = download_ends_before_the_swap_and_the_stream_is_refused(
+            A, E, readers, {"return_value": back}, "hhhhhhhhhhh")
+    tr = E.track or {}
+    A.lib.remove("back")
+    check(landed == [True] and not loading and tr.get("id") == "back" and str(tr.get("path", "")).endswith("back.m4a"),
+          f"a finished download whose record left the shelf, put back by a second download right before the refused "
+          f"stream's stop, plays the file instead of loading forever ({landed}, {j['status']}, {E.status()}, "
+          f"{tr.get('id')})")
+
+
 def finished_download_forgotten_during_the_refusal(A, E, readers):
     item = A.lib.get("d2")
     real_get = A.lib.get
@@ -360,10 +381,13 @@ def file_near_the_end_of_a_stream_with_audio(A, E, readers, repeat=False):
             E.set_loop(False)
         return AudioFfmpeg(0 if at > 0 else 2)
     meta = {"youtube_id": target, "title": "the short one", "channel": "c", "duration": 1.0}
-    stream = StreamThread(A)
+    stream, waiting = StreamThread(A), []
+
+    def info(*a, **kw):
+        waiting.append(E.captura().play)
+        return dict(meta, url="https://stream.invalid/q", id=target), {}
     with (contextlib.redirect_stderr(io.StringIO()), mock.patch.object(E, "_reader", reader),
-          mock.patch.object(A, "stream_info", return_value=(dict(meta, url="https://stream.invalid/q", id=target), {})),
-          mock.patch.object(eng.subprocess, "Popen", popen)):
+          mock.patch.object(A, "stream_info", side_effect=info), mock.patch.object(eng.subprocess, "Popen", popen)):
         check(cmd.play_downloading(A, j, target, meta) and stream.ended.wait(WAIT_S) and reading.wait(WAIT_S),
               "the short one's stream opened and its reader queued its audio, up to the end, without the end yet")
         if repeat:
@@ -376,10 +400,13 @@ def file_near_the_end_of_a_stream_with_audio(A, E, readers, repeat=False):
     del A._abre_stream
     tr, d = E.track or {}, E._deck
     want = [("stream", False), ("d2.m4a", True)] + ([("d2.m4a", False)] if repeat else [])
-    check(str(tr.get("path", "")).endswith("d2.m4a") and opened == want and E.error is None and d.eof_gen == d.gen,
+    same = waiting == [E.captura().play]
+    check(str(tr.get("path", "")).endswith("d2.m4a") and opened == want and E.error is None and d.eof_gen == d.gen
+          and same,
           f"the file that comes when the stream's audio already reaches the end gets its own reader, whose empty read at "
           f"the file's end is the end of the record{', and the Repeat plays the file again' if repeat else ''}, with no "
-          f"warning ({opened}, {E.error})")
+          f"warning, all in the play the waiting record began ({opened}, {E.error}, plays {waiting} and "
+          f"{E.captura().play})")
 
 
 class FailedFfmpeg(AudioFfmpeg):
@@ -1334,22 +1361,23 @@ def failures_leave_when_a_stream_enters(A, E, readers):
           f"failures of the play before it leave (entered {entered}, pruned {pruned})")
 
 
-def failure_kept_through_a_resume_from_the_end(A, E, readers):
+def failure_kept_through_a_restart_of_the_same_record(A, E, readers, restart, how):
     check(play(A, E, readers, "d1"), "d1 is on the platter, read")
     x, _ = two_entries(A, 25)
     launches, key, before = Launches(), carried_key(A, x), E.captura().play
     A.failed_passages.add(key)
     with E.state_section():
-        E.ended = True
-    E.resume()
+        E.ended, E._deck.eof_gen = True, E._deck.gen
+    restart()
     again = readers.wait("d1") and E.captura().play == before
+    E.set_loop(False)
     with mock.patch.object(eng, "TRANS_PREP_S", 1e6):
         watch(A, launches)
     kept = key in A.failed_passages
     A.failed_passages.clear()
     check(again and kept and launches.qids == [],
-          f"the record that ended and starts again from the top (resume, as the Repeat does) is the same play, and its "
-          f"failures still block their source (again {again}, kept {kept}, launched {launches.qids})")
+          f"the record that ended and starts again from the top through {how} is the same play, and its failures still "
+          f"block their source (again {again}, kept {kept}, launched {launches.qids})")
 
 
 def failure_kept_through_a_seek(A, E, readers):
@@ -1548,6 +1576,7 @@ def main():
                 failed_download(A, E, readers)
                 finished_download(A, E, readers)
                 finished_download_that_left_the_shelf(A, E, readers)
+                finished_download_put_back_before_the_stop(A, E, readers)
                 finished_download_forgotten_during_the_refusal(A, E, readers)
                 refused_stream_after_another_record(A, E, readers)
                 silent_stream_after_the_download_failed(A, E, readers)
@@ -1595,7 +1624,10 @@ def main():
                 failure_kept_through_a_seek(A, E, readers)
                 failures_leave_at_the_switch(A, E, readers)
                 failures_leave_when_a_stream_enters(A, E, readers)
-                failure_kept_through_a_resume_from_the_end(A, E, readers)
+                failure_kept_through_a_restart_of_the_same_record(A, E, readers, E.resume, "resume")
+                failure_kept_through_a_restart_of_the_same_record(A, E, readers, E.alterna, "the toggle")
+                failure_kept_through_a_restart_of_the_same_record(A, E, readers, lambda: E.set_loop(True),
+                                                                  "the Repeat turned on at the end")
                 replacement_shelf_file_after_its_predecessor_failed(A, E, readers)
                 engine_failure_through_the_real_prepare(A, E, readers)
                 audio_version_entries(A, E)

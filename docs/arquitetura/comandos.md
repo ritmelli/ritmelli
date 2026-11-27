@@ -176,17 +176,19 @@ posição do disco viram escolha não determinística, e os `qid` são simétric
   corre junto de quem abriu o stream), o que abre com áudio depois de o download ler o prato e um pulo na barra (sobe a
   linha e tira a passagem preparada), com uma ou duas entradas e um job. Confere a ordem das travas; que nenhum prato
   fica carregando com o job já terminado (em erro, ou baixado com ou sem o disco na prateleira) e o stream recusado ou
-  sem áudio; que o stream recusado só para ou troca o disco daquela tentativa; que a entrega do stream sem áudio só para
-  ou avisa enquanto a espera do arquivo é a da leitura do prato (depois de um pulo na barra, o leitor novo toca); que o
-  download que terminou chega ao prato também quando o stream abriu no meio; que a passagem lida antes de um pulo na
-  barra não é publicada depois dele; que a entrada que uma reserva em curso vai tocar segue na versão que ela leu; e que
-  a entrada da virada pendente tem a mesma versão que o prato toca (as duas corridas da #211). Duas execuções mostram,
-  como falhas conhecidas da #294, o stream que para antes do fim (`WithTheDrop`) e a virada para o stream de um disco
-  com download (`WithTheJobSwitch`, com o download que termina depois de a preparação escolher o stream), e outras duas,
-  nas mesmas configurações, conferem todas as outras propriedades. A preparação escolhe a fonte como o `fonte_de` (o
-  arquivo da prateleira, o stream do download que corre, ou nenhuma), e a virada publica a que ela escolheu: com o disco
-  já na prateleira antes de a preparação escolher a fonte (`DownloadEndsBeforeTheSourcePick`), a virada leva o arquivo;
-  a parecida sem job que a prateleira já tem pelo `youtube_id` também leva o arquivo (`WithTheOtherOnTheShelf`, numa
+  sem áudio; que o stream recusado só para ou troca o disco daquela tentativa (e, quando um segundo download põe o disco
+  de volta na prateleira enquanto ele está recusado, `WithTheRedownload`, a parada recusa e ele tenta o arquivo de novo:
+  o mutante que só avisa deixa o prato carregando); que a entrega do stream sem áudio só para ou avisa enquanto a espera
+  do arquivo é a da leitura do prato (depois de um pulo na barra, o leitor novo toca); que o download que terminou chega
+  ao prato também quando o stream abriu no meio; que a passagem lida antes de um pulo na barra não é publicada depois
+  dele; que a entrada que uma reserva em curso vai tocar segue na versão que ela leu; e que a entrada da virada pendente
+  tem a mesma versão que o prato toca (as duas corridas da #211). Duas execuções mostram, como falhas conhecidas da
+  #294, o stream que para antes do fim (`WithTheDrop`) e a virada para o stream de um disco com download
+  (`WithTheJobSwitch`, com o download que termina depois de a preparação escolher o stream), e outras duas, nas mesmas
+  configurações, conferem todas as outras propriedades. A preparação escolhe a fonte como o `fonte_de` (o arquivo da
+  prateleira, o stream do download que corre, ou nenhuma), e a virada publica a que ela escolheu: com o disco já na
+  prateleira antes de a preparação escolher a fonte (`DownloadEndsBeforeTheSourcePick`), a virada leva o arquivo; a
+  parecida sem job que a prateleira já tem pelo `youtube_id` também leva o arquivo (`WithTheOtherOnTheShelf`, numa
   execução só). Como no `download()`, o disco entra na prateleira antes de o job marcar o fim, e o `fonte_de` já o acha
   ali. O tocar de um disco que baixa lê antes a prateleira, como o `tocar_entrada`: com o disco já ali, a troca fecha a
   virada pendente e publica o arquivo da prateleira, sem job e sem stream, e uma execução mostra que esse caminho chega

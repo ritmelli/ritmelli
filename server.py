@@ -1128,14 +1128,14 @@ class App:
         def shelf_record():
             return self.lib.get(j["item_id"]) if j is not None and j["status"] == "done" else None
 
-        it = shelf_record()
-        if it is not None and e.trocar_fonte(tr, lambda: dict(it, path=str(LIB / it["file"]))):
-            return
+        def hands_over():
+            it = shelf_record()
+            return it is not None and e.trocar_fonte(tr, lambda: dict(it, path=str(LIB / it["file"])))
 
         def no_file_will_come():
             return e.track is tr and j is not None and (not waiting or e.esperando_arquivo()) and (
                 j["status"] == "error" or (j["status"] == "done" and shelf_record() is None))
-        if e.stop(pode=no_file_will_come) is None:
+        if not hands_over() and e.stop(pode=no_file_will_come) is None and not hands_over():
             e.warn_on(tr, i18n.msg("server.player.streamRefused", "YouTube didn't allow the audio to play right away "
                                                                   "({reason}). It will play as soon as the "
                                                                   "download finishes.", reason=reason), waiting=waiting)
