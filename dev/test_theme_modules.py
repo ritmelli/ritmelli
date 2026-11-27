@@ -140,6 +140,8 @@ def refers(node):
 
 
 def unallowed(node):
+    if node.parent.type != "program":
+        return node
     parts = [c for c in node.children if c.type != "comment"]
     if node.type == "import_statement":
         if [c.type for c in parts] not in (["import", "import_clause", "from", "string"],
@@ -148,9 +150,11 @@ def unallowed(node):
         clause = [c for c in parts[1].named_children if c.type != "comment"]
         if len(clause) != 1 or clause[0].type != "named_imports":
             return clause[0] if clause else parts[1]
-        return next((s for s in clause[0].named_children if s.type != "comment" and (
-            s.type != "import_specifier" or s.child_by_field_name("alias") is not None
-            or s.child_by_field_name("name").type != "identifier")), None)
+        specifiers = [s for s in clause[0].named_children if s.type != "comment"]
+        if not specifiers:
+            return clause[0]
+        return next((s for s in specifiers if s.type != "import_specifier" or s.child_by_field_name("alias") is not None
+                     or s.child_by_field_name("name").type != "identifier"), None)
     declaration = node.child_by_field_name("declaration")
     if len(parts) != 2 or declaration is None:
         return next((c for c in parts[1:] if c != declaration), node)
@@ -170,11 +174,11 @@ def allowed_imports(root):
 
 def declared(node):
     if node.type in ("lexical_declaration", "variable_declaration"):
-        return {name: d.child_by_field_name("value") for d in node.named_children if d.type == "variable_declarator"
-                for name in pattern_names(d.child_by_field_name("name"))}
+        return [(name, d.child_by_field_name("value")) for d in node.named_children if d.type == "variable_declarator"
+                for name in sorted(pattern_names(d.child_by_field_name("name")))]
     if node.type in FUNCTIONS and (named := node.child_by_field_name("name")) is not None:
-        return {text_of(named): node}
-    return {}
+        return [(text_of(named), node)]
+    return []
 
 
 def bindings(root):
@@ -215,8 +219,23 @@ def normalized(function):
     return " ".join(leaves)
 
 
+ESCAPES = {"n": "\n", "t": "\t", "r": "\r", "b": "\b", "f": "\f", "v": "\v", "0": "\0"}
+
+
+def unescaped(part):
+    text = text_of(part)
+    if part.type != "escape_sequence":
+        return text
+    body = text[1:]
+    if body[0] in "xu" and len(body) > 1:
+        return chr(int(body[1:].strip("{}"), 16))
+    if body[0] in "\r\n\u2028\u2029":
+        return ""
+    return ESCAPES.get(body, body)
+
+
 def key_text(node):
-    return literal(node) if node.type == "string" else text_of(node)
+    return "".join(unescaped(c) for c in node.named_children) if node.type == "string" else text_of(node)
 
 
 def object_keys(node):
@@ -265,6 +284,15 @@ STRICT_NAMES = frozenset({"arguments", "eval", "yield", "await", "let", "static"
                           "private", "protected", "public"})
 
 
+def at_top(node):
+    child = node
+    for parent in ancestors(node):
+        if parent.type in FUNCTION_SCOPES and parent.child_by_field_name("body") == child:
+            return False
+        child = parent
+    return True
+
+
 def module_only(root):
     bound = [n for what, node, _ in places(root) if what == "binding" for n in pattern_nodes(node)]
     bound += [name for _, _, names in allowed_imports(root) for name in names]
@@ -275,7 +303,7 @@ def module_only(root):
               for n in pattern_nodes(node) if text_of(n) in ("arguments", "eval")]
     for node in walk(root):
         if (node.type == "await_expression" or node.type == "for_in_statement" and any(
-                c.type == "await" for c in node.children)) and nearest(node, FUNCTION_SCOPES).type == "program":
+                c.type == "await" for c in node.children)) and at_top(node):
             found.append(f"awaits at the top at line {node.start_point[0] + 1}, which the page's DOMContentLoaded "
                          f"does not wait for, so what comes after it misses the start: await inside a function")
         if node.type in FUNCTIONS and (name := node.child_by_field_name("name")) and text_of(name) in STRICT_NAMES:
@@ -288,19 +316,26 @@ def module_only(root):
     return found
 
 
+def unwrapped(node):
+    while node is not None and node.type == "parenthesized_expression":
+        node = next((c for c in node.named_children if c.type != "comment"), None)
+    return node
+
+
+def returns(node):
+    for child in node.named_children:
+        if child.type == "return_statement":
+            yield unwrapped(next((c for c in child.named_children if c.type != "comment"), None))
+        elif child.type not in FUNCTIONS:
+            yield from returns(child)
+
+
 def returned_keys(function):
     body = function.child_by_field_name("body")
     if body is None:
         return []
-    if body.type == "parenthesized_expression":
-        objects = [c for c in body.named_children if c.type == "object"]
-    elif body.type == "statement_block":
-        objects = [value for c in body.named_children if c.type == "return_statement"
-                   for value in [next((x for x in c.named_children if x.type != "comment"), None)]
-                   if value is not None and value.type == "object"]
-    else:
-        objects = [body] if body.type == "object" else []
-    return [keys for o in objects if (keys := object_keys(o))]
+    objects = list(returns(body)) if body.type == "statement_block" else [unwrapped(body)]
+    return [keys for o in objects if o is not None and o.type == "object" and (keys := object_keys(o))]
 
 
 def unread(node, leaves):
@@ -354,7 +389,8 @@ def early_defaults(root):
         for i, part in enumerate(parts):
             later = inside | {name for after in parts[i + 1:] for name in pattern_names(after)}
             for default in (d for d in walk(part) if d.type in DEFAULTS):
-                read = [n for n in walk(default.child_by_field_name("right")) if n.type == "identifier"]
+                read = [n for n in walk(default.child_by_field_name("right"))
+                        if n.type in ("identifier", "shorthand_property_identifier")]
                 yield from (n for n in read if text_of(n) in later)
 
 
@@ -403,7 +439,7 @@ def file_facts(text):
                 call.type == "call_expression" and call.child_by_field_name("function").type == "identifier":
             calls.append((node, call.child_by_field_name("function")))
         if node.type == "export_statement" and unallowed(node) is None:
-            for name, value in declared(node.child_by_field_name("declaration")).items():
+            for name, value in declared(node.child_by_field_name("declaration")):
                 if name in facts.exports:
                     facts.problems.append(f"exports {name} twice, at line {node.start_point[0] + 1}, which a module "
                                           f"refuses")
@@ -619,6 +655,31 @@ def samples():
                 files("const mk = () => ({ u: 1, w: 2, h: 3 });\nconst { u, w, h } = mk();\ngo({ u, w, h });\n", factory,
                       d='import { mk } from "b.js";\nmk(1);\n'),
                 ["a.js:1: builds by hand what mk of b.js returns", "a.js:3: builds by hand what mk of b.js returns"]),
+            "a module that exports a name twice in one const": (
+                files(uses_b, "export const b = () => {}, b = 1;\n"), ["b.js: exports b twice"]),
+            "a parameter default that reads, by a shorthand, what the body declares": (
+                files(uses_b + "function f(q = { r }) { var r; return q; }\nf();\n", b),
+                ["a.js: has a parameter default at line 3 that reads r"]),
+            "a module that awaits in a method's computed key": (
+                files(uses_b + "const o = { async [await b()]() {} };\ngo(o);\n", b), ["a.js: awaits at the top at line 3"]),
+            "a module that awaits in an async method's body": (
+                files(uses_b + "const o = { async m() { await b(); } };\ngo(o);\n", b), []),
+            "an object built by hand with an escaped key, like the one the factory returns": (
+                files('import { mk } from "b.js";\nmk(1);\n', factory, "go({ '\\u0075': 3, w: 2, h: 1 });\n"),
+                ["c.js:1: builds by hand what mk of b.js returns"]),
+            "an object composed from the factory with an escaped key": (
+                files('import { mk } from "b.js";\nconst { "\\x75": u, w, h } = mk(1);\ngo({ u, w, h });\n', factory), []),
+            "an object built by hand like the one a factory returns in parentheses": (
+                files('import { mk } from "b.js";\nmk(1);\nconst o = { u: 2, w: 3, h: 4 };\ngo(o);\n',
+                      "export function mk(w) { return ({ u: 1, w, h: 2 }); }\n"),
+                ["a.js:3: builds by hand what mk of b.js returns"]),
+            "an object built by hand like the one a factory returns in an if": (
+                files('import { mk } from "b.js";\nmk(1);\nconst o = { u: 2, w: 3, h: 4 };\ngo(o);\n',
+                      "export function mk(w) { if (w) return { u: 1, w, h: 2 }; return null; }\n"),
+                ["a.js:3: builds by hand what mk of b.js returns"]),
+            "an object like the one a function inside the factory returns": (
+                files('import { mk } from "b.js";\nmk(1);\nconst o = { u: 2, w: 3, h: 4 };\ngo(o);\n',
+                      "export function mk(w) { const inner = () => { return { u: 1, w, h: 2 }; }; return inner; }\n"), []),
             "a module that binds yield": (files(uses_b + "const yield = 1;\ngo(yield);\n", b), ["a.js: binds yield"]),
             "a module that binds arguments in a function": (
                 files(uses_b + "function f() { var arguments = 1; return arguments; }\nf();\n", b),
@@ -719,6 +780,9 @@ def samples():
             "export var q = 1;\n" + uses_b: "variable_declaration", "export class Q {}\n" + uses_b: "class_declaration",
             "const o = {};\nexport const { p } = o;\n" + uses_b: "object_pattern",
             "export function* g() {}\n" + uses_b: "generator_function_declaration",
+            'import {} from "b.js";\n' + uses_b: "named_imports",
+            '{ import { b } from "b.js"; b(); }\n': "import_statement",
+            "{ export const q = 1; }\n" + uses_b: "export_statement",
         }
         for text, kind in refused.items():
             for name, source in files(text, b, d='import { b } from "b.js";\nb();\n').items():

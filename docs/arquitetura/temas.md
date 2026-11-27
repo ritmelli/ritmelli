@@ -114,11 +114,12 @@ página com um `<meta>` de `Content-Security-Policy` roda o clássico e não os 
 de um `--mock` como o PC e de outro como o celular, pela mesma gramática da montagem (o `strict` do `theme_page.py`), e
 reprova com um `<script src>` ou um `<link rel="stylesheet">` nelas ou com um pedido de script ou de folha que o Chrome
 faça ao servidor. O `dev/test_theme_modules.py` lê o tema pela árvore de sintaxe:
-- cada import tem a forma `import { a, b } from "arquivo.js"`, com nomes simples e sem `as`, e cada export é um `export
-  const` de nomes simples ou um `export function`; outra forma (o `default`, o `* as`, o `as`, a reexportação, o `export
-  { }`, o `export let`, o `export class`, o import só pelo efeito, os atributos) reprova, com o arquivo e a linha, como
-  forma que a conferência não julga. Cada import nomeia um módulo da página e um nome que ele exporta, e nenhum módulo
-  importa ou exporta o mesmo nome duas vezes;
+- cada import e cada export ficam no alto do módulo; cada import tem a forma `import { a, b } from "arquivo.js"`, com
+  pelo menos um nome, nomes simples e sem `as`, e cada export é um `export const` de nomes simples ou um `export
+  function`; outra forma (o `default`, o `* as`, o `as`, a reexportação, o `export { }`, o `export let`, o `export
+  class`, o import só pelo efeito, o `import {}`, os atributos) reprova, com o arquivo e a linha, como forma que a
+  conferência não julga. Cada import nomeia um módulo da página e um nome que ele exporta, e nenhum módulo importa ou
+  exporta o mesmo nome duas vezes;
 - cada nome importado é usado e não é declarado de novo, e um módulo não escreve no import nem num nome que ninguém
   declara (o modo estrito lança erro nos dois); cada nome se resolve pelos escopos em volta dele, e uma atribuição por
   desestruturação não declara nada; um módulo não liga `arguments`, `yield` nem outra palavra que o modo estrito
@@ -137,9 +138,10 @@ faça ao servidor. O `dev/test_theme_modules.py` lê o tema pela árvore de sint
 - nenhum arquivo escreve de novo uma função que um módulo exporta (com os nomes ligados dentro dela trocados), e só o
   `pixel.js` carrega as fontes do motor (o `fontesProntas`);
 - a regra do objeto montado à mão promete isto: num arquivo que não é o da função, um literal de objeto só de pares e de
-  nomes, com todas as chaves (pelo menos três) do literal que uma função exportada devolve, reprova, a não ser que o
-  valor de cada uma dessas chaves seja o nome que a desestruturação de topo da chamada à função importada liga pela
-  mesma chave (com aspas ou sem). Ela não promete pegar o objeto montado por atribuição de campo, por `...` ou por
+  nomes, com todas as chaves (pelo menos três) do literal que uma função exportada devolve (num `return` do corpo dela,
+  fora das funções de dentro, entre parênteses ou não), reprova, a não ser que o valor de cada uma dessas chaves seja o
+  nome que a desestruturação de topo da chamada à função importada liga pela mesma chave (com aspas ou sem, e com os
+  escapes da chave lidos). Ela não promete pegar o objeto montado por atribuição de campo, por `...` ou por
   `Object.assign`, o que tem chave computada, o de menos de três chaves, nem a função que devolve o objeto por um nome;
 - nenhuma sequência de 8 linhas não triviais aparece em dois `.js` do tema.
 
@@ -208,10 +210,10 @@ arguments`, um `const yield`): os dois ficam no teste como falha conhecida da is
 ouvinte das partes é do arquivo dela, que a página só passa a vigiar a própria visibilidade no `DOMContentLoaded`, com o
 `carregar()` já declarado (uma aba que aparece durante a leitura da página não conecta antes da partida), que o
 `queue.js` vê o toque que fecha a busca na mesa, que cada módulo do mapa da página roda (o `import()` de cada nome dele,
-com o erro de quem falha), que um navegador sem import map (o `HTMLScriptElement.supports` trocado antes da página)
-recebe o aviso e nenhum ouvinte, e que os canvas dos rótulos do mixer, do monitor, dos pads, da sombra do deck, do
-título da maleta, da contagem da prateleira e do aviso de vazio, limpos, ficam limpos até um `repinta-canvas` e então se
-pintam de novo (o canvas que o navegador devolve em branco, #119).
+com o erro de quem falha), que um navegador sem import map (o `HTMLScriptElement.supports` tirado, ou trocado por um que
+recusa o `importmap`, antes da página) recebe o aviso e nenhum ouvinte, e que os canvas dos rótulos do mixer, do
+monitor, dos pads, da sombra do deck, do título da maleta, da contagem da prateleira e do aviso de vazio, limpos, ficam
+limpos até um `repinta-canvas` e então se pintam de novo (o canvas que o navegador devolve em branco, #119).
 
 Para provar que um PR só mudou código de lugar, o `dev/theme_rebuild.py <base>` monta a página de novo nos dois commits
 como o servidor a monta: cada `<script src="..."></script>` e `<link rel="stylesheet" href="...">` trocado pelo texto
