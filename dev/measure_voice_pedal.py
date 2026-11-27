@@ -303,9 +303,10 @@ def main():
               "voice_slowest_block_ms": max(blocks or [0.0]),
               "dry_out_lines": dry, "work": str(work)}
     a.out.write_text(json.dumps(result, indent=1, ensure_ascii=False), encoding="utf-8")
-    print(f"{result['dry_outs']} dry-outs in {len(cycles)} cycles, {result['dry_outs_while_starting']} while the pedal "
-          f"was starting ({result['dry_outs_maybe_before_the_pedal_turned_on']} maybe before the pedal turned on); "
-          f"longest return {result['longest_return_ms_since_the_ring_opened']} ms; voice: "
+    print(f"{result['dry_outs']} dry-outs in {len(cycles)} cycles "
+          f"({result['dry_outs_maybe_before_the_pedal_turned_on']} maybe before the pedal turned on), "
+          f"{result['dry_outs_while_starting']} while the pedal was starting; longest return "
+          f"{result['longest_return_ms_since_the_ring_opened']} ms; voice: "
           f"{result['voice_blocks']} blocks, the slowest {result['voice_slowest_block_ms']} ms; result: {a.out}",
           flush=True)
     return 0

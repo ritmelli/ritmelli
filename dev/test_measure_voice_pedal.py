@@ -324,19 +324,22 @@ class Main(unittest.TestCase):
                          "round 2 came before the server turned the pedal on")
 
     def test_a_dry_out_in_the_round_the_pedal_turned_on_in_counts_with_the_note(self):
-        for rounds, noted in (([(3.0, state(1, 0, 656.0, 0.0))], 1),
-                              ([(3.0, state(0, 0, 9.0, 10.0)), (4.0, state(1, 0, 656.0, 0.0))], 0),
-                              ([(3.0, None), (4.0, state(1, 0, 656.0, 0.0))], 0)):
-            with self.subTest(noted=noted):
-                why, _, result = self.run_main(state(), "--cycles", "1", pedal_at=(1,),
+        for sent, rounds, noted in ((1, [(3.0, state(1, 0, 656.0, 0.0))], 1),
+                                    (2, [(2.0, state(0, 0, 9.0, 10.0)), (3.0, state(1, 0, 656.0, 0.0))], 1),
+                                    (1, [(3.0, state(0, 0, 9.0, 10.0)), (4.0, state(1, 0, 656.0, 0.0))], 0),
+                                    (1, [(3.0, None), (4.0, state(1, 0, 656.0, 0.0))], 0)):
+            with self.subTest(sent=sent, noted=noted), mock.patch("sys.stdout", io.StringIO()) as out:
+                why, _, result = self.run_main(state(), "--cycles", "1", pedal_at=(sent,),
                                                events=[(1.0, state(0, 0, 9.0, 10.0)), *rounds,
                                                        (15.0, state(1, 0, 656.0, 0.0)), (25.0, None)])
                 self.assertIsNone(why)
+                self.assertIn(f"1 dry-outs in 1 cycles ({noted} maybe before the pedal turned on), 0 while the pedal "
+                              "was starting;", out.getvalue())
                 c = result["cycles"][0]
                 self.assertEqual((c["dry_outs"], c["dry_outs_maybe_before_the_pedal_turned_on"],
                                   result["dry_outs_maybe_before_the_pedal_turned_on"]), (1, noted, noted),
-                                 "round 2 crosses the pedal turning on, round 3 is after it, even when round 2 had "
-                                 "no state")
+                                 "the round after the one the POST answered crosses the pedal turning on, and the "
+                                 "next is after it, even when the crossing one had no state")
 
     def test_a_dry_out_between_two_cycles_is_neither_ones(self):
         why, _, result = self.run_main(state(), "--cycles", "2", pedal_at=(1, 4),

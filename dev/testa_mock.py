@@ -889,13 +889,19 @@ async def papeis_no_guard():
             await ate(lambda: com_t2(escrito1))
             await asyncio.sleep(5 * server.TICK)  # algumas voltas com os dois livres
             A.save_cfg = lambda: None
-            _, antes, _ = await manda("POST", "/api/settings", de=pc, corpo={}, handler=rota[("POST", "/api/settings")])
-            lidas_antes = len(lidas)
-            await ate(lambda: len(lidas) >= lidas_antes + 2)
-            _, depois, _ = await manda("POST", "/api/settings", de=pc, corpo={}, handler=rota[("POST", "/api/settings")])
-            confere(depois.get("n", 0) - antes.get("n", 0) == len(lidas) - lidas_antes >= 2,
-                    f"o /api/settings responde o numero da ultima volta montada ({antes}, {depois}, "
-                    f"{len(lidas) - lidas_antes} voltas entre os dois)")
+
+            def n_do_tick(t):
+                return next((d["n"] for e, d in eventos(escrito2) if e == "tick" and d.get("t") == t), None)
+            respostas = []
+            for _ in range(2):
+                _, resposta, _ = await manda("POST", "/api/settings", de=pc, corpo={},
+                                             handler=rota[("POST", "/api/settings")])
+                respostas.append((resposta.get("n"), lidas[-1]))
+                feitas = len(lidas)
+                await ate(lambda: n_do_tick(respostas[-1][1]) is not None and len(lidas) >= feitas + 2)
+            confere(all(n == n_do_tick(t) for n, t in respostas) and respostas[0][0] != respostas[1][0],
+                    f"o /api/settings responde o numero da ultima volta montada, o n do tick dela ({respostas}, "
+                    f"{[n_do_tick(t) for _, t in respostas]})")
         finally:
             relogio.stop()
             solta.set()
