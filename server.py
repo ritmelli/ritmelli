@@ -1123,19 +1123,19 @@ class App:
             cmd.play_finished_file(self, novo)
 
     def _stream_refused(self, tr, reason, waiting=False):
-        e, j = self.engine, self.jobs.get(tr["job"])
+        e, j, found = self.engine, self.jobs.get(tr["job"]), []
 
         def shelf_record():
             return self.lib.get(j["item_id"]) if j is not None and j["status"] == "done" else None
 
-        def hands_over():
-            it = shelf_record()
+        def hands_over(it=None):
             return it is not None and e.trocar_fonte(tr, lambda: dict(it, path=str(LIB / it["file"])))
 
         def no_file_will_come():
+            found[:] = [shelf_record()]
             return e.track is tr and j is not None and (not waiting or e.esperando_arquivo()) and (
-                j["status"] == "error" or (j["status"] == "done" and shelf_record() is None))
-        if not hands_over() and e.stop(pode=no_file_will_come) is None and not hands_over():
+                j["status"] == "error" or (j["status"] == "done" and found[0] is None))
+        if not hands_over(shelf_record()) and e.stop(pode=no_file_will_come) is None and not hands_over(*found):
             e.warn_on(tr, i18n.msg("server.player.streamRefused", "YouTube didn't allow the audio to play right away "
                                                                   "({reason}). It will play as soon as the "
                                                                   "download finishes.", reason=reason), waiting=waiting)

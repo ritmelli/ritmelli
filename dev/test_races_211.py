@@ -149,25 +149,80 @@ def finished_download_that_left_the_shelf(A, E, readers):
           f"({j['status']}, {E.status()})")
 
 
-def finished_download_put_back_before_the_stop(A, E, readers):
+def put_back_before_the_stop(A, E, forgotten_again):
     back = {"id": "back", "title": "back", "file": "back.m4a", "duration": 120.0, "youtube_id": None, "lufs": -14.0,
             "last_pos": 0}
     stop, landed = E.stop, []
 
     def second_download_lands_first(*a, **kw):
-        if kw.get("pode") is not None and A.lib.get("back") is None and (E.track or {}).get("job"):
+        guard = kw.get("pode")
+        if guard is not None and A.lib.get("back") is None and (E.track or {}).get("job"):
             A.lib.add(dict(back))
             landed.append(True)
+
+            def then_forgotten():
+                verdict = guard()
+                if forgotten_again:
+                    A.lib.remove("back")
+                return verdict
+            kw["pode"] = then_forgotten
         return stop(*a, **kw)
-    with mock.patch.object(E, "stop", second_download_lands_first):
-        j, loading = download_ends_before_the_swap_and_the_stream_is_refused(
-            A, E, readers, {"return_value": back}, "hhhhhhhhhhh")
+    return back, mock.patch.object(E, "stop", second_download_lands_first), landed
+
+
+def plays_the_record(A, E, readers, iid):
     tr = E.track or {}
-    A.lib.remove("back")
-    check(landed == [True] and not loading and tr.get("id") == "back" and str(tr.get("path", "")).endswith("back.m4a"),
+    read = tr.get("id") == iid and readers.wait(iid) and len(E._deck.q) > 0
+    if A.lib.get(iid) is not None:
+        A.lib.remove(iid)
+    return read and str(tr.get("path", "")).endswith(f"{iid}.m4a") and E.status() != "buffering"
+
+
+def finished_download_put_back_before_the_stop(A, E, readers, forgotten_again=False):
+    back, patched, landed = put_back_before_the_stop(A, E, forgotten_again)
+    with patched:
+        j, loading = download_ends_before_the_swap_and_the_stream_is_refused(
+            A, E, readers, {"return_value": back}, "hhhhhhhhhh2" if forgotten_again else "hhhhhhhhhhh")
+    played = plays_the_record(A, E, readers, "back")
+    check(landed == [True] and not loading and played,
           f"a finished download whose record left the shelf, put back by a second download right before the refused "
-          f"stream's stop, plays the file instead of loading forever ({landed}, {j['status']}, {E.status()}, "
-          f"{tr.get('id')})")
+          f"stream's stop{' and forgotten again right after the stop saw it' if forgotten_again else ''}, plays the "
+          f"file the stop saw, with its reader, instead of loading forever ({landed}, {j['status']}, {E.status()})")
+
+
+def silent_stream_put_back_before_the_stop(A, E, readers):
+    check(play(A, E, readers, "d1"), "d1 is on the platter, read")
+    target = "ccccccccc22"
+    j = A.new_job("downloading", True, target)
+    reading, go, read = threading.Event(), threading.Event(), threading.Event()
+    fake = E._reader
+
+    def reader(gen, track, start, deck):
+        if not str(track.get("path") or "").startswith("http"):
+            return fake(gen, track, start, deck)
+        try:
+            eng.Engine._reader(E, gen, track, start, deck)
+        finally:
+            read.set()
+    meta = {"youtube_id": target, "title": "the silent one put back", "channel": "c", "duration": 200.0}
+    info = dict(meta, url="https://stream.invalid/silent", id=target)
+    stream = StreamThread(A)
+    back, patched, landed = put_back_before_the_stop(A, E, True)
+    with contextlib.redirect_stderr(io.StringIO()), mock.patch.object(A, "download", return_value=back):
+        A.run_download(j, target)
+    with (contextlib.redirect_stderr(io.StringIO()), mock.patch.object(E, "_reader", reader),
+          mock.patch.object(A, "stream_info", return_value=(info, {})),
+          mock.patch.object(eng.subprocess, "Popen", lambda *a, **kw: SilentFfmpeg(reading, go))):
+        swapped = cmd.play_downloading(A, j, target, meta) and stream.ended.wait(WAIT_S) and reading.wait(WAIT_S)
+        with patched:
+            go.set()
+            read.wait(WAIT_S)
+            played = harness.ate(lambda: (E.track or {}).get("id") == "back") and plays_the_record(A, E, readers, "back")
+    del A._abre_stream
+    check(swapped and j["status"] == "done" and landed == [True] and played,
+          f"a silent stream of a finished download whose record left the shelf, put back by a second download right "
+          f"before its stop and forgotten again right after the stop saw it, plays the file the stop saw "
+          f"({landed}, {j['status']}, {E.status()})")
 
 
 def finished_download_forgotten_during_the_refusal(A, E, readers):
@@ -1577,6 +1632,8 @@ def main():
                 finished_download(A, E, readers)
                 finished_download_that_left_the_shelf(A, E, readers)
                 finished_download_put_back_before_the_stop(A, E, readers)
+                finished_download_put_back_before_the_stop(A, E, readers, forgotten_again=True)
+                silent_stream_put_back_before_the_stop(A, E, readers)
                 finished_download_forgotten_during_the_refusal(A, E, readers)
                 refused_stream_after_another_record(A, E, readers)
                 silent_stream_after_the_download_failed(A, E, readers)

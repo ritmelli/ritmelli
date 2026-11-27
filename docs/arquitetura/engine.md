@@ -113,9 +113,9 @@ limitador se o deck e a linha do bloco ainda forem os do prato; senão, a músic
 o pedido de zerar o limitador, que fica para a linha nova). O `_gen` do leitor é outra coisa: ele só para o
 decodificador substituído. A troca do stream pelo arquivo (`trocar_fonte`), quando começa um leitor novo, sobe o `_gen`
 e mantém a linha, então o bloco em curso publica, e o leitor novo começa depois do último bloco decodificado, ou depois
-do bloco em curso quando a fila já está vazia; no fim do disco ou do leitor do stream ela não começa leitor nem sobe o
-`_gen`, e a passagem preparada fica (o `failure_kept_through_the_file_handover_at_the_stream_end` do
-`dev/test_races_211.py`).
+do bloco em curso quando a fila já está vazia; no fim do disco, quando o leitor já chegou ao fim, ou de stream para
+stream a menos de `FILE_TAIL_S` do fim, ela não começa leitor nem sobe o `_gen`, e a passagem preparada fica (o
+`failure_kept_through_the_file_handover_at_the_stream_end` do `dev/test_races_211.py`).
 
 O `load`, o `espera`, o `stop`, o `seek` e o `resume` que recomeça do fim publicam a troca sob o `_qlock`, como uma
 mudança só: a faixa, a linha, a posição, o fim e a passagem desfeita (no `load`, também o Repetir pedido: o leitor da

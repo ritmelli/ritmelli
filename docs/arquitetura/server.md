@@ -48,7 +48,7 @@ um texto que o UTF-8 não codifica não quebra a volta, que é montada uma vez p
   disco que esperava; o aviso do stream mora à parte e só aparece quando a tela não tem outro, que fica, venha antes ou
   depois dele; se o download falhou, antes ou depois, o prato para, e também se ele terminou e o disco saiu da
   prateleira; o disco que um segundo download põe de volta entre a primeira leitura e a parada faz a parada recusar, e o
-  `_stream_refused` entrega o arquivo, em vez de avisar.
+  `_stream_refused` entrega o disco que a trava da parada leu (e não o de uma leitura depois dela), em vez de avisar.
 - Fila (A seguir): quando o disco do prato acaba, o primeiro da fila entra, do arquivo
   ou pelo stream. O que entra na fila sem estar na prateleira já começa a baixar. O
   Repetir manda (ligado, o disco não acaba), mas vale só para o disco do prato: outro

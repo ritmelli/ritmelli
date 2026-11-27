@@ -109,6 +109,12 @@ RUNS = (
     Run("mutant: a refused stream whose stop is declined because the shelf has the file again warns and keeps loading",
         "Races211", "invariant NoStaleLoading", invariants=("NoStaleLoading",),
         constants=REDOWNLOAD + (("RefusedStreamTriesTheFileAgain", "FALSE"),)),
+    Run("mutant: the refusal looks the record up again after the stop's guard saw it, and a record forgotten again in "
+        "between leaves the platter loading", "Races211", "invariant NoStaleLoading", invariants=("NoStaleLoading",),
+        constants=REDOWNLOAD + (("TheGuardKeepsTheRecord", "FALSE"),)),
+    Run("mutant: a silent stream whose stop is declined because the shelf has the file again warns and keeps loading",
+        "Races211", "invariant NoStaleLoading", invariants=("NoStaleLoading",),
+        constants=REDOWNLOAD + (("SilentStreamTriesTheFileAgain", "FALSE"),)),
     Run("Races211, the code as it is: the download, the stream and a seek", "Races211",
         constants=(("WithTheMoves", "FALSE"), ("WithThePlay", "FALSE"), ("WithTheForget", "FALSE"))),
     Run("Races211, the code as it is: the queue moves, the passage and the audio version", "Races211",
@@ -453,6 +459,11 @@ def covers(run, cfg_text, need):
     return all(name in sizes for name, _ in run.constants) and all(sizes.get(n, 0) >= k for n, k in need.items())
 
 
+def features(run, cfg_text):
+    base = dict(c.split(" = ", 1) for c in parse_cfg(cfg_text).get("CONSTANTS", []))
+    return {n for n, v in run.constants if n.startswith("With") and v == "TRUE" and base.get(n) == "FALSE"}
+
+
 def invariant_failures(runs, cfgs):
     out, fair = [], []
     known = {(r.spec, frozenset(r.constants), r.expect.split()[1]) for r in runs
@@ -483,6 +494,10 @@ def invariant_failures(runs, cfgs):
                                          for r in runs)]
     code = {(r.spec, frozenset(r.constants)) for r in runs if r.expect == "pass" and r.specification is None
             and r.invariants is None}
+    out += [f"{r.title} turns on {sorted(features(r, cfgs[r.spec]))}, which no passing run of the code checks"
+            for r in runs if r.title.startswith("mutant: ") and r.expect != "pass"
+            and not any(features(r, cfgs[r.spec]) <= features(c, cfgs[c.spec]) for c in runs
+                        if c.spec == r.spec and c.expect == "pass" and c.specification is None and c.invariants is None)]
     out += [f"{r.title} shows a path no passing run of the code checks in its configuration" for r in runs
             if r.expect.split()[-1] in WITNESSES.get(r.spec, ()) and (r.spec, frozenset(r.constants)) not in code]
     return out + ([] if fair else ["no passing run checks ReservationsResolve under FairSpec"])
@@ -547,6 +562,8 @@ def main():
                  "Races211, the code as it is with a stream reader that reaches its end") else r for r in RUNS]),
             ("the schedule has no passing run with the stream's clean end",
              [r for r in RUNS if not (r.expect == "pass" and r.constants == CLEAN_END and r.invariants is None)]),
+            ("the schedule has no passing run with the second download",
+             [r for r in RUNS if not (r.expect == "pass" and r.constants == REDOWNLOAD)]),
             ("the schedule has no passing run with the stream's drop",
              [r for r in RUNS if not (r.expect == "pass" and r.constants == DROP and r.invariants is None)]),
             ("the passing run with the stream's clean end turns it off",
