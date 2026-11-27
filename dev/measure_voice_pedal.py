@@ -90,10 +90,10 @@ def rounds(r):
 
 class Record:
     def __init__(self, r):
-        self._rounds, self._n, self.current = rounds(r), None, None
+        self._rounds, self._n, self.current, self.times = rounds(r), None, None, []
 
     def until(self, end, want=None):
-        got = []
+        got, self.times = [], []
         while True:
             t, n, state = next(self._rounds)
             if self._n is not None and n != self._n + 1:
@@ -102,6 +102,7 @@ class Record:
             self._n = n
             if state is not None:
                 got.append(state)
+                self.times.append(t)
                 self.current = state
                 if want and want(state):
                     return got
@@ -144,7 +145,7 @@ def slowest_up(ups):
     return [max(up) for up in zip(*ups)] or None
 
 
-def cycle_row(n, states_seen, mic, provider, server_lines, voice_lines, on_s=ON_S):
+def cycle_row(n, states_seen, mic, provider, server_lines, voice_lines, on_s=ON_S, base=0):
     broke = interruption(states_seen, mic)
     if broke:
         return None, f"cycle {n}: {broke}"
@@ -163,7 +164,7 @@ def cycle_row(n, states_seen, mic, provider, server_lines, voice_lines, on_s=ON_
         return None, f"cycle {n}: the voice process converted no block (its log has no fim with blocks)"
     if provider == "dml" and ends[-1].get("providers") != ["DmlExecutionProvider"] * VOICE_SESSIONS:
         return None, f"cycle {n}: the voice sessions ran on {ends[-1].get('providers')}, not all on DirectML"
-    before, after = states_seen[0]["microfone"], states_seen[-1]["microfone"]
+    before, after = states_seen[base]["microfone"], states_seen[-1]["microfone"]
     rose = after["volta_max_ms"] > before["volta_max_ms"]
     return {"cycle": n, "dry_outs": after["secas"] - before["secas"],
             "dry_outs_while_starting": after["secas_pedal"] - before["secas_pedal"],
@@ -245,14 +246,15 @@ def main():
             print(f"microphone {last['active_devices']['mic']}, voice {voice}; before: {last['microfone']}",
                   flush=True)
             log = work / "local" / "Ritmelli" / "logs" / "pistavoz.log"
-            mic, start = last["active_devices"]["mic"], last
-            first = last["microfone"]["secas"]
+            mic, start, counted = last["active_devices"]["mic"], last, []
             for n in range(1, a.cycles + 1):
                 seen = len(lines(work / "server.err"))
                 try:
+                    sent_at = clock()
                     call("POST", "/api/settings", {"effect": "pistavoz"})
                     on_at = clock()
                     during = record.until(on_at + a.on_s)
+                    before = [st for st, t in zip(during, record.times) if t < sent_at]
                     call("POST", "/api/settings", {"effect": "nenhum"})
                     off_at = clock()
                     during += record.until(off_at + OFF_S)
@@ -260,9 +262,11 @@ def main():
                     sys.exit(f"cycle {n}: {ex} (see {server_err} and {log})")
                 states_seen = [start, *during]
                 start = states_seen[-1]
-                c, problem = cycle_row(n, states_seen, mic, a.provider, lines(server_err)[seen:], lines(log), a.on_s)
+                c, problem = cycle_row(n, states_seen, mic, a.provider, lines(server_err)[seen:], lines(log), a.on_s,
+                                       len(before))
                 if problem:
                     sys.exit(f"{problem} (see {work / 'server.err'} and {log})")
+                counted.append((states_seen[len(before)]["microfone"]["secas"], start["microfone"]["secas"]))
                 c.update(requested_on_s=a.on_s, on_s_between_responses=round(off_at - on_at, 3))
                 cycles.append(c)
                 print(json.dumps(c), flush=True)
@@ -280,7 +284,7 @@ def main():
                 if job:
                     job.end()
     dry = [ln for ln in lines(work / "server.err")
-           if (m := DRY_LINE.search(ln)) and first < int(m.group(1)) <= start["microfone"]["secas"]
+           if (m := DRY_LINE.search(ln)) and any(lo < int(m.group(1)) <= hi for lo, hi in counted)
            and int(m.group(2)) == start["microfone"]["injetor"]]
     blocks = [c["voice_slowest_block_ms"] for c in cycles if c["voice_slowest_block_ms"] is not None]
     result = {"microphone": mic, "voice": voice, "provider": a.provider, "onnxruntime": onnxruntime.__version__,

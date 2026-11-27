@@ -196,8 +196,8 @@ def dry_out_line(count, injector, pedal=False):
 
 
 class Main(unittest.TestCase):
-    def run_main(self, got, *args, events=(), asked=MIC, late_lines=(), track_ups=()):
-        sent = []
+    def run_main(self, got, *args, events=(), asked=MIC, late_lines=(), track_ups=(), clock_at=()):
+        sent, readings = [], iter(clock_at)
         ups = iter(track_ups)
         work = Path(self.enterContext(tempfile.TemporaryDirectory()))
         err = []
@@ -226,7 +226,6 @@ class Main(unittest.TestCase):
             return io.BytesIO(json.dumps(answers.get(path, {})).encode())
 
         proc = mock.Mock(**{"poll.return_value": None})
-        ticks = itertools.count(0.0, 10.0)
         with (mock.patch("onnxruntime.get_available_providers", return_value=WITH_DML),
               mock.patch("onnxruntime.__version__", PINNED),
               mock.patch.object(measure.so_mock, "sai_se_o_app_ligado"),
@@ -237,7 +236,8 @@ class Main(unittest.TestCase):
               mock.patch.object(measure.urllib.request, "urlopen",
                                 side_effect=AssertionError("urlopen follows the proxy")),
               mock.patch.object(measure, "OFF_S", 0.5),
-              mock.patch.object(measure, "clock", lambda: next(ticks)),
+              mock.patch.object(measure, "clock",
+                                lambda: next(readings, 10.0 * [p for _, p in sent].count("/api/settings"))),
               mock.patch.object(sys, "argv", ["measure_voice_pedal.py", asked, "--port", "8970", "--on-s", "0.5",
                                               "--out", str(work / "out.json"), *args])):
             try:
@@ -310,6 +310,25 @@ class Main(unittest.TestCase):
         self.assertIsNone(why, "a read of a frame or two shows as 0.0 ms, measured")
         self.assertIn(("POST", "/api/settings"), sent)
         self.assertEqual(result["cycles"][0]["dry_outs"], 0)
+
+    def test_a_dry_out_before_the_pedal_is_sent_is_not_the_cycles(self):
+        why, _, result = self.run_main(state(), "--cycles", "1", clock_at=(0.0, 5.0, 10.0, 20.0),
+                                       events=[(1.0, state(0, 0, 9.0, 10.0)), (3.0, state(1, 0, 656.0, 0.0)),
+                                               (15.0, state(1, 0, 656.0, 0.0)), (25.0, None)])
+        self.assertIsNone(why)
+        self.assertEqual((result["cycles"][0]["dry_outs"], result["cycles"][0]["new_longest_return_ms"],
+                          result["dry_out_lines"]), (0, None, []),
+                         "the round at 3 s came before the pedal was sent at 5 s")
+
+    def test_a_dry_out_between_two_cycles_is_neither_ones(self):
+        why, _, result = self.run_main(state(), "--cycles", "2", clock_at=(0.0, 5.0, 10.0, 20.0, 25.0, 30.0, 40.0),
+                                       events=[(1.0, state(0, 0, 9.0, 10.0)), (15.0, state(0, 0, 9.0, 10.0)),
+                                               (21.0, None), (22.0, state(1, 0, 656.0, 0.0)),
+                                               (35.0, state(1, 0, 656.0, 0.0)), (41.0, None)],
+                                       late_lines=[dry_out_line(1, 1)])
+        self.assertIsNone(why)
+        self.assertEqual(([c["dry_outs"] for c in result["cycles"]], result["dry_out_lines"]), ([0, 0], []),
+                         "the round at 22 s came after the first cycle closed and before the second was sent at 25 s")
 
     def test_a_ring_never_open_stops_before_the_pedal(self):
         why, sent, _ = self.run_main(state(), events=[(1.0, state(anel=False)), (70.0, state(anel=False))])
