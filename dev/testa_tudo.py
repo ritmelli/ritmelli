@@ -81,7 +81,7 @@ STDLIB = [f"dev/testa_{n}.py" for n in ("i18n", "metricas", "migra", "mock", "vo
                                              "ganchos", "pasta_protegida", "so_mock")] + [
     "dev/test_trusted_author.py", "dev/test_needs_owner.py", "dev/test_ci_workflow.py",
     "dev/test_forbidden_terms.py", "dev/test_music.py", "dev/test_bumbo_grid.py", "dev/garden.py",
-    "dev/test_garden.py", "dev/test_audio_imports.py", "dev/test_monta_contract.py"]
+    "dev/test_garden.py", "dev/test_audio_imports.py", "dev/test_monta_contract.py", "dev/test_syntax.py"]
 # o STDLIB mais os que usam as bibliotecas do app (requirements-dev.txt) e o ffmpeg
 COMPLETO = STDLIB + [f"dev/testa_{n}.py" for n in (
     "adianta", "anel", "atualizacao", "atualizador", "automatico", "comandos", "congela", "conversor", "ganho", "musica",
@@ -90,7 +90,7 @@ COMPLETO = STDLIB + [f"dev/testa_{n}.py" for n in (
     "dev/test_compara_push_steps.py", "dev/test_external_module.py", "dev/test_release_workflow.py",
     "dev/test_fitcheck_ready.py", "dev/test_mock_stop.py", "dev/test_stretch_outgoing.py", "dev/test_grava_cfg.py",
     "dev/test_andamento.py", "dev/test_compasso.py", "dev/test_winvol.py", "dev/test_uninstall_wait.py",
-    "dev/test_theme_rebuild.py"]
+    "dev/test_theme_rebuild.py", "dev/test_syntax_oracles.py"]
 LONG_TESTS = {"bench": "dev/testa_passagem.py", "capture": "dev/test_capture.py"}
 # os do filtro, com as DLLs do microfone\apo\compila.bat teste: o testa.yml so roda quando a area do filtro muda
 # o testa_aparelho_mudo fica aqui pelo Inno Setup, que o job do filtro instala: sem ele, os casos do instalador
