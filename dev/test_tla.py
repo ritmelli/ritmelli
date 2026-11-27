@@ -293,6 +293,9 @@ RUNS = (
     Run("mutant: the key holds the record by identity, which a source handover replaces, and the failed source opens "
         "again in the same play", "PassageFailure", "invariant NoRetryOfTheFailedSource",
         constants=PLAYS + (("KeyByTheRecord", "TRUE"),)),
+    Run("mutant: the play counter does not go up when a new record enters the platter, and a failure of the play "
+        "before blocks the new one", "PassageFailure", "invariant FailureBlocksOnlyItsPrepare",
+        constants=PLAYS + (("PlayUpOnTheNewRecord", "FALSE"),)),
 )
 
 failures = []
@@ -537,6 +540,8 @@ def main():
                  "Races211, the code as it is with a stream reader that reaches its end") else r for r in RUNS]),
             ("the schedule has no passing run with the stream's clean end",
              [r for r in RUNS if not (r.expect == "pass" and r.constants == CLEAN_END and r.invariants is None)]),
+            ("the schedule has no passing run with the stream's drop",
+             [r for r in RUNS if not (r.expect == "pass" and r.constants == DROP and r.invariants is None)]),
             ("the passing run with the stream's clean end turns it off",
              [replace(r, constants=tuple(c for c in r.constants if c[0] != "WithTheCleanEnd"))
               if r.expect == "pass" and r.constants == CLEAN_END and r.invariants is None else r for r in RUNS]),

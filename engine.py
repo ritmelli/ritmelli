@@ -203,8 +203,7 @@ class Deck:
         self.ganho = 1.0
 
 
-# the platter at one instant, under the _qlock: track, pos, status(), deck, line, and the play (load, espera, _vira)
-Captura = collections.namedtuple("Captura", "track pos status deck linha tocada")
+Captura = collections.namedtuple("Captura", "track pos status deck linha play")
 # the platter's line as a token (Engine.line): the deck and the line on it. A Captura, a comandos.Reserva and a
 # comandos.Proximo carry the same two fields, and Engine.on_line checks any of them
 Line = collections.namedtuple("Line", "deck linha")
@@ -1199,7 +1198,7 @@ class Engine:
         # o primeiro som do disco que entrou no prato (09/11, a latencia do pedido falado): espera e load marcam
         # (id, hora do relogio), o _mixa troca pelo (titulo, stream?, entrou, soou) no primeiro bloco dele, e o
         # servidor tira e escreve no log (nada de print no callback)
-        self._prato, self._tocada = None, 0
+        self._prato, self._play = None, 0
         self._soou = None
         self._preabertos = {}  # url -> Preaberto (ver preabre), sob _pre_lock
         self._pre_usados = {}  # url -> monotonic em que um leitor o pediu: o aberto antes que chega depois nao abre
@@ -2200,7 +2199,7 @@ class Engine:
         d, st, bl = self._deck, self.status(), self._bloco
         if st == "buffering" and bl is not None and bl[0] is d and bl[1] == d.linha:
             st = "playing"
-        return Captura(self.track, self.pos, st, d, d.linha, self._tocada)
+        return Captura(self.track, self.pos, st, d, d.linha, self._play)
 
     @staticmethod
     def _tira(q, n):
@@ -2456,7 +2455,7 @@ class Engine:
             if track is not None:
                 self.track = d.track = track
             if prato:  # o disco que entra no prato agora: o primeiro som dele vai para o log
-                self._prato, self._tocada = (track.get("id"), time.time()), self._tocada + 1
+                self._prato, self._play = (track.get("id"), time.time()), self._play + 1
             if alvo is not None:
                 d.ganho_alvo = d.ganho = alvo
             if paused is not None:
@@ -3053,7 +3052,7 @@ class Engine:
         self._visor_feita, self._visor_pas = (self._visor_pas if medida else None), None
         self._pronto = self.pronto_tag = self._virar_em = None
         prox.ahead = AHEAD
-        self.track, self._tocada = prox.track, self._tocada + 1
+        self.track, self._play = prox.track, self._play + 1
         self.pos = prox.q[0][0] if prox.q else 0.0
         self.ended, self._stream_warning = False, None
         self.virou = (sai, prox.track, tag)

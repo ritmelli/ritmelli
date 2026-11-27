@@ -3,7 +3,7 @@ EXTENDS Naturals, TLC
 
 CONSTANTS Entries, Sources, Files, NoFile, NoKey, FailureCarriesTheKey, FailureLabelledByTheHead, PrepareKeysItsPick,
           FailuresKeptTogether, PickChecksTheFailures, TakeDropsTheStaleDeck, PickMatchesByEntry, FileKeyedByName,
-          Last, PlayUpOnTheHandover, PlayUpOnTheSeek, KeyByTheRecord
+          Last, PlayUpOnTheHandover, PlayUpOnTheSeek, KeyByTheRecord, PlayUpOnTheNewRecord
 
 Plays == 0..Last
 
@@ -61,7 +61,7 @@ AudioVersion ==
 
 NewDisc ==
     /\ truth = 0 /\ play < Last /\ (KeyByTheRecord => record < Last)
-    /\ truth' = 1 /\ play' = play + 1 /\ record' = Up(record, KeyByTheRecord)
+    /\ truth' = 1 /\ play' = Up(play, PlayUpOnTheNewRecord) /\ record' = Up(record, KeyByTheRecord)
     /\ prepared' = NoKey /\ preparedSource' = NoKey
     /\ UNCHANGED <<head, src, shelf, failed, failedSources, busy, worker, asked, picked, carried, failure, watcherVars,
                    blockedOther, retriedTheFailure, askedTruth>>

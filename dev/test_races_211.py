@@ -1035,7 +1035,7 @@ def two_entries(A, n):
 
 
 def carried_key(A, x):
-    return A.engine.captura().tocada, x["qid"], A.passage_source(x)
+    return A.engine.captura().play, x["qid"], A.passage_source(x)
 
 
 def watch(A, launches):
@@ -1225,7 +1225,7 @@ def two_failures_on_one_record(A, E, readers):
     check(launches.qids == [x["qid"], y["qid"]],
           f"two prepares that fail on the same record both stay failed: the first is not started again when it "
           f"comes back to the head after the second failed ({A.failed_passages}, launched {launches.qids})")
-    old = E.captura().tocada
+    old = E.captura().play
     check(play(A, E, readers, "d2"), "d2 is on the platter, read")
     with mock.patch.object(eng, "TRANS_PREP_S", 1e6):
         watch(A, launches)
@@ -1236,35 +1236,72 @@ def two_failures_on_one_record(A, E, readers):
 def failure_of_an_earlier_play_of_the_record_playing(A, E, readers):
     check(play(A, E, readers, "d1"), "d1 is on the platter, read")
     x, _ = two_entries(A, 18)
-    launches = Launches()
+    launches, old, before, key = Launches(), E.captura().track, E.captura().play, carried_key(A, x)
     with mock.patch.object(eng, "TRANS_PREP_S", 1e6):
-        key = (E.captura().tocada - 1, x["qid"], A.passage_source(x))
-        A.failed_passages.add(key)
-        distinct = carried_key(A, x) != key and E.captura().track is E.track
+        with E.state_section():
+            E._prepare_failure = key
+        watch(A, launches)
+        blocked = launches.qids == []
+        E.load(old, 0.0)
+        again = readers.wait("d1") and E.captura().track is old and E.captura().play == before + 1
         watch(A, launches)
     A.failed_passages.clear()
-    check(distinct and launches.qids == [x["qid"]],
-          f"a failure of an earlier play, with the same record object on the platter, does not block the play now "
-          f"(distinct {distinct}, launched {launches.qids})")
+    check(blocked and again and launches.qids == [x["qid"]],
+          f"the same record object loaded again is a new play: the failure of the first play blocked its source then, "
+          f"and does not block it now (blocked {blocked}, again {again}, launched {launches.qids})")
+
+
+def failures_leave_at_the_switch(A, E, readers):
+    x = prepared_similar(A, E, readers, "switch23")
+    y = dict(x, id="d2", youtube_id="bbbbbbbbbbb", qid="other23")
+    with A.fila_lock:
+        A.change_queue(lambda: A.fila.append(y))
+    launches, key, before = Launches(), carried_key(A, y), E.captura().play
+    A.failed_passages.add(key)
+    switched = mix_until_the_switch(E)
+    with mock.patch.object(eng, "TRANS_PREP_S", 1e6), contextlib.redirect_stderr(io.StringIO()):
+        watch(A, launches)
+    counted = E.captura().play == before + 1 and E.captura().track.get("id") == "d3"
+    pruned = key not in A.failed_passages
+    A.failed_passages.clear()
+    check(switched and counted and pruned and launches.qids == [y["qid"]],
+          f"the passage switch is a new play: the failures of the play before it leave, and the source that failed "
+          f"there gets its prepare (switched {switched}, counted {counted}, pruned {pruned}, launched "
+          f"{launches.qids})")
 
 
 def failure_kept_through_the_file_handover_at_the_stream_end(A, E, readers):
     check(play(A, E, readers, "d1"), "d1 is on the platter, read")
     x, _ = two_entries(A, 21)
-    launches, key, old = Launches(), carried_key(A, x), E.captura().track
-    with mock.patch.object(eng, "TRANS_PREP_S", 1e6), mock.patch.object(A, "stream_info") as opens:
+    held, go, mede = threading.Event(), threading.Event(), E._mede
+    launches, old = Launches(), E.captura().track
+
+    def decodes_nothing(gen, track, start, deck):
+        with E._qlock:
+            deck.eof_gen = gen
+
+    def gated(*a):
+        held.set()
+        go.wait(WAIT_S)
+        return mede(*a)
+    with mock.patch.object(eng, "TRANS_PREP_S", 1e6), contextlib.redirect_stderr(io.StringIO()), \
+            mock.patch.object(E, "_reader", decodes_nothing), mock.patch.object(E, "_mede", gated):
+        A._volta_passagem()
+        deck = E._pronto if held.wait(WAIT_S) else None
+        key = carried_key(A, x)
         with E.state_section():
             E._deck.eof_gen = E._deck.gen
         handed = E.trocar_fonte(old, dict(old, title="the file"))
-        with E.state_section():
-            E._prepare_failure = key
-        watch(A, launches)
-    replaced = E.captura().track is not old and E.captura().track.get("title") == "the file"
+        kept = deck is not None and E._pronto is deck and E.captura().track is not old
+        go.set()
+        failed = harness.ate(lambda: E._prepare_failure is not None) and E._prepare_failure == key
+        with mock.patch.object(A, "stream_info") as opens:
+            watch(A, launches)
     A.failed_passages.clear()
-    check(handed and replaced and launches.qids == [] and not opens.called,
-          f"a failure the engine reports after the file handover at the stream's end, with the key the prepare carried "
-          f"from before it, still blocks that source: the handover put a new record on the platter in the same play "
-          f"(handed {handed}, replaced {replaced}, launched {launches.qids}, opened {opens.call_count})")
+    check(handed and kept and failed and launches.qids == [] and not opens.called,
+          f"the file handover at the end of the platter's reader keeps the deck prepared before it, the deck that "
+          f"decodes nothing then fails with the key its prepare carried, and the watcher does not start that source "
+          f"again in the same play (handed {handed}, kept {kept}, failed {failed}, launched {launches.qids})")
 
 
 def failure_kept_through_a_seek(A, E, readers):
@@ -1508,6 +1545,7 @@ def main():
                 failure_of_an_earlier_play_of_the_record_playing(A, E, readers)
                 failure_kept_through_the_file_handover_at_the_stream_end(A, E, readers)
                 failure_kept_through_a_seek(A, E, readers)
+                failures_leave_at_the_switch(A, E, readers)
                 replacement_shelf_file_after_its_predecessor_failed(A, E, readers)
                 engine_failure_through_the_real_prepare(A, E, readers)
                 audio_version_entries(A, E)

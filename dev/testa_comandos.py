@@ -2804,7 +2804,7 @@ def engine_seams(A, E):
                 "inside the preparation window, the head of the queue is prepared")
         A.preparando = None
         prepara.reset_mock()
-        failed_key = (E.captura().tocada, x["qid"], A.passage_source(x))
+        failed_key = (E.captura().play, x["qid"], A.passage_source(x))
         with E.state_section():
             E._prepare_failure, E.pronto_tag = failed_key, "a deck prepared for another entry"
         qlock, E.__class__ = E._qlock, Watched
@@ -2826,7 +2826,7 @@ def engine_seams(A, E):
             f"and reads the prepared deck's tag in the same hold of the _qlock as the failure ({pairs})")
     confere(not prepara.called and A.preparando is None,
             f"and the head that failed is not prepared again ({prepara.call_count}, {A.preparando})")
-    carried, taken = (E.captura().tocada, x["qid"], ("the source the prepare picked", None)), []
+    carried, taken = (E.captura().play, x["qid"], ("the source the prepare picked", None)), []
 
     def decodes_nothing(gen, track, start, deck):
         with E._qlock:

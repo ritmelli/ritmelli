@@ -224,7 +224,7 @@ posição do disco viram escolha não determinística, e os `qid` são simétric
   registro da prateleira que ele escolheu, por identidade, porque um download de novo sai com o mesmo `id`, o mesmo nome
   de arquivo e às vezes o mesmo `added`, e as mudanças no registro (o nome, o `lufs`, as vezes tocadas) são no mesmo
   objeto: o `_prepara` a passa ao `Engine.preparar`, e o motor a devolve pelo `take_prepare_failure`), e o vigia guarda
-  essas chaves num conjunto, as da tocada de agora (o `tocada` da `Captura`, um contador do motor que muda quando, e só
+  essas chaves num conjunto, as da tocada de agora (o `play` da `Captura`, um contador do motor que muda quando, e só
   quando, um disco novo entra no prato: o `load`, o `espera` e o `_vira`; a troca de fonte põe outro dicionário no prato
   e o pulo começa uma linha nova, mas os dois seguem na mesma tocada), sem rotular a falha pelo que viu; ele lê a falha
   e tira o deck preparado para outra entrada no mesmo trecho do `_qlock` (`take_prepare_failure(keep=)`), e o preparo
@@ -233,17 +233,18 @@ posição do disco viram escolha não determinística, e os `qid` são simétric
   downloads do mesmo arquivo; dois só numa execução à parte, com uma fonte só). Numa execução à parte (`Last = 1`, uma
   fonte), um disco novo entra no prato, a fonte troca e o disco pula, e o vigia poda as falhas de outra tocada. Confere
   que uma falha só bloqueia o preparo da mesma tocada que a gerou (`FailureBlocksOnlyItsPrepare`) e que a fonte que
-  falhou não começa de novo na tocada que segue no prato (`NoRetryOfTheFailedSource`), com onze mutantes: o contador que
-  sobe na troca de fonte, o que sobe no pulo, a chave pelo disco, que a troca de fonte substitui, a falha só com a
-  entrada, a falha com a chave da cabeça da fila, o preparo com a chave que o vigia pediu em vez da fonte que ele
-  escolheu, uma falha só guardada (a segunda apaga a primeira), o preparo que não confere a fonte que escolheu, o deck
-  de outra entrada tirado num segundo trecho do `_qlock` depois de ler a falha, o preparo que confere a fonte que
-  escolheu só pela entrada (e recusa o arquivo depois que o stream falhou) e a chave com o que dois downloads do arquivo
-  têm em comum, como o nome (e recusa o download que substitui um que falhou). O `dev/test_tla.py` exige de cada spec
-  uma execução do código que passa conferindo todas as invariantes, e da `LocksAndSwitch` e da `PassageFailure` as do
-  tamanho que o `WHOLE` pede, contando os membros distintos de cada conjunto nas constantes que cada execução usa (a
-  `PassageFailure`, uma com duas entradas, duas fontes e um arquivo, outra com duas entradas, uma fonte e dois arquivos,
-  e a das tocadas, com `Last = 1`), que só mudam conjuntos e o `Last`, nunca o que liga um mutante.
+  falhou não começa de novo na tocada que segue no prato (`NoRetryOfTheFailedSource`), com doze mutantes: o contador que
+  não sobe quando um disco novo entra, o que sobe na troca de fonte, o que sobe no pulo, a chave pelo disco, que a troca
+  de fonte substitui, a falha só com a entrada, a falha com a chave da cabeça da fila, o preparo com a chave que o vigia
+  pediu em vez da fonte que ele escolheu, uma falha só guardada (a segunda apaga a primeira), o preparo que não confere
+  a fonte que escolheu, o deck de outra entrada tirado num segundo trecho do `_qlock` depois de ler a falha, o preparo
+  que confere a fonte que escolheu só pela entrada (e recusa o arquivo depois que o stream falhou) e a chave com o que
+  dois downloads do arquivo têm em comum, como o nome (e recusa o download que substitui um que falhou). O
+  `dev/test_tla.py` exige de cada spec uma execução do código que passa conferindo todas as invariantes, e da
+  `LocksAndSwitch` e da `PassageFailure` as do tamanho que o `WHOLE` pede, contando os membros distintos de cada
+  conjunto nas constantes que cada execução usa (a `PassageFailure`, uma com duas entradas, duas fontes e um arquivo,
+  outra com duas entradas, uma fonte e dois arquivos, e a das tocadas, com `Last = 1`), que só mudam conjuntos e o
+  `Last`, nunca o que liga um mutante.
 
 O `dev/test_tla.py` roda o TLC (o `tla2tools.jar` da versão fixada, conferido pelo sha256) nas três, cada execução em
 menos de 60 s (a que passa disso é parada ali e falha; a `Races211` em seis com todas as propriedades, além das treze
@@ -261,10 +262,10 @@ mutantes: cada propriedade tem um que desfaz o que ela protege, e o mutante tem 
 que cada execução do código que passa confere todas as invariantes da sua spec (só deixa de fora uma invariante a
 execução que repete a configuração de uma falha conhecida da #294, e só a que essa falha quebra) e o deadlock, e que a
 de justiça confere o `ReservationsResolve`, sem a simetria e sem a reabertura do motor; o mutante que passa só confere
-testemunhas da sua spec (o `WITNESSES`: o `NoSwitchToAKeptDeck`). No PR, o job `tla` do `testa.yml` roda isso numa
-máquina ubuntu (`python dev/testa_tudo.py --passo tla`). No PC, precisa do Java no PATH; o `TLA2TOOLS` aponta para um
-`tla2tools.jar` já baixado. As duas corridas da #211 se repetem no App de verdade no `dev/test_races_211.py`, com os
-passos do contraexemplo, um de cada vez.
+testemunhas da sua spec (o `WITNESSES`: o `NoSwitchToAKeptDeck` e o `SwapLeavesTheShelfFileOff`). No PR, o job `tla` do
+`testa.yml` roda isso numa máquina ubuntu (`python dev/testa_tudo.py --passo tla`). No PC, precisa do Java no PATH; o
+`TLA2TOOLS` aponta para um `tla2tools.jar` já baixado. As duas corridas da #211 se repetem no App de verdade no
+`dev/test_races_211.py`, com os passos do contraexemplo, um de cada vez.
 
 ## O que o servidor lê do motor
 

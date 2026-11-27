@@ -137,9 +137,9 @@ viu; ver [comandos.md](comandos.md)). Quem chama com as travas dele na mão pass
 `depois`, onde fica o resto do comando (o leitor que começa, a onda, a medida), que ele roda ao soltá-las.
 
 O servidor confere a linha pela interface do motor, e não pelos campos de dentro: o `line()` dá a `Line` (o deck e a
-linha do prato, os mesmos dois campos da `Captura`; a `Captura` leva também a tocada, o contador que só sobe quando um
-disco novo entra no prato, no `load`, no `espera` e no `_vira`, e que a troca de fonte e o pulo não mudam), e o
-`on_line(t)` diz, sob o `_qlock`, se o prato ainda é a linha de `t`. A virada que o motor fez sozinho sai pelo
+linha do prato, os mesmos dois campos da `Captura`; a `Captura` leva também a tocada (o `play`), o contador que só sobe
+quando um disco novo entra no prato, no `load`, no `espera` e no `_vira`, e que a troca de fonte e o pulo não mudam), e
+o `on_line(t)` diz, sob o `_qlock`, se o prato ainda é a linha de `t`. A virada que o motor fez sozinho sai pelo
 `take_switch` (sob o `_qlock`, só a que ainda é a pendente), a passagem preparada pelo `drop_prepared` (sob o `_qlock`),
 o ganho medido antes das travas pelo `gain_for`, o nome novo do disco no prato e no segundo deck pelo `update_track` (no
 próprio dicionário de cada um, sob o `_qlock`: quem o guarda, como o download que vai entregar o arquivo, ainda guarda o
