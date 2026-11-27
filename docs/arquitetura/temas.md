@@ -114,12 +114,16 @@ página com um `<meta>` de `Content-Security-Policy` roda o clássico e não os 
 de um `--mock` como o PC e de outro como o celular, pela mesma gramática da montagem (o `strict` do `theme_page.py`), e
 reprova com um `<script src>` ou um `<link rel="stylesheet">` nelas ou com um pedido de script ou de folha que o Chrome
 faça ao servidor. O `dev/test_theme_modules.py` lê o tema pela árvore de sintaxe:
+- a conferência desce na árvore por um leitor só, que pula os comentários e tira os parênteses de uma expressão (o
+  `(zz) = 1` é a escrita no `zz`), e nenhuma regra decide a forma pelo texto de um nó; cada caso do teste, reescrito com
+  um comentário entre cada dois tokens e com parênteses em volta de cada expressão onde o JavaScript os aceita, dá o
+  mesmo veredito;
 - cada import e cada export ficam no alto do módulo; cada import tem a forma `import { a, b } from "arquivo.js"`, com
   pelo menos um nome, nomes simples e sem `as`, e cada export é um `export const` de nomes simples ou um `export
   function`; outra forma (o `default`, o `* as`, o `as`, a reexportação, o `export { }`, o `export let`, o `export
   class`, o import só pelo efeito, o `import {}`, os atributos) reprova, com o arquivo e a linha, como forma que a
   conferência não julga. Cada import nomeia um módulo da página e um nome que ele exporta, e nenhum módulo importa ou
-  exporta o mesmo nome duas vezes; num clássico, um import ou um export reprova;
+  exporta o mesmo nome duas vezes; num clássico, um import, um export ou um `import.meta` reprova;
 - cada nome importado é usado e não é declarado de novo, e um módulo não escreve no import nem num nome que ninguém
   declara (o modo estrito lança erro nos dois); cada nome se resolve pelos escopos em volta dele, e uma atribuição por
   desestruturação não declara nada; um módulo não liga `arguments`, `yield` nem outra palavra que o modo estrito
@@ -133,8 +137,9 @@ faça ao servidor. O `dev/test_theme_modules.py` lê o tema pela árvore de sint
   linha, como forma que ela não julga, e o trecho se reescreve numa forma da lista; também não julga, e reprova, um nome
   que não é ASCII simples (letra, `_` ou `$`, depois letras, dígitos, `_` ou `$`), como o escrito com escape, e o valor
   padrão de um parâmetro que lê um nome que o corpo da função declara ou um parâmetro de depois, uma `class` (declaração
-  ou expressão, com o bloco estático, os campos e os nomes privados dela) e um método de nome computado, num objeto ou
-  numa classe;
+  ou expressão, com o bloco estático, os campos e os nomes privados dela), um método de nome computado, num objeto ou
+  numa classe, e uma função ou um generator declarado dentro de um bloco (fora do alto do arquivo e do alto do corpo de
+  uma função);
 - cada script se analisa sem erro, nenhum script, clássico ou módulo, usa `import()`, e nenhum arquivo lê um nome que
   só outro módulo declara (um módulo chega a ele só pelo import);
 - nenhum arquivo escreve de novo uma função que um módulo exporta (com os nomes ligados dentro dela trocados), e só o

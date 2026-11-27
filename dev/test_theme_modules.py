@@ -60,6 +60,20 @@ def walk(node):
         yield from walk(child)
 
 
+def unwrapped(node):
+    while node is not None and node.type == "parenthesized_expression":
+        node = next((c for c in node.named_children if c.type != "comment"), None)
+    return node
+
+
+def field(node, name):
+    return unwrapped(node.child_by_field_name(name))
+
+
+def parts(node):
+    return [unwrapped(c) for c in node.named_children if c.type != "comment"]
+
+
 def literal(node):
     return node.text.decode("utf-8")[1:-1] if node is not None and node.type == "string" else None
 
@@ -83,11 +97,11 @@ def pattern_nodes(node):
     if node.type in ("identifier", "shorthand_property_identifier_pattern"):
         return [node]
     if node.type == "pair_pattern":
-        return pattern_nodes(node.child_by_field_name("value"))
+        return pattern_nodes(field(node, "value"))
     if node.type in DEFAULTS:
-        return pattern_nodes(node.child_by_field_name("left"))
+        return pattern_nodes(field(node, "left"))
     if node.type in ("array_pattern", "object_pattern", "rest_pattern"):
-        return [found for child in node.named_children for found in pattern_nodes(child)]
+        return [found for child in parts(node) for found in pattern_nodes(child)]
     return []
 
 
@@ -142,27 +156,27 @@ def refers(node):
 def unallowed(node):
     if node.parent.type != "program":
         return node
-    parts = [c for c in node.children if c.type != "comment"]
+    tokens = [c for c in node.children if c.type != "comment"]
     if node.type == "import_statement":
-        if [c.type for c in parts] not in (["import", "import_clause", "from", "string"],
-                                           ["import", "import_clause", "from", "string", ";"]):
-            return next((c for c in parts if c.type not in ("import", "import_clause", "from", "string", ";")), node)
-        clause = [c for c in parts[1].named_children if c.type != "comment"]
+        if [c.type for c in tokens] not in (["import", "import_clause", "from", "string"],
+                                            ["import", "import_clause", "from", "string", ";"]):
+            return next((c for c in tokens if c.type not in ("import", "import_clause", "from", "string", ";")), node)
+        clause = parts(tokens[1])
         if len(clause) != 1 or clause[0].type != "named_imports":
-            return clause[0] if clause else parts[1]
-        specifiers = [s for s in clause[0].named_children if s.type != "comment"]
+            return clause[0] if clause else tokens[1]
+        specifiers = parts(clause[0])
         if not specifiers:
             return clause[0]
         return next((s for s in specifiers if s.type != "import_specifier" or s.child_by_field_name("alias") is not None
                      or s.child_by_field_name("name").type != "identifier"), None)
     declaration = node.child_by_field_name("declaration")
-    if len(parts) != 2 or declaration is None:
-        return next((c for c in parts[1:] if c != declaration), node)
+    if len(tokens) != 2 or declaration is None:
+        return next((c for c in tokens[1:] if c != declaration), node)
     if declaration.type == "function_declaration":
         return None
     if declaration.type != "lexical_declaration" or declaration.children[0].type != "const":
         return declaration
-    return next((d.child_by_field_name("name") for d in declaration.named_children if d.type == "variable_declarator"
+    return next((d.child_by_field_name("name") for d in parts(declaration) if d.type == "variable_declarator"
                  and d.child_by_field_name("name").type != "identifier"), None)
 
 
@@ -174,7 +188,7 @@ def allowed_imports(root):
 
 def declared(node):
     if node.type in ("lexical_declaration", "variable_declaration"):
-        return [(name, d.child_by_field_name("value")) for d in node.named_children if d.type == "variable_declarator"
+        return [(name, field(d, "value")) for d in parts(node) if d.type == "variable_declarator"
                 for name in sorted(pattern_names(d.child_by_field_name("name")))]
     if node.type in FUNCTIONS and (named := node.child_by_field_name("name")) is not None:
         return [(text_of(named), node)]
@@ -207,7 +221,8 @@ def normalized(function):
             declared_at[key(node)] = where
     names, leaves = {}, []
     for node in walk(function):
-        if node.children or node.type == "comment":
+        if node.children or node.type == "comment" or node.parent.type == "parenthesized_expression" and \
+                node.type in ("(", ")"):
             continue
         if node.type not in NAMES:
             leaves.append(text_of(node))
@@ -248,9 +263,7 @@ def key_text(node):
 
 def object_keys(node):
     found = set()
-    for child in node.named_children:
-        if child.type == "comment":
-            continue
+    for child in parts(node):
         if child.type == "pair" and child.child_by_field_name("key").type in ("property_identifier", "string"):
             found.add(key_text(child.child_by_field_name("key")))
         elif child.type == "shorthand_property_identifier":
@@ -262,9 +275,9 @@ def object_keys(node):
 
 def object_values(node):
     found = {}
-    for child in node.named_children:
+    for child in parts(node):
         if child.type == "pair":
-            value = child.child_by_field_name("value")
+            value = field(child, "value")
             found[key_text(child.child_by_field_name("key"))] = value if value.type == "identifier" else None
         elif child.type == "shorthand_property_identifier":
             found[text_of(child)] = child
@@ -273,16 +286,16 @@ def object_values(node):
 
 def destructured_keys(pattern):
     found = []
-    for part in pattern.named_children if pattern.type == "object_pattern" else []:
+    for part in parts(pattern) if pattern.type == "object_pattern" else []:
         if part.type == "shorthand_property_identifier_pattern":
             found.append((part, text_of(part)))
         elif part.type == "object_assignment_pattern" and (left := part.child_by_field_name("left")).type == \
                 "shorthand_property_identifier_pattern":
             found.append((left, text_of(left)))
         elif part.type == "pair_pattern":
-            value = part.child_by_field_name("value")
+            value = field(part, "value")
             while value.type in DEFAULTS:
-                value = value.child_by_field_name("left")
+                value = field(value, "left")
             if value.type == "identifier":
                 found.append((value, key_text(part.child_by_field_name("key"))))
     return found
@@ -318,31 +331,25 @@ def module_only(root):
             found.append(f"binds {text_of(name)} at line {name.start_point[0] + 1}, which a module, in strict mode, "
                          f"refuses")
         if node.type == "formal_parameters":
-            names = [text_of(n) for part in node.named_children for n in pattern_nodes(part)]
+            names = [text_of(n) for part in parts(node) for n in pattern_nodes(part)]
             found += [f"has the parameter {n} twice at line {node.start_point[0] + 1}, which a module, in strict "
                       f"mode, refuses" for n in sorted({n for n in names if names.count(n) > 1})]
     return found
 
 
-def unwrapped(node):
-    while node is not None and node.type == "parenthesized_expression":
-        node = next((c for c in node.named_children if c.type != "comment"), None)
-    return node
-
-
 def returns(node):
-    for child in node.named_children:
+    for child in parts(node):
         if child.type == "return_statement":
-            yield unwrapped(next((c for c in child.named_children if c.type != "comment"), None))
+            yield next(iter(parts(child)), None)
         elif child.type not in (*FUNCTIONS, "method_definition"):
             yield from returns(child)
 
 
 def returned_keys(function):
-    body = function.child_by_field_name("body")
+    body = field(function, "body")
     if body is None:
         return []
-    objects = list(returns(body)) if body.type == "statement_block" else [unwrapped(body)]
+    objects = list(returns(body)) if body.type == "statement_block" else [body]
     return [keys for o in objects if o is not None and o.type == "object" and (keys := object_keys(o))]
 
 
@@ -350,39 +357,39 @@ def unread(node, leaves):
     if node.type in leaves or node.type == "comment" or node.type == "shorthand_property_identifier_pattern":
         return None
     if node.type in ("object_pattern", "array_pattern", "rest_pattern"):
-        parts = node.named_children
+        inside = parts(node)
     elif node.type == "pair_pattern":
         if (named := node.child_by_field_name("key")).type not in PATTERN_KEYS:
             return named
-        parts = [node.child_by_field_name("value")]
+        inside = [field(node, "value")]
     elif node.type in DEFAULTS:
-        parts = [node.child_by_field_name("left")]
+        inside = [field(node, "left")]
     else:
         return node
-    return next((bad for part in parts if (bad := unread(part, leaves)) is not None), None)
+    return next((bad for part in inside if (bad := unread(part, leaves)) is not None), None)
 
 
 def places(root):
     for node in walk(root):
         if node.type == "variable_declarator":
-            yield "binding", node.child_by_field_name("name"), BOUND_LEAVES
+            yield "binding", field(node, "name"), BOUND_LEAVES
         elif node.type == "formal_parameters":
-            yield from (("binding", part, BOUND_LEAVES) for part in node.named_children)
+            yield from (("binding", part, BOUND_LEAVES) for part in parts(node))
         elif node.type in ("arrow_function", "catch_clause") and node.child_by_field_name("parameter"):
-            yield "binding", node.child_by_field_name("parameter"), BOUND_LEAVES
+            yield "binding", field(node, "parameter"), BOUND_LEAVES
         elif node.type == "for_in_statement":
             kind = node.child_by_field_name("kind")
-            yield ("binding", node.child_by_field_name("left"), BOUND_LEAVES) if kind else (
-                "write", node.child_by_field_name("left"), WRITTEN_LEAVES)
+            yield ("binding", field(node, "left"), BOUND_LEAVES) if kind else (
+                "write", field(node, "left"), WRITTEN_LEAVES)
         elif node.type == "assignment_expression":
-            yield "write", node.child_by_field_name("left"), WRITTEN_LEAVES
+            yield "write", field(node, "left"), WRITTEN_LEAVES
         elif node.type in ("augmented_assignment_expression", "update_expression"):
-            target = node.child_by_field_name("left" if node.type != "update_expression" else "argument")
+            target = field(node, "left" if node.type != "update_expression" else "argument")
             yield "write", target, WRITTEN_LEAVES if target.type in WRITTEN_LEAVES else ()
 
 
 def declared_in(function):
-    body = function.child_by_field_name("body")
+    body = field(function, "body")
     if body is None or body.type != "statement_block":
         return set()
     return {text_of(n) for n in walk(body) if n.type in NAMES and n.type != "shorthand_property_identifier"
@@ -393,11 +400,11 @@ def early_defaults(root):
     for node in walk(root):
         if node.type != "formal_parameters":
             continue
-        parts, inside = node.named_children, declared_in(node.parent)
-        for i, part in enumerate(parts):
-            later = inside | {name for after in parts[i + 1:] for name in pattern_names(after)}
+        params, inside = parts(node), declared_in(node.parent)
+        for i, part in enumerate(params):
+            later = inside | {name for after in params[i + 1:] for name in pattern_names(after)}
             for default in (d for d in walk(part) if d.type in DEFAULTS):
-                read = [n for n in walk(default.child_by_field_name("right"))
+                read = [n for n in walk(field(default, "right"))
                         if n.type in ("identifier", "shorthand_property_identifier")]
                 yield from (n for n in read if text_of(n) in later)
 
@@ -420,7 +427,18 @@ def unjudged(root):
     found += [f"has a method with a computed name at line {n.start_point[0] + 1}, which this check does not judge: name "
               f"the method" for n in walk(root) if n.type == "method_definition"
               and n.child_by_field_name("name").type == "computed_property_name"]
+    found += [f"has a {n.type} inside a block at line {n.start_point[0] + 1}, which this check does not judge: declare "
+              f"it at the top of the file or of a function's body" for n in walk(root)
+              if n.type in ("function_declaration", "generator_function_declaration") and in_block(n)]
     return found
+
+
+def in_block(declaration):
+    parent = declaration.parent
+    if parent.type == "export_statement":
+        parent = parent.parent
+    return parent.type != "program" and not (parent.type == "statement_block" and parent.parent.type in FUNCTION_SCOPES
+                                             and parent.parent.child_by_field_name("body") == parent)
 
 
 def file_facts(text):
@@ -428,7 +446,8 @@ def file_facts(text):
     facts = types.SimpleNamespace(imports={}, exports=set(), problems=[], top=set(), values={}, functions=[],
                                   objects=[], writes=set(), imported_from={}, called={},
                                   statements=[n.start_point[0] + 1 for n in walk(root)
-                                              if n.type in ("import_statement", "export_statement")])
+                                              if n.type in ("import_statement", "export_statement")
+                                              or n.type == "meta_property" and n.children[0].type == "import"])
     calls = []
     if root.has_error:
         broken = next(n for n in walk(root) if n.type == "ERROR" or n.is_missing)
@@ -443,16 +462,16 @@ def file_facts(text):
             facts.imported_from[text_of(imported)] = (name, text_of(imported))
             facts.imports.setdefault(name, set()).add(text_of(imported))
     for node in walk(root):
-        if node.type == "call_expression" and node.child_by_field_name("function").type == "import":
+        if node.type == "call_expression" and field(node, "function").type == "import":
             facts.problems.append(f"a dynamic import() at line {node.start_point[0] + 1}, which the page's import map "
                                   f"does not hold for certain")
         if node.type in FUNCTIONS and len(text := normalized(node)) >= SHORTEST_FUNCTION:
             facts.functions.append((text, node.start_point[0] + 1))
         if node.type == "object" and (keys := object_keys(node)):
             facts.objects.append((keys, node.start_point[0] + 1, object_values(node)))
-        if node.type == "variable_declarator" and (call := node.child_by_field_name("value")) is not None and \
-                call.type == "call_expression" and call.child_by_field_name("function").type == "identifier":
-            calls.append((node, call.child_by_field_name("function")))
+        if node.type == "variable_declarator" and (call := field(node, "value")) is not None and \
+                call.type == "call_expression" and field(call, "function").type == "identifier":
+            calls.append((node, field(call, "function")))
         if node.type == "export_statement" and unallowed(node) is None:
             for name, value in declared(node.child_by_field_name("declaration")):
                 if name in facts.exports:
@@ -468,17 +487,17 @@ def file_facts(text):
     facts.top = {name for name, where in scopes.items() if program in where}
     facts.module_only = module_only(root)
     for declarator, function in calls:
-        for bound, from_key in destructured_keys(declarator.child_by_field_name("name")):
+        for bound, from_key in destructured_keys(field(declarator, "name")):
             facts.called[(text_of(bound), key(scope_of(declarator)))] = (resolved(function, scopes) == program
                                                                         and text_of(function), from_key)
     facts.objects = [(keys, line, {k: (text_of(n), resolved(n, scopes)) for k, n in values.items()})
                      for keys, line, values in facts.objects]
     facts.reads = {text_of(r) for r in references if resolved(r, scopes) == program}
     facts.free = {text_of(r) for r in references if resolved(r, scopes) is None}
-    lefts = [n.child_by_field_name("left") for n in walk(root)
+    lefts = [field(n, "left") for n in walk(root)
              if n.type in ("assignment_expression", "augmented_assignment_expression")
              or n.type == "for_in_statement" and n.child_by_field_name("kind") is None]
-    lefts += [n.child_by_field_name("argument") for n in walk(root) if n.type == "update_expression"]
+    lefts += [field(n, "argument") for n in walk(root) if n.type == "update_expression"]
     for target in (found for left in lefts for found in pattern_nodes(left)):
         where = resolved(target, scopes)
         if where is None:
@@ -550,8 +569,8 @@ def module_problems(folder, page):
     classics = [(name, file_facts(text)) for name, text in classic_texts(folder, read)]
     problems = [f"{name}: {problem}" for name, own in classics for problem in own.problems
                 if "dynamic import()" in problem or "does not parse" in problem or "does not judge" in problem]
-    problems += [f"{name}: has an import or an export at line {line}, which a classic script refuses: only a module "
-                 f"imports or exports" for name, own in classics for line in own.statements]
+    problems += [f"{name}: has an import, an export or an import.meta at line {line}, which a classic script refuses: "
+                 f"only a module imports or exports" for name, own in classics for line in own.statements]
     problems += [f"{name}: {problem}" for name, own in facts.items() for problem in own.problems + own.module_only]
     problems += [f"{name}: imports {target}, which is not a module of the page" for name, own in facts.items()
                  for target in own.imports if target not in facts]
@@ -577,22 +596,83 @@ def module_problems(folder, page):
     return problems + data_problems(facts) + rewritten(folder, facts)
 
 
+def member_chain(node):
+    if node.type == "identifier":
+        return [text_of(node)]
+    if node.type != "member_expression" or not (inner := member_chain(field(node, "object"))):
+        return []
+    return [*inner, text_of(node.child_by_field_name("property"))]
+
+
 def engine_fonts(folder):
-    families = set(re.findall(r"fam: '\"([^\"]+)\"'", (folder / "pixel.js").read_text(encoding="utf-8")))
+    pixel = PARSER.parse((folder / "pixel.js").read_bytes()).root_node
+    families = {key_text(value).strip('"') for pair in walk(pixel) if pair.type == "pair"
+                and key_text(pair.child_by_field_name("key")) == "fam" and (value := field(pair, "value")).type == "string"}
     loads = []
     for path in theme_files(folder):
         if path.name == "pixel.js":
             continue
         for node in walk(PARSER.parse(path.read_bytes()).root_node):
-            if node.type != "call_expression" or text_of(node.child_by_field_name("function")) != "document.fonts.load":
+            if node.type != "call_expression" or member_chain(field(node, "function")) != ["document", "fonts", "load"]:
                 continue
-            given = node.child_by_field_name("arguments")
-            values = [c for c in given.named_children if c.type != "comment"] if given is not None else []
+            values = parts(node.child_by_field_name("arguments"))
             first = text_of(values[0]) if values else ""
             loads += [f"{path.relative_to(folder).as_posix()}:{node.start_point[0] + 1}: loads {family}, which "
                       f"pixel.js's fontesProntas loads" for family in sorted(families)
                       if re.search(rf"(?<![\w-]){re.escape(family)}(?![\w-])", first)]
     return families, loads
+
+
+OPAQUE = ("string", "template_string", "regex", "comment")
+EXPRESSIONS = ("identifier", "member_expression", "subscript_expression", "call_expression", "string", "number",
+               "template_string", "object", "array", "arrow_function", "function_expression", "function",
+               "binary_expression", "unary_expression", "await_expression", "new_expression", "ternary_expression",
+               "true", "false", "null", "undefined", "this", "regex", "parenthesized_expression")
+VALUE_SLOTS = {"variable_declarator": ("value",), "assignment_expression": ("right",),
+               "augmented_assignment_expression": ("right",), "pair": ("value",), "binary_expression": ("left", "right"),
+               "unary_expression": ("argument",), "await_expression": None, "return_statement": None,
+               "call_expression": ("function",), "member_expression": ("object",),
+               "subscript_expression": ("object", "index"),
+               "ternary_expression": ("condition", "consequence", "alternative"), "assignment_pattern": ("right",),
+               "object_assignment_pattern": ("right",), "arrow_function": ("body",), "for_in_statement": ("right",),
+               "arguments": None, "array": None, "spread_element": None}
+TARGET_SLOTS = {"assignment_expression": ("left",), "augmented_assignment_expression": ("left",),
+                "update_expression": ("argument",)}
+
+
+def tokens_of(node):
+    if node.type in OPAQUE or not node.children:
+        yield node
+    else:
+        for child in node.children:
+            yield from tokens_of(child)
+
+
+def wrappable(node):
+    parent = node.parent
+    if parent is None or any(a.type in (*OPAQUE, "ERROR") for a in ancestors(node)) or any(
+            c.type == "optional_chain" for c in parent.children):
+        return False
+    if parent.type in TARGET_SLOTS and node.type in WRITTEN_LEAVES:
+        return any(parent.child_by_field_name(f) == node for f in TARGET_SLOTS[parent.type])
+    if node.type not in EXPRESSIONS or parent.type not in VALUE_SLOTS:
+        return False
+    slots = VALUE_SLOTS[parent.type]
+    return slots is None or any(parent.child_by_field_name(f) == node for f in slots)
+
+
+def noisy(text):
+    data = text.encode("utf-8")
+    root = PARSER.parse(data).root_node
+    inserts = [(token.end_byte, 1, 0, b" /**/ ") for token in list(tokens_of(root))[:-1]]
+    for node in walk(root):
+        if wrappable(node):
+            inserts += [(node.start_byte, 2, -node.end_byte, b"("), (node.end_byte, 0, -node.start_byte, b")")]
+    out, last = [], 0
+    for at, _, _, piece in sorted(inserts):
+        out += [data[last:at], piece]
+        last = at
+    return b"".join([*out, data[last:]]).decode("utf-8")
 
 
 def files(a, b="", c="go();\n", d="", e=""):
@@ -707,9 +787,9 @@ def samples():
                 files(uses_b + "const o = { [b()](q) { return q; } };\ngo(o);\n", b),
                 ["a.js: has a method with a computed name at line 3"]),
             "an import in a classic script": (files(uses_b, b, 'import { b } from "b.js";\n'),
-                                              ["c.js: has an import or an export at line 1"]),
+                                              ["c.js: has an import, an export or an import.meta at line 1"]),
             "an export in a classic script": (files(uses_b, b, "export const q = 1;\n"),
-                                              ["c.js: has an import or an export at line 1"]),
+                                              ["c.js: has an import, an export or an import.meta at line 1"]),
             "an object like the one a method inside the factory returns": (
                 files('import { mk } from "b.js";\nmk(1);\nconst o = { a: 2, b: 3, c: 4 };\ngo(o);\n',
                       "export function mk(w) { const t = { m() { return { a: 1, b: 2, c: 3 }; } }; return t; }\n"), []),
@@ -732,6 +812,22 @@ def samples():
                       "go({ '[w]': 3, x: 2, h: 1 });\n"), []),
             "an object with a numeric key, which the promise leaves out": (
                 files('import { mk } from "b.js";\nmk(1);\n', factory, "go({ u: 2, w: 3, h: 4, 16: 0 });\n"), []),
+            "an object built by hand like the one a parenthesized factory returns": (
+                files('import { mk } from "b.js";\nmk(1);\nconst o = { u: 2, w: 3, h: 4 };\ngo(o);\n',
+                      "export const mk = ((w) => ({ u: 1, w, h: 2 }));\n"),
+                ["a.js:3: builds by hand what mk of b.js returns"]),
+            "an object built by hand like the one a parenthesized function expression returns": (
+                files('import { mk } from "b.js";\nmk(1);\nconst o = { u: 2, w: 3, h: 4 };\ngo(o);\n',
+                      "export const mk = (function (w) { return { u: 1, w, h: 2 }; });\n"),
+                ["a.js:3: builds by hand what mk of b.js returns"]),
+            "a parenthesized function a module exports, written again": (
+                files(f'import {{ f }} from "b.js";\nconst g = {body};\nf(g(1));\n', f"export const f = ({body});\n"),
+                ["a.js:2: writes again f, which b.js exports"]),
+            "a function a module exports, written again with more parentheses": (
+                files(f'import {{ f }} from "b.js";\nconst g = {body.replace("x * 2", "((x) * (2))")};\nf(g(1));\n', long),
+                ["a.js:2: writes again f, which b.js exports"]),
+            "an import.meta in a classic script": (files(uses_b, b, "go(import.meta);\n"),
+                                                   ["c.js: has an import, an export or an import.meta at line 1"]),
             "a module that binds yield": (files(uses_b + "const yield = 1;\ngo(yield);\n", b), ["a.js: binds yield"]),
             "a module that binds arguments in a function": (
                 files(uses_b + "function f() { var arguments = 1; return arguments; }\nf();\n", b),
@@ -751,6 +847,8 @@ def samples():
             "an object composed from what the factory returns": (
                 files('import { mk } from "b.js";\nconst { u, w, h } = mk(1);\ngo({ u, w, h, ready: true });\n',
                       "export function mk(w) { return { u: 1, w, h: 2 }; }\n"), []),
+            "an object composed from what the factory returns, written as pairs": (
+                files('import { mk } from "b.js";\nconst { u, w, h } = mk(1);\ngo({ u: u, w: w, h });\n', factory), []),
             "an import declared again in a pattern with a default": (
                 files('import { b } from "b.js";\nconst f = ({ b = 1 }) => b;\nf({});\n', b), ["a.js: declares b again"]),
             "a classic parameter with a default, named like a module's name": (
@@ -766,15 +864,22 @@ def samples():
                       e='import { dd } from "d.js";\ngo(dd, secret);\n'),
                 ["e.js: uses secret, which only the module d.js declares"]),
             "a module that does not parse": (files(uses_b + "const = ;\n", b), ["a.js: does not parse at line 3"]),
-            "a module that writes through a parenthesized name, a form the check does not judge": (
-                files(uses_b + "let zz = 0;\n(zz) = 1;\n", b),
-                ["a.js: has a parenthesized_expression at line 4 where it writes a name, which this check does not "
-                 "judge"]),
+            "a module that writes through a parenthesized name, which the reader unwraps": (
+                files(uses_b + "let zz = 0;\n(zz) = 1;\n", b), []),
+            "a module that writes through a parenthesized name nobody declares": (
+                files(uses_b + "(zz) = 1;\n", b), ["a.js: writes zz, which no file declares"]),
             "a module that binds by a computed key, a form the check does not judge": (
                 files(uses_b + "const k = 'a';\nconst { [k]: v } = {};\ngo(v);\n", b),
                 ["a.js: has a computed_property_name at line 4 where it binds a name"]),
-            "a classic script with a form the check does not judge": (files(uses_b, b, "let zz = 0;\n(zz) = 1;\n"),
-                                                                     ["c.js: has a parenthesized_expression"]),
+            "a classic script with a form the check does not judge": (
+                files(uses_b, b, "const k = 'a';\nconst { [k]: v } = {};\ngo(v);\n"), ["c.js: has a computed_property_name"]),
+            "a function declared inside a block, in a classic script": (
+                files(uses_b, b, "if (go()) { function deckGlyphs() { return 1; } }\ndeckGlyphs();\n"),
+                ["c.js: has a function_declaration inside a block at line 1"]),
+            "a generator declared inside a block, in a module": (
+                files(uses_b + "{ function* g() {} }\n", b), ["a.js: has a generator_function_declaration inside a block"]),
+            "a function declared at the top of a function's body": (
+                files(uses_b + "function f() { function g() { return 1; } return g(); }\nf();\n", b), []),
             "a module of the page that imports and is imported": (files(uses_b, b), []),
             "a classic script that reads a module's name": (files(uses_b, b, "function g() { return b; }\ng();\n"),
                                                             ["c.js: uses b, which only the module"]),
@@ -815,10 +920,22 @@ def samples():
         }
         page = "".join(f'<script type="module" src="{name}"></script>\n' for name in ("a.js", "b.js", "d.js", "e.js"))
         page = '<script src="c.js"></script>\n' + page
-        for what, (texts, expected) in cases.items():
+        changed = []
+
+        def verdicts(texts, verdict):
             for name, text in texts.items():
                 (folder / name).write_text(text, encoding="utf-8")
-            found = module_problems(folder, page)
+            found = verdict()
+            for name, text in texts.items():
+                (folder / name).write_text(noisy(text), encoding="utf-8")
+            if (again := verdict()) != found:
+                changed.append((found, again))
+            for name, text in texts.items():
+                (folder / name).write_text(text, encoding="utf-8")
+            return found
+
+        for what, (texts, expected) in cases.items():
+            found = verdicts(texts, lambda: sorted(module_problems(folder, page)))
             results.append((len(found) == len(expected) and all(any(e in p for p in found) for e in expected),
                             f"{what}: {found or 'no problem'}"))
         refused = {
@@ -837,9 +954,7 @@ def samples():
             "{ export const q = 1; }\n" + uses_b: "export_statement",
         }
         for text, kind in refused.items():
-            for name, source in files(text, b, d='import { b } from "b.js";\nb();\n').items():
-                (folder / name).write_text(source, encoding="utf-8")
-            found = module_problems(folder, page)
+            found = verdicts(files(text, b, d='import { b } from "b.js";\nb();\n'), lambda: sorted(module_problems(folder, page)))
             results.append((any(p.startswith(f"a.js: has a {kind} at line ") and "does not judge" in p for p in found),
                             f"an import or export outside the rule, {text.splitlines()[0]!r}, is a form the check "
                             f"does not judge: {found}"))
@@ -855,13 +970,16 @@ def samples():
             shared = module_problems(folder, '<script src="/t/other/x.js"></script>\n' + page)
         results.append((len(shared) == 1 and "/t/other/x.js: a dynamic import()" in shared[0],
                         f"a dynamic import() in a classic script of another theme's folder: {shared}"))
-        (folder / "pixel.js").write_text("const FONTES = { j: { fam: '\"Jersey 10\"', S: 300 } };\n", encoding="utf-8")
-        (folder / "c.js").write_text('document.fonts.load(`300px "Jersey 10"`);\n// document.fonts.load("Jersey 10")\n'
-                                     'document.fonts.load(/* the deck */ \'300px "Jersey 10"\');\n', encoding="utf-8")
-        families, loads = engine_fonts(folder)
-        results.append((families == {"Jersey 10"} and [x.split(": ")[0] for x in loads] == ["c.js:1", "c.js:3"],
-                        f"a font of the engine loaded outside it, in a template and after a comment, and none read in a "
-                        f"comment: {loads}"))
+        families, loads = verdicts(
+            {"pixel.js": "const FONTES = { j: { fam: '\"Jersey 10\"', S: 300 } };\n",
+             "c.js": 'document.fonts.load(`300px "Jersey 10"`);\n// document.fonts.load("Jersey 10")\n'
+                     'document.fonts.load(/* the deck */ \'300px "Jersey 10"\');\n'
+                     'document.fonts /* the deck */ .load(\'300px "Jersey 10"\');\n'}, lambda: [sorted(found) for found in engine_fonts(folder)])
+        results.append((families == ["Jersey 10"] and [x.split(": ")[0] for x in loads] == ["c.js:1", "c.js:3", "c.js:4"],
+                        f"a font of the engine loaded outside it, in a template and after a comment, in the argument or "
+                        f"in the call, and none read in a comment: {loads}"))
+        results.append((not changed, f"each case, with a comment between every two tokens and parentheses around every "
+                                     f"expression where JavaScript takes them, keeps its verdict ({changed or 'all do'})"))
     return results
 
 
