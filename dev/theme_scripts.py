@@ -117,6 +117,10 @@ MODULES_RAN = ("(async () => { const map = document.querySelector('script[type=i
                " const names = map ? Object.keys(JSON.parse(map.textContent).imports) : []; const failed = {};"
                " for (const name of names) { try { await import(name); } catch (e) { failed[name] = String(e); } }"
                " return {names: names.length, failed}; })()")
+NO_IMPORT_MAP = "HTMLScriptElement.supports = () => false;"
+STOPPED = ("({text: document.body ? document.body.textContent : '', wanted: I18N.t('app.noImportMap'),"
+           " started: typeof MESA !== 'undefined' || typeof carregar !== 'undefined',"
+           " shown: document.documentElement.classList.contains('i18n-ok')})")
 PAGE_READY_S = 15.0
 
 
@@ -248,6 +252,20 @@ async def checks(tab):
         results.append((seen == {"canvas": True, "drawn": True, "stays": True, "back": True},
                         f"the canvas of {what}, cleared, stays cleared until a repinta-canvas, and then draws it "
                         f"again ({seen})"))
+
+    contexts = tab.contexts
+    await tab.cmd("Page.addScriptToEvaluateOnNewDocument", source=NO_IMPORT_MAP)
+    await missing_script.open_page(tab)
+    await tab.tab_reaches(lambda: tab.contexts > contexts, PAGE_READY_S)
+    stopped = await until(tab, STOPPED, "s.text", PAGE_READY_S)
+    listeners = []
+    for target in ("window", "document", "document.documentElement"):
+        node = (await tab.cmd("Runtime.evaluate", expression=target))["result"]["objectId"]
+        listeners += [x["type"] for x in (await tab.cmd("DOMDebugger.getEventListeners", objectId=node))["listeners"]]
+    results.append((stopped.get("text") == stopped.get("wanted") != "app.noImportMap" and stopped.get("shown")
+                    and not stopped.get("started") and not listeners,
+                    f"a browser without import maps gets the page's message and nothing of the page starts "
+                    f"({stopped}, listeners: {listeners or 'none'})"))
     return results
 
 

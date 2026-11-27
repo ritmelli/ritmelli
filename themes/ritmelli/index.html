@@ -6,6 +6,7 @@
 <title>Ritmelli</title>
 <!-- i18n -->
 <script src="i18n.js"></script>
+<script src="browser-check.js"></script>
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="stylesheet" href="base.css">
 <link rel="stylesheet" href="buttons.css">
@@ -87,7 +88,6 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5v11"/><path d="M7.5 10l4.5 4.5 4.5-4.5"/><path d="M4.5 16.5v3h15v-3"/></svg>
         <span class="rot" data-i18n="top.newVersion"></span>
       </button>
-      <!-- so no PC (127.0.0.1): o codigo e os celulares conectados nao vao para a rede -->
       <button class="btn-madeira" id="b-cel" type="button" data-i18n-title="top.connectPhone" hidden data-pode="GET /api/pareamento">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6.5" y="2.5" width="11" height="19" rx="2"/><path d="M10.5 18.5h3"/></svg>
         <span class="rot" data-i18n="top.phone"></span>

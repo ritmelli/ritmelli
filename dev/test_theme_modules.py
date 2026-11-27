@@ -35,6 +35,9 @@ NAMES = ("identifier", "shorthand_property_identifier", "shorthand_property_iden
 BOUND_LEAVES = ("identifier",)
 WRITTEN_LEAVES = ("identifier", "member_expression", "subscript_expression")
 PATTERN_KEYS = ("property_identifier", "string", "number")
+PLAIN_NAME = re.compile(r"#?[A-Za-z_$][A-Za-z0-9_$]*")
+NAME_NODES = ("identifier", "property_identifier", "shorthand_property_identifier",
+              "shorthand_property_identifier_pattern", "statement_identifier", "private_property_identifier")
 
 
 def theme_files(folder):
@@ -133,21 +136,36 @@ def scope_of(own):
 
 
 def refers(node):
-    parent = node.parent
-    if parent is not None and parent.type == "export_specifier" and parent.child_by_field_name("alias") == node:
-        return False
-    return not any(a.type == "import_statement" or a.type == "export_statement" and a.child_by_field_name("source")
-                   for a in ancestors(node))
+    return not any(a.type == "import_statement" for a in ancestors(node))
 
 
-def imported_names(root):
-    imported = set()
-    for node in walk(root):
-        if node.type == "import_specifier":
-            imported.add(text_of(node.child_by_field_name("alias") or node.child_by_field_name("name")))
-        elif node.type in ("import_clause", "namespace_import"):
-            imported |= {text_of(child) for child in node.named_children if child.type == "identifier"}
-    return imported
+def unallowed(node):
+    parts = [c for c in node.children if c.type != "comment"]
+    if node.type == "import_statement":
+        if [c.type for c in parts] not in (["import", "import_clause", "from", "string"],
+                                           ["import", "import_clause", "from", "string", ";"]):
+            return next((c for c in parts if c.type not in ("import", "import_clause", "from", "string", ";")), node)
+        clause = [c for c in parts[1].named_children if c.type != "comment"]
+        if len(clause) != 1 or clause[0].type != "named_imports":
+            return clause[0] if clause else parts[1]
+        return next((s for s in clause[0].named_children if s.type != "comment" and (
+            s.type != "import_specifier" or s.child_by_field_name("alias") is not None
+            or s.child_by_field_name("name").type != "identifier")), None)
+    declaration = node.child_by_field_name("declaration")
+    if len(parts) != 2 or declaration is None:
+        return next((c for c in parts[1:] if c != declaration), node)
+    if declaration.type == "function_declaration":
+        return None
+    if declaration.type != "lexical_declaration" or declaration.children[0].type != "const":
+        return declaration
+    return next((d.child_by_field_name("name") for d in declaration.named_children if d.type == "variable_declarator"
+                 and d.child_by_field_name("name").type != "identifier"), None)
+
+
+def allowed_imports(root):
+    return [(node, literal(node.child_by_field_name("source")),
+             [s.child_by_field_name("name") for s in walk(node) if s.type == "import_specifier"])
+            for node in walk(root) if node.type == "import_statement" and unallowed(node) is None]
 
 
 def declared(node):
@@ -197,13 +215,17 @@ def normalized(function):
     return " ".join(leaves)
 
 
+def key_text(node):
+    return literal(node) if node.type == "string" else text_of(node)
+
+
 def object_keys(node):
     found = set()
     for child in node.named_children:
         if child.type == "comment":
             continue
         if child.type == "pair":
-            found.add(text_of(child.child_by_field_name("key")))
+            found.add(key_text(child.child_by_field_name("key")))
         elif child.type == "shorthand_property_identifier":
             found.add(text_of(child))
         else:
@@ -214,31 +236,48 @@ def object_keys(node):
 def object_values(node):
     found = {}
     for child in node.named_children:
-        if child.type == "pair" and (value := child.child_by_field_name("value")).type == "identifier":
-            found[text_of(child.child_by_field_name("key"))] = value
+        if child.type == "pair":
+            value = child.child_by_field_name("value")
+            found[key_text(child.child_by_field_name("key"))] = value if value.type == "identifier" else None
         elif child.type == "shorthand_property_identifier":
             found[text_of(child)] = child
+    return {k: v for k, v in found.items() if v is not None}
+
+
+def destructured_keys(pattern):
+    found = []
+    for part in pattern.named_children if pattern.type == "object_pattern" else []:
+        if part.type == "shorthand_property_identifier_pattern":
+            found.append((part, text_of(part)))
+        elif part.type == "object_assignment_pattern" and (left := part.child_by_field_name("left")).type == \
+                "shorthand_property_identifier_pattern":
+            found.append((left, text_of(left)))
+        elif part.type == "pair_pattern":
+            value = part.child_by_field_name("value")
+            while value.type in DEFAULTS:
+                value = value.child_by_field_name("left")
+            if value.type == "identifier":
+                found.append((value, key_text(part.child_by_field_name("key"))))
     return found
-
-
-def pattern_key(node):
-    if node.type == "shorthand_property_identifier_pattern":
-        return text_of(node)
-    parent = node.parent
-    while parent is not None and parent.type in DEFAULTS:
-        node, parent = parent, parent.parent
-    return text_of(parent.child_by_field_name("key")) if parent is not None and parent.type == "pair_pattern" else None
 
 
 STRICT_NAMES = frozenset({"arguments", "eval", "yield", "await", "let", "static", "implements", "interface", "package",
                           "private", "protected", "public"})
 
 
-def strict_problems(root):
+def module_only(root):
+    bound = [n for what, node, _ in places(root) if what == "binding" for n in pattern_nodes(node)]
+    bound += [name for _, _, names in allowed_imports(root) for name in names]
     found = [f"binds {text_of(n)} at line {n.start_point[0] + 1}, which a module, in strict mode, refuses"
-             for what, node, _ in places(root) if what == "binding"
-             for n in pattern_nodes(node) if text_of(n) in STRICT_NAMES]
+             for n in bound if text_of(n) in STRICT_NAMES]
+    found += [f"writes {text_of(n)} at line {n.start_point[0] + 1}, which a module, in strict mode, refuses"
+              for what, node, _ in places(root) if what == "write"
+              for n in pattern_nodes(node) if text_of(n) in ("arguments", "eval")]
     for node in walk(root):
+        if (node.type == "await_expression" or node.type == "for_in_statement" and any(
+                c.type == "await" for c in node.children)) and nearest(node, FUNCTION_SCOPES).type == "program":
+            found.append(f"awaits at the top at line {node.start_point[0] + 1}, which the page's DOMContentLoaded "
+                         f"does not wait for, so what comes after it misses the start: await inside a function")
         if node.type in FUNCTIONS and (name := node.child_by_field_name("name")) and text_of(name) in STRICT_NAMES:
             found.append(f"binds {text_of(name)} at line {name.start_point[0] + 1}, which a module, in strict mode, "
                          f"refuses")
@@ -299,46 +338,61 @@ def places(root):
             yield "write", target, WRITTEN_LEAVES if target.type in WRITTEN_LEAVES else ()
 
 
+def declared_in(function):
+    body = function.child_by_field_name("body")
+    if body is None or body.type != "statement_block":
+        return set()
+    return {text_of(n) for n in walk(body) if n.type in NAMES and n.type != "shorthand_property_identifier"
+            and (own := owner(n)) is not None and key(scope_of(own)) in (key(function), key(body))}
+
+
+def early_defaults(root):
+    for node in walk(root):
+        if node.type != "formal_parameters":
+            continue
+        parts, inside = node.named_children, declared_in(node.parent)
+        for i, part in enumerate(parts):
+            later = inside | {name for after in parts[i + 1:] for name in pattern_names(after)}
+            for default in (d for d in walk(part) if d.type in DEFAULTS):
+                read = [n for n in walk(default.child_by_field_name("right")) if n.type == "identifier"]
+                yield from (n for n in read if text_of(n) in later)
+
+
 def unjudged(root):
-    return [f"has a {bad.type} at line {bad.start_point[0] + 1} where it {'binds' if what == 'binding' else 'writes'} "
-            f"a name, which this check does not judge: write it in a form the check reads"
-            for what, node, leaves in places(root) if (bad := unread(node, leaves)) is not None]
+    found = [f"has a {bad.type} at line {bad.start_point[0] + 1} where it {'binds' if what == 'binding' else 'writes'} "
+             f"a name, which this check does not judge: write it in a form the check reads"
+             for what, node, leaves in places(root) if (bad := unread(node, leaves)) is not None]
+    found += [f"has a {bad.type} at line {bad.start_point[0] + 1} in an import or an export, which this check does "
+              f"not judge: import {{ name }} from \"file.js\", export const or export function"
+              for node in walk(root) if node.type in ("import_statement", "export_statement")
+              and (bad := unallowed(node)) is not None]
+    found += [f"has the name {text_of(n)!r} at line {n.start_point[0] + 1}, which this check does not judge: a "
+              f"plain ASCII name" for n in walk(root) if n.type in NAME_NODES and not PLAIN_NAME.fullmatch(text_of(n))]
+    found += [f"has a parameter default at line {n.start_point[0] + 1} that reads {text_of(n)}, which the function's "
+              f"body or a later parameter declares, which this check does not judge: read it in the body"
+              for n in early_defaults(root)]
+    return found
 
 
 def file_facts(text):
     root = PARSER.parse(text.encode("utf-8")).root_node
-    facts = types.SimpleNamespace(imports={}, exports=set(), stars=set(), problems=[], top=set(), values={},
-                                  functions=[], objects=[], writes=set(), locals={}, reexports={}, imported_from={},
-                                  called={})
+    facts = types.SimpleNamespace(imports={}, exports=set(), problems=[], top=set(), values={}, functions=[],
+                                  objects=[], writes=set(), imported_from={}, called={})
     calls = []
     if root.has_error:
         broken = next(n for n in walk(root) if n.type == "ERROR" or n.is_missing)
         facts.problems.append(f"does not parse at line {broken.start_point[0] + 1}, so the rest of this check would "
                               f"read a broken tree")
     facts.problems += unjudged(root)
+    for node, name, names in allowed_imports(root):
+        for imported in names:
+            if text_of(imported) in facts.imported_from:
+                facts.problems.append(f"imports {text_of(imported)} twice, at line {imported.start_point[0] + 1}, which "
+                                      f"a module refuses")
+            facts.imported_from[text_of(imported)] = (name, text_of(imported))
+            facts.imports.setdefault(name, set()).add(text_of(imported))
     for node in walk(root):
-        if node.type in ("import_statement", "export_statement") and (source := node.child_by_field_name("source")):
-            if (name := literal(source)) is None:
-                facts.problems.append(f"an import from {text_of(source)!r}, which is not a plain string")
-                continue
-            used = facts.imports.setdefault(name, set())
-            for part in walk(node):
-                if part.type == "import_clause" and any(c.type == "identifier" for c in part.named_children):
-                    used.add("default")
-                    facts.imported_from.update({text_of(c): (name, "default") for c in part.named_children
-                                                if c.type == "identifier"})
-                elif part.type in ("import_specifier", "export_specifier"):
-                    used.add(text_of(part.child_by_field_name("name")))
-                    if part.type == "import_specifier":
-                        local = part.child_by_field_name("alias") or part.child_by_field_name("name")
-                        facts.imported_from[text_of(local)] = (name, text_of(part.child_by_field_name("name")))
-                elif part.type in ("namespace_import", "namespace_export") or (
-                        part.type == "export_statement" and any(c.type == "*" for c in part.children)):
-                    used.add("*")
-            if node.type == "export_statement" and any(c.type == "*" for c in node.children) and not any(
-                    c.type == "namespace_export" for c in node.children):
-                facts.stars.add(name)
-        elif node.type == "call_expression" and node.child_by_field_name("function").type == "import":
+        if node.type == "call_expression" and node.child_by_field_name("function").type == "import":
             facts.problems.append(f"a dynamic import() at line {node.start_point[0] + 1}, which the page's import map "
                                   f"does not hold for certain")
         if node.type in FUNCTIONS and len(text := normalized(node)) >= SHORTEST_FUNCTION:
@@ -348,40 +402,24 @@ def file_facts(text):
         if node.type == "variable_declarator" and (call := node.child_by_field_name("value")) is not None and \
                 call.type == "call_expression" and call.child_by_field_name("function").type == "identifier":
             calls.append((node, call.child_by_field_name("function")))
-        if node.type == "import_attribute":
-            facts.problems.append(f"imports with attributes at line {node.start_point[0] + 1}, which the import map's "
-                                  f"JavaScript does not answer: import the module plainly")
-        if node.type == "export_statement":
-            if any(c.type == "default" for c in node.children):
-                facts.exports.add("default")
-            elif (declaration := node.child_by_field_name("declaration")) is not None:
-                facts.values |= declared(declaration)
-                facts.exports |= set(declared(declaration))
-            source = literal(node.child_by_field_name("source"))
-            for part in walk(node):
-                if part.type == "export_specifier":
-                    local = text_of(part.child_by_field_name("name"))
-                    public = text_of(part.child_by_field_name("alias") or part.child_by_field_name("name"))
-                    facts.exports.add(public)
-                    if source is None:
-                        facts.locals[public] = local
-                    else:
-                        facts.reexports[public] = (source, local)
-                elif part.type == "namespace_export":
-                    facts.exports |= {text_of(c) for c in part.named_children if c.type == "identifier"}
-    imported = imported_names(root)
+        if node.type == "export_statement" and unallowed(node) is None:
+            for name, value in declared(node.child_by_field_name("declaration")).items():
+                if name in facts.exports:
+                    facts.problems.append(f"exports {name} twice, at line {node.start_point[0] + 1}, which a module "
+                                          f"refuses")
+                facts.exports.add(name)
+                facts.values[name] = value
+    imported = set(facts.imported_from)
     scopes, lines, references = bindings(root)
     program = key(root)
     for name in imported:
         scopes[name].add(program)
     facts.top = {name for name, where in scopes.items() if program in where}
-    facts.problems += [f"exports {local}, which it does not declare or import"
-                       for local in sorted(set(facts.locals.values())) if local not in facts.top]
-    facts.strict = strict_problems(root)
+    facts.module_only = module_only(root)
     for declarator, function in calls:
-        for bound in pattern_nodes(declarator.child_by_field_name("name")):
+        for bound, from_key in destructured_keys(declarator.child_by_field_name("name")):
             facts.called[(text_of(bound), key(scope_of(declarator)))] = (resolved(function, scopes) == program
-                                                                        and text_of(function), pattern_key(bound))
+                                                                        and text_of(function), from_key)
     facts.objects = [(keys, line, {k: (text_of(n), resolved(n, scopes)) for k, n in values.items()})
                      for keys, line, values in facts.objects]
     facts.reads = {text_of(r) for r in references if resolved(r, scopes) == program}
@@ -401,22 +439,6 @@ def file_facts(text):
     facts.problems += [f"imports {name}, which it never uses" for name in sorted(imported - facts.reads - again)]
     facts.problems += [f"declares {name} again at line {lines[name]}, over its import" for name in sorted(again)]
     return facts
-
-
-def origin(facts, module, export, seen=frozenset()):
-    if (module, export) in seen or module not in facts:
-        return set()
-    seen, own = seen | {(module, export)}, facts[module]
-    if export in own.reexports:
-        return origin(facts, *own.reexports[export], seen)
-    if export in own.exports:
-        local = own.locals.get(export, export)
-        if local in own.imported_from:
-            return origin(facts, *own.imported_from[local], seen)
-        return {(module, local)} if export not in own.locals or local in own.top else set()
-    if export == "default":
-        return set()
-    return set().union(*(origin(facts, star, export, seen) for star in sorted(own.stars)))
 
 
 def classic_texts(folder, read):
@@ -439,14 +461,12 @@ def data_problems(facts):
     return problems
 
 
-def composed(facts, own, values, shape, who):
-    factory = origin(facts, *who)
+def composed(own, values, shape, who):
     for wanted in shape:
         function, from_key = own.called.get(values.get(wanted), (None, None))
-        if not function or from_key != wanted or function not in own.imported_from or \
-                origin(facts, *own.imported_from[function]) != factory:
+        if not function or from_key != wanted or own.imported_from.get(function) != who:
             return False
-    return bool(factory)
+    return True
 
 
 def rewritten(folder, facts):
@@ -465,7 +485,7 @@ def rewritten(folder, facts):
         problems += [f"{file}:{line}: builds by hand what {who[1]} of {who[0]} returns: call {who[1]}"
                      for keys, line, values in own.objects for shape, who in shapes.items()
                      if keys >= shape and who[0] != file
-                     and not composed(facts, own, values, shape, who)]
+                     and not composed(own, values, shape, who)]
     return problems
 
 
@@ -478,25 +498,19 @@ def module_problems(folder, page):
     classics = [(name, file_facts(text)) for name, text in classic_texts(folder, read)]
     problems = [f"{name}: {problem}" for name, own in classics for problem in own.problems
                 if "dynamic import()" in problem or "does not parse" in problem or "does not judge" in problem]
-    problems += [f"{name}: {problem}" for name, own in facts.items() for problem in own.problems + own.strict]
+    problems += [f"{name}: {problem}" for name, own in facts.items() for problem in own.problems + own.module_only]
     problems += [f"{name}: imports {target}, which is not a module of the page" for name, own in facts.items()
                  for target in own.imports if target not in facts]
     for name, own in facts.items():
         for target, wanted_names in sorted(own.imports.items()):
             if target not in facts:
                 continue
-            for wanted in sorted(wanted_names - {"*"}):
-                if not (found := origin(facts, target, wanted)):
-                    problems.append(f"{name}: imports {wanted} from {target}, which {target} does not export (or "
-                                    f"only through a cycle of re-exports, which reaches no binding)")
-                elif len(found) > 1:
-                    problems.append(f"{name}: imports {wanted} from {target}, which export * brings from "
-                                    f"{' and '.join(f'{m} ({n})' for m, n in sorted(found))}: the browser refuses a "
-                                    f"name it cannot tell apart")
+            problems += [f"{name}: imports {wanted} from {target}, which {target} does not export"
+                         for wanted in sorted(wanted_names - facts[target].exports)]
     for name, own in facts.items():
         used = set().union(*(theirs.imports.get(name, set()) for other, theirs in facts.items() if other != name))
         problems += [f"{name}: exports {export}, which no other file of the theme imports"
-                     for export in sorted(own.exports) if export not in used and "*" not in used]
+                     for export in sorted(own.exports) if export not in used]
     classic_top = set().union(*(own.top for _, own in classics))
     for name, own in [*classics, *facts.items()]:
         for used_name in sorted(own.free - classic_top):
@@ -544,12 +558,10 @@ def samples():
         for name in ("a.js", "b.js", "c.js"):
             (folder / name).unlink()
         b = 'export const b = () => {};\n'
+        factory = "export function mk(w) { return { u: 1, w, h: 2 }; }\n"
         uses_b = 'import { b } from "b.js";\nb();\n'
         body = "x => { return x * 2 + 1 + x * 3 + x * 4 + x * 5; }"
         long = f"export const f = {body};\n"
-        uses_x = 'import { x } from "b.js";\nx();\n'
-        x_twice = 'export * from "d.js";\nexport * from "e.js";\n'
-        x = "export const x = () => {};\n"
         cases = {
             "an import of a module the page does not tag": (files('import { a } from "gone.js";\na();\n'),
                                                             ["a.js: imports gone.js"]),
@@ -568,46 +580,45 @@ def samples():
                 files('import { b } from "b.js";\nconst k = class b {};\nnew k();\n', b), ["a.js: declares b again"]),
             "an import declared again as a generator name": (
                 files('import { b } from "b.js";\nconst g = function* b() {};\ng();\n', b), ["a.js: declares b again"]),
-            "an import only exported again from another module": (
-                files('import { b } from "b.js";\nexport { b as y } from "b.js";\n', b, d='import { y } from "a.js";\ny();\n'),
-                ["a.js: imports b, which it never uses"]),
-            "an import exported again by another name": (
-                files('import { b } from "b.js";\nexport { b as y };\n', b, d='import { y } from "a.js";\ny();\n'), []),
-            "a local name exported under an import's name": (
-                files('import { b } from "b.js";\nconst a = 1;\nexport { a as b };\n', b,
-                      d='import { b } from "a.js";\nb();\n'), ["a.js: imports b, which it never uses"]),
             "an import of a name the module does not export": (files('import { b, c } from "b.js";\nb(c);\n', b),
                                                                ["a.js: imports c from b.js, which b.js does not export"]),
-            "a default import of a module without one": (files('import f from "b.js";\nf();\n', b),
-                                                         ["a.js: imports default from b.js", "b.js: exports b"]),
-            "a name re-exported through export *": (files('import { d } from "b.js";\nd();\n', 'export * from "d.js";\n',
-                                                          d='export const d = () => {};\n'), []),
-            "a name export * does not bring": (files('import { e } from "b.js";\ne();\n', 'export * from "d.js";\n',
-                                                     d='export const d = () => {};\n'), ["a.js: imports e from b.js"]),
-            "a name two export * bring from two modules": (files(uses_x, x_twice, d=x, e=x),
-                                                           ["a.js: imports x from b.js, which export * brings from d.js "
-                                                            "(x) and e.js (x)"]),
-            "a name two export * bring from one module": (files(uses_x, x_twice, d=x, e='export * from "d.js";\n'), []),
-            "a name two export * bring from one binding, re-exported under another name": (
-                files(uses_x, x_twice, d='export { one as x } from "e.js";\n',
-                      e='export const one = () => {};\nexport { one as x };\n'), []),
-            "a name two export * bring from two bindings of one module": (
-                files(uses_x, x_twice, d='export { two as x } from "e.js";\n',
-                      e='export const one = () => {};\nexport const two = () => {};\nexport { one as x };\n'),
-                ["a.js: imports x from b.js, which export * brings from e.js (one) and e.js (two)"]),
-            "a re-export cycle that reaches no binding": (
-                files(uses_x, 'export { x } from "d.js";\n', d='export { x } from "b.js";\n'),
-                ["a.js: imports x from b.js, which b.js does not export", "b.js: imports x from d.js, which d.js does "
-                 "not export", "d.js: imports x from b.js, which b.js does not export"]),
-            "a name two export * bring from one binding, one of them an import exported again": (
-                files(uses_x, x_twice, d='import { one } from "e.js";\nexport { one as x };\n',
-                      e='export const one = () => {};\nexport { one as x };\n'), []),
-            "an import with attributes": (files('import { b } from "b.js" with { type: "json" };\nb();\n', b),
-                                          ["a.js: imports with attributes at line 1"]),
-            "a local export of a name the module does not declare": (
-                files('import { S as T } from "b.js";\nT();\n', "export { S };\n", "var S = {};\n"),
-                ["b.js: exports S, which it does not declare or import", "a.js: imports S from b.js, which b.js does "
-                 "not export"]),
+            "a module that awaits at the top": (files(uses_b + "await b();\n", b), ["a.js: awaits at the top at line 3"]),
+            "a for await at the top": (files(uses_b + "for await (const q of []) go(q);\n", b),
+                                       ["a.js: awaits at the top at line 3"]),
+            "an await inside an async function": (files(uses_b + "async function f() { await b(); }\nf();\n", b), []),
+            "a module that imports a name strict mode refuses": (
+                files('import { arguments } from "b.js";\ngo(arguments);\n', "export const arguments = 1;\n"),
+                ["a.js: binds arguments at line 1", "b.js: binds arguments at line 1"]),
+            "a module that writes arguments, which a classic script declares": (
+                files(uses_b + "arguments = 1;\n", b, "var arguments = 0;\n"), ["a.js: writes arguments at line 3"]),
+            "a module that imports a name twice": (
+                files('import { b } from "b.js";\nimport { b } from "d.js";\nb();\n', b, d=b), ["a.js: imports b twice"]),
+            "a module that exports a name twice": (
+                files(uses_b, "export const b = () => {};\nexport function b() {}\n"), ["b.js: exports b twice"]),
+            "a name written with an escape": (files(uses_b + "go(deckGlyph\\u0073);\n", b), ["a.js: has the name"]),
+            "a name out of ASCII, in a classic script": (files(uses_b, b, "const ação = 1;\ngo(ação);\n"),
+                                                        ["c.js: has the name 'ação' at line 1",
+                                                         "c.js: has the name 'ação' at line 2"]),
+            "a parameter default that reads what the body declares": (
+                files(uses_b + "function f(q = r) { var r; return q; }\nf();\n", b),
+                ["a.js: has a parameter default at line 3 that reads r"]),
+            "a parameter default that reads a later parameter": (
+                files(uses_b + "function f(q = z, z) { return q + z; }\nf();\n", b),
+                ["a.js: has a parameter default at line 3 that reads z"]),
+            "a parameter default that reads an earlier parameter": (
+                files(uses_b + "function f(a, q = a) { return q; }\nf();\n", b), []),
+            "an object composed from the factory with a quoted key": (
+                files('import { mk } from "b.js";\nconst { "u": u, w, h } = mk(1);\ngo({ u, w, h });\n', factory), []),
+            "an object composed from the factory with a key written again after": (
+                files('import { mk } from "b.js";\nconst { u, w, h } = mk(1);\ngo({ u, w, h, u: 42 });\n', factory),
+                ["a.js:3: builds by hand what mk of b.js returns"]),
+            "an object composed from a nested destructuring of the factory's call": (
+                files('import { mk } from "b.js";\nconst { a: { u, w, h } } = mk(1);\ngo({ u, w, h });\n', factory),
+                ["a.js:3: builds by hand what mk of b.js returns"]),
+            "an object composed from a local function named like the factory": (
+                files("const mk = () => ({ u: 1, w: 2, h: 3 });\nconst { u, w, h } = mk();\ngo({ u, w, h });\n", factory,
+                      d='import { mk } from "b.js";\nmk(1);\n'),
+                ["a.js:1: builds by hand what mk of b.js returns", "a.js:3: builds by hand what mk of b.js returns"]),
             "a module that binds yield": (files(uses_b + "const yield = 1;\ngo(yield);\n", b), ["a.js: binds yield"]),
             "a module that binds arguments in a function": (
                 files(uses_b + "function f() { var arguments = 1; return arguments; }\nf();\n", b),
@@ -616,13 +627,6 @@ def samples():
                                                 ["a.js: has the parameter q twice"]),
             "a classic script that binds yield and has a parameter twice, which it may": (
                 files(uses_b, b, "const yield = 1;\nfunction f(q, q) { return q; }\nf(yield);\n"), []),
-            "an object composed from a factory imported under another name": (
-                files('import { mk as make } from "b.js";\nconst { u, w, h } = make(1);\ngo({ u, w, h, ready: true });\n',
-                      "export function mk(w) { return { u: 1, w, h: 2 }; }\n"), []),
-            "an object composed from a local function named like the factory": (
-                files('import { mk as original } from "b.js";\noriginal(1);\nconst mk = () => ({ u: 1, w: 2, h: 3 });\n'
-                      'const { u, w, h } = mk();\ngo({ u, w, h });\n', "export function mk(w) { return { u: 1, w, h: 2 }; }\n"),
-                ["a.js:3: builds by hand what mk of b.js returns", "a.js:5: builds by hand what mk of b.js returns"]),
             "an object composed from the factory's values under each other's keys": (
                 files('import { mk } from "b.js";\nconst { u: w, w: u, h } = mk(1);\ngo({ u, w, h });\n',
                       "export function mk(w) { return { u: 1, w, h: 2 }; }\n"),
@@ -638,8 +642,6 @@ def samples():
                 files('import { b } from "b.js";\nconst f = ({ b = 1 }) => b;\nf({});\n', b), ["a.js: declares b again"]),
             "a classic parameter with a default, named like a module's name": (
                 files(uses_b, b, "function f({ b = 1 }) { return b; }\nf({});\n"), []),
-            "a destructured export with a default, which exports only the name it binds": (
-                files('import { p } from "b.js";\np();\n', "const o = {};\nexport const { p = q } = o;\n"), []),
             "a module that writes its import by destructuring": (files('import { b } from "b.js";\n[b] = [1];\n', b),
                                                                  ["a.js: writes its import b"]),
             "a module that writes a name nobody declares in a for of": (files(uses_b + "for (zz of []) go();\n", b),
@@ -660,12 +662,6 @@ def samples():
                 ["a.js: has a computed_property_name at line 4 where it binds a name"]),
             "a classic script with a form the check does not judge": (files(uses_b, b, "let zz = 0;\n(zz) = 1;\n"),
                                                                      ["c.js: has a parenthesized_expression"]),
-            "a default export, imported": (files('import f from "b.js";\nf();\n', "export default function named() {}\n"),
-                                           []),
-            "a default export no file imports": (files("go();\n", "export default 1;\n"), ["b.js: exports default"]),
-            "a named re-export no file imports": (files('export { b } from "b.js";\n', b), ["a.js: exports b"]),
-            "a destructured export, imported": (files('import { p, q } from "b.js";\np(q);\n',
-                                                      "const o = {};\nexport const { p, q } = o;\n"), []),
             "a module of the page that imports and is imported": (files(uses_b, b), []),
             "a classic script that reads a module's name": (files(uses_b, b, "function g() { return b; }\ng();\n"),
                                                             ["c.js: uses b, which only the module"]),
@@ -712,6 +708,25 @@ def samples():
             found = module_problems(folder, page)
             results.append((len(found) == len(expected) and all(any(e in p for p in found) for e in expected),
                             f"{what}: {found or 'no problem'}"))
+        refused = {
+            'import b from "b.js";\nb();\n': "identifier", 'import * as n from "b.js";\nn.b();\n': "namespace_import",
+            'import { b as c } from "b.js";\nc();\n': "import_specifier",
+            'import { "b" as c } from "b.js";\nc();\n': "import_specifier", 'import "b.js";\n': "import_statement",
+            'import { b } from "b.js" with { type: "json" };\nb();\n': "import_attribute",
+            'export default 1;\n' + uses_b: "default", "const q = 1;\nexport { q };\n" + uses_b: "export_clause",
+            'export { b } from "b.js";\n': "export_clause", 'export * from "b.js";\n': "*",
+            'export * as n from "b.js";\n': "namespace_export","export let q = 1;\n" + uses_b: "lexical_declaration",
+            "export var q = 1;\n" + uses_b: "variable_declaration", "export class Q {}\n" + uses_b: "class_declaration",
+            "const o = {};\nexport const { p } = o;\n" + uses_b: "object_pattern",
+            "export function* g() {}\n" + uses_b: "generator_function_declaration",
+        }
+        for text, kind in refused.items():
+            for name, source in files(text, b, d='import { b } from "b.js";\nb();\n').items():
+                (folder / name).write_text(source, encoding="utf-8")
+            found = module_problems(folder, page)
+            results.append((any(p.startswith(f"a.js: has a {kind} at line ") and "does not judge" in p for p in found),
+                            f"an import or export outside the rule, {text.splitlines()[0]!r}, is a form the check "
+                            f"does not judge: {found}"))
         for name, text in files(uses_b, b).items():
             (folder / name).write_text(text, encoding="utf-8")
         inline = module_problems(folder, '<script>import("b.js");</script>\n<script type="application/json">{"a": 1}'

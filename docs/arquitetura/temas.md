@@ -74,8 +74,9 @@ Depois da gramática, a montagem ainda recusa, e o que escrever no lugar:
 - a tag de arquivo com outro atributo, outra ordem, maiúsculas ou algo antes do fim: exatamente
   `<script src="arquivo.js"></script>`, `<script type="module" src="nome.js"></script>` ou
   `<link rel="stylesheet" href="arquivo.css">`; e o mesmo módulo em duas tags: uma só;
-- um `<meta http-equiv="Content-Security-Policy">` em qualquer página, que impede o navegador de rodar os scripts
-  inline e os módulos `data:` da página quando não libera os dois;
+- um `<meta http-equiv="Content-Security-Policy">` em qualquer página, que impede o navegador de rodar os scripts inline
+  e os módulos `data:` da página quando não libera os dois: deixe-o de fora (o servidor não manda política, e uma num
+  cabeçalho bloquearia do mesmo jeito);
 - um `&` no `src` ou no `href` de um `<script>`, de um `<style>` ou de um `<link>` que não abre uma referência nomeada
   inteira, e toda referência numérica: o nome sem `&`, ou com `&amp;`; e um `&` no `rel`, no `type` ou no `as`: o valor
   escrito por extenso;
@@ -113,25 +114,33 @@ página com um `<meta>` de `Content-Security-Policy` roda o clássico e não os 
 de um `--mock` como o PC e de outro como o celular, pela mesma gramática da montagem (o `strict` do `theme_page.py`), e
 reprova com um `<script src>` ou um `<link rel="stylesheet">` nelas ou com um pedido de script ou de folha que o Chrome
 faça ao servidor. O `dev/test_theme_modules.py` lê o tema pela árvore de sintaxe:
-- cada import e reexportação de um módulo nomeia um módulo da página e um nome que ele exporta, sem atributos (o mapa só
-  entrega JavaScript), seguido até a ligação que ele nomeia (pelo `export *`, pela reexportação e pelo import que o
-  módulo exporta de novo); um ciclo de reexportações que não chega a ligação nenhuma, um nome que dois `export *` trazem
-  de ligações diferentes, ou um `export { nome }` de um nome que o módulo não declara nem importa, não vale;
+- cada import tem a forma `import { a, b } from "arquivo.js"`, com nomes simples e sem `as`, e cada export é um `export
+  const` de nomes simples ou um `export function`; outra forma (o `default`, o `* as`, o `as`, a reexportação, o `export
+  { }`, o `export let`, o `export class`, o import só pelo efeito, os atributos) reprova, com o arquivo e a linha, como
+  forma que a conferência não julga. Cada import nomeia um módulo da página e um nome que ele exporta, e nenhum módulo
+  importa ou exporta o mesmo nome duas vezes;
 - cada nome importado é usado e não é declarado de novo, e um módulo não escreve no import nem num nome que ninguém
   declara (o modo estrito lança erro nos dois); cada nome se resolve pelos escopos em volta dele, e uma atribuição por
   desestruturação não declara nada; um módulo não liga `arguments`, `yield` nem outra palavra que o modo estrito
-  reserva, e não repete um parâmetro (o clássico pode);
+  reserva, nem no import, não escreve em `arguments` nem em `eval`, e não repete um parâmetro (o clássico pode); um
+  módulo não tem `await` fora de função, que o `DOMContentLoaded` não espera;
 - cada export é importado por outro arquivo do tema;
 - um módulo que exporta função não exporta um dado que ele não usa e que um arquivo só importa (o dado fica nesse
   arquivo);
 - nos lugares onde um nome é ligado ou escrito, só cabem os nós que a conferência lê (o nome, os padrões de objeto e de
   lista, o valor padrão, o resto, e na escrita também o membro de um objeto); outro nó ali reprova, com o arquivo e a
-  linha, como forma que ela não julga, e o trecho se reescreve numa forma da lista;
+  linha, como forma que ela não julga, e o trecho se reescreve numa forma da lista; também não julga, e reprova, um
+  nome que não é ASCII simples (letra, `_` ou `$`, depois letras, dígitos, `_` ou `$`), como o escrito com escape, e o
+  valor padrão de um parâmetro que lê um nome que o corpo da função declara ou um parâmetro de depois;
 - cada script se analisa sem erro, nenhum script, clássico ou módulo, usa `import()`, e nenhum arquivo lê um nome que
   só outro módulo declara (um módulo chega a ele só pelo import);
-- nenhum arquivo escreve de novo uma função que um módulo exporta (com os nomes ligados dentro dela trocados) nem
-  monta à mão o objeto que ela devolve (o objeto feito de valores que saem, cada um pela mesma chave, de uma chamada à
-  mesma função importada, por qualquer nome, vale), e só o `pixel.js` carrega as fontes do motor (o `fontesProntas`);
+- nenhum arquivo escreve de novo uma função que um módulo exporta (com os nomes ligados dentro dela trocados), e só o
+  `pixel.js` carrega as fontes do motor (o `fontesProntas`);
+- a regra do objeto montado à mão promete isto: num arquivo que não é o da função, um literal de objeto só de pares e de
+  nomes, com todas as chaves (pelo menos três) do literal que uma função exportada devolve, reprova, a não ser que o
+  valor de cada uma dessas chaves seja o nome que a desestruturação de topo da chamada à função importada liga pela
+  mesma chave (com aspas ou sem). Ela não promete pegar o objeto montado por atribuição de campo, por `...` ou por
+  `Object.assign`, o que tem chave computada, o de menos de três chaves, nem a função que devolve o objeto por um nome;
 - nenhuma sequência de 8 linhas não triviais aparece em dois `.js` do tema.
 
 O `dev/garden.py` conta as linhas de CSS e
@@ -143,9 +152,11 @@ módulos rodam depois de todos os clássicos e antes do `DOMContentLoaded`, cada
 um módulo lê o que os clássicos declaram, mas um clássico não importa de um módulo. Por isso um arquivo vira módulo
 quando nenhum clássico lê os nomes dele, e o `i18n.js` e o `shared.js`, que todos leem, são os últimos.
 No `<head>`, logo depois dos textos que o servidor põe no `<!-- i18n -->`, vêm o `i18n.js` (o `I18N`, ver o
-[i18n.md](i18n.md)), o `shared.js` (o estado da página, `S`, o da mesa de DJ, `MESA`, e os ajudantes de todos: o `$`, o
-`el`, o `clamp`, o `reduz`, o `celular()`, o `toque()`, o `abrirMaleta()`, o `sombrear()`, o `dialogoAberto()`, o
-`fmt()`, o `mudar()` e o `ligarChave()`) e o `gerado/pecas.js` (as constantes das peças de pixel, do `dev/pecas.py`).
+[i18n.md](i18n.md)), o `browser-check.js` (no navegador sem import map, que não rodaria os módulos, para a leitura da
+página com o `window.stop()` e mostra o aviso `app.noImportMap`, antes de qualquer outro script rodar), o `shared.js` (o
+estado da página, `S`, o da mesa de DJ, `MESA`, e os ajudantes de todos: o `$`, o `el`, o `clamp`, o `reduz`, o
+`celular()`, o `toque()`, o `abrirMaleta()`, o `sombrear()`, o `dialogoAberto()`, o `fmt()`, o `mudar()` e o
+`ligarChave()`) e o `gerado/pecas.js` (as constantes das peças de pixel, do `dev/pecas.py`).
 No fim do `<body>`, com a marcação inteira já lida, vêm: o `transporte.js` (ver abaixo); o `page-texts.js`, que aplica
 os textos da marcação e mostra a página (a classe `i18n-ok`), antes de qualquer outro ler ou medir a tela; o
 `desk-scale.js` (a escala do palco da mesa: o `PALCO`, o `ajustarPalco()` e o `rectP()`); o `api.js` (o `api()` e o
@@ -189,17 +200,18 @@ partida). Cada ouvinte entra na mesma ordem dos outros no mesmo alvo: o toque fo
 ouvinte do `queue.js` na `window` ver o toque.
 
 Todo nome do alto de um script é declarado por um script só. O `dev/theme_scripts.py`, que o `--tela` do
-`dev/testa_tudo.py` roda, abre a página num Chrome sem tela contra um `--mock` e pega cada script como o V8 o leu,
-com o nome do arquivo dele achado pelo texto. Cada um vira o corpo de um gerador que é criado e não anda (as
-declarações nascem e nada roda), e os nomes saem do escopo local dele. Um nome declarado em dois scripts (função,
-`var`, `let`, `const` ou `class`) faz a guarda falhar. O leitor não vê dois nomes que só um script sem `'use strict'`
-aceita (um `var arguments`, um `const yield`): os dois ficam no teste como falha conhecida da issue #239. Ele confere
-também que cada ouvinte das partes é do arquivo dela, que a página só passa a vigiar a própria visibilidade no
-`DOMContentLoaded`, com o `carregar()` já declarado (uma aba que aparece durante a leitura da página não conecta antes
-da partida), que o `queue.js` vê o toque que fecha a busca na mesa, que cada módulo do mapa da página roda (o
-`import()` de cada nome dele, com o erro de quem falha), e que os canvas dos rótulos do mixer, do
-monitor, dos pads, da sombra do deck, do título da maleta, da contagem da prateleira e do aviso de vazio, limpos,
-ficam limpos até um `repinta-canvas` e então se pintam de novo (o canvas que o navegador devolve em branco, #119).
+`dev/testa_tudo.py` roda, abre a página num Chrome sem tela contra um `--mock` e pega cada script como o V8 o leu, com o
+nome do arquivo dele achado pelo texto. Cada um vira o corpo de um gerador que é criado e não anda (as declarações
+nascem e nada roda), e os nomes saem do escopo local dele. Um nome declarado em dois scripts (função, `var`, `let`,
+`const` ou `class`) faz a guarda falhar. O leitor não vê dois nomes que só um script sem `'use strict'` aceita (um `var
+arguments`, um `const yield`): os dois ficam no teste como falha conhecida da issue #239. Ele confere também que cada
+ouvinte das partes é do arquivo dela, que a página só passa a vigiar a própria visibilidade no `DOMContentLoaded`, com o
+`carregar()` já declarado (uma aba que aparece durante a leitura da página não conecta antes da partida), que o
+`queue.js` vê o toque que fecha a busca na mesa, que cada módulo do mapa da página roda (o `import()` de cada nome dele,
+com o erro de quem falha), que um navegador sem import map (o `HTMLScriptElement.supports` trocado antes da página)
+recebe o aviso e nenhum ouvinte, e que os canvas dos rótulos do mixer, do monitor, dos pads, da sombra do deck, do
+título da maleta, da contagem da prateleira e do aviso de vazio, limpos, ficam limpos até um `repinta-canvas` e então se
+pintam de novo (o canvas que o navegador devolve em branco, #119).
 
 Para provar que um PR só mudou código de lugar, o `dev/theme_rebuild.py <base>` monta a página de novo nos dois commits
 como o servidor a monta: cada `<script src="..."></script>` e `<link rel="stylesheet" href="...">` trocado pelo texto

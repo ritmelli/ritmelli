@@ -1151,7 +1151,7 @@ def the_theme_page_build():
         refused_read, error = theme_page.strict("<head>\n  <table></table>")
         theme_read, no_error = theme_page.strict(real.read_text(encoding="utf-8"))
         confere(refused_read is None and error[:2] == (2, 3) and error[2].startswith("the <table> is not one of the elements")
-                and no_error is None and len(theme_read.found) == 83,
+                and no_error is None and len(theme_read.found) == 84,
                 f"strict() gives the first refusal with its line and column, or the template it read ({error}, {no_error})")
         theme_page.build(real, real.parent / "i18n", "en")
         sheets = sum(tag == "style" for _, _, tag, _ in theme_page.file_tags(real.read_text(encoding="utf-8")))

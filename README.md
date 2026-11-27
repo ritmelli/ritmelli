@@ -49,6 +49,8 @@ as it runs on the same computer as Ritmelli. A game running on another device, l
   in your headphones.
 - **Phone remote:** control Ritmelli from your phone's browser, on the same network as the computer, so you can
   change songs and play Quick sounds without leaving your game.
+  The page needs a browser with import maps, on the phone and on the computer: Safari 16.4, Chrome or Edge 96,
+  Firefox 108, or later. An older one shows a message saying so.
 - **Two languages:** English and Brazilian Portuguese. The interface follows each device's list of preferred
   languages (your computer, your phone): if Portuguese (from any country) appears in it before any English, the
   device gets Brazilian Portuguese; otherwise, it gets English.
