@@ -1960,7 +1960,7 @@ def build(app_state):
         da mesma captura. O que nao mudou desde a volta de antes e o mesmo objeto: a conexao compara por identidade."""
         t, (s, pos) = time.monotonic(), leitura()
         jb = [dict(x) for x in A.public_jobs()]  # a mesma copia na chave e no evento: o download muda os de la
-        v = {"tick": evento("tick", {"pos": round(pos, 2), "t": round(t, 3),
+        v = {"tick": evento("tick", {"pos": round(pos, 2), "t": t,
                                      "levels": {k: round(x, 4) for k, x in E.levels.items()}, "n": n})}
         for nome, chave, dados in (("state", s, lambda: s), ("library", A.lib.version, A.lib.public),
                                    ("jobs", jb, lambda: jb)):

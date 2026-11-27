@@ -819,7 +819,7 @@ async def papeis_no_guard():
         capturas, lidas, comeco = [({"status": "playing", "track": {"id": "t1"}}, 100.0)], [], time.monotonic()
 
         def leitura():
-            lidas.append(1)
+            lidas.append(time.monotonic())
             return capturas[-1]
         A.leitura, E.pos = leitura, 100.0
         no_state, solta = asyncio.Event(), asyncio.Event()
@@ -891,8 +891,9 @@ async def papeis_no_guard():
                     f"volta dela ({p})")
         ts = [d.get("t") for e, d in eventos(escrito2) if e == "tick"]
         confere(ts and all(isinstance(x, float) for x in ts) and all(a < b for a, b in zip(ts, ts[1:]))
-                and round(comeco, 3) <= ts[0] <= ts[-1] <= round(time.monotonic(), 3),
-                f"o tick leva a hora da captura da volta dele, no time.monotonic ({ts[:3]})")
+                and comeco <= ts[0] <= ts[-1] <= time.monotonic()
+                and all(any(0 <= r - x < 0.002 for r in lidas) for x in ts),
+                f"o tick leva a hora da captura da volta dele, no time.monotonic e sem arredondar ({ts[:3]})")
         numeros = {nome: [d.get("n") for e, d in eventos(escrito) if e == "tick"]
                    for nome, escrito in (("suspenso", escrito1), ("livre", escrito2))}
         saltos = {nome: [b - a for a, b in zip(ns, ns[1:])] for nome, ns in numeros.items()}

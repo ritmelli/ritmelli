@@ -1366,6 +1366,20 @@ class TestVoicePedalDryOut(unittest.TestCase):
         self.assertGreater(seen[0]["folga_min_ms"], 0.0, "a state with the headroom at zero and the dry-out not counted")
         self.assertEqual((self.inj.estado()["folga_min_ms"], self.inj.estado()["secas"]), (0.0, 1))
 
+    def test_a_state_never_shows_the_headroom_at_zero_without_its_dry_out(self):
+        counts = self.inj.dry_outs.state
+
+        def dry_out_after_the_counts():
+            read = counts()
+            self.drain.set()
+            self.assertTrue(espera(lambda: self.inj.folga_min == 0), "the ring never ran dry")
+            return read
+        self.wait_filled()
+        self.inj.dry_outs.state = dry_out_after_the_counts
+        st = self.inj.estado()
+        self.assertEqual(st["secas"], 0)
+        self.assertGreater(st["folga_min_ms"], 0.0, "a state with the headroom at zero and the dry-out not counted")
+
     def test_dry_out_long_after_the_track_came_up(self):
         self.pedal_on(0.0)
         self.track_up()
