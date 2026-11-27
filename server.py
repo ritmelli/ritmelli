@@ -2241,7 +2241,7 @@ def build(app_state):
         if "auto" in b:
             A.ligar_auto(bool(b["auto"]))
         A.save_cfg()
-        return j_ok()
+        return j_ok(n=voltas.n)
 
     # o volume da musica no jogo, sozinho: o que o remoto pode mudar (o /api/settings segue com o vol para os temas, e
     # fora do remoto)

@@ -90,10 +90,10 @@ def rounds(r):
 
 class Record:
     def __init__(self, r):
-        self._rounds, self._n, self.current, self.times = rounds(r), None, None, []
+        self._rounds, self._n, self.current, self.numbers = rounds(r), None, None, []
 
     def until(self, end, want=None):
-        got, self.times = [], []
+        got, self.numbers = [], []
         while True:
             t, n, state = next(self._rounds)
             if self._n is not None and n != self._n + 1:
@@ -102,7 +102,7 @@ class Record:
             self._n = n
             if state is not None:
                 got.append(state)
-                self.times.append(t)
+                self.numbers.append(n)
                 self.current = state
                 if want and want(state):
                     return got
@@ -145,7 +145,7 @@ def slowest_up(ups):
     return [max(up) for up in zip(*ups)] or None
 
 
-def cycle_row(n, states_seen, mic, provider, server_lines, voice_lines, on_s=ON_S, base=0):
+def cycle_row(n, states_seen, mic, provider, server_lines, voice_lines, on_s=ON_S, base=0, crossing=None):
     broke = interruption(states_seen, mic)
     if broke:
         return None, f"cycle {n}: {broke}"
@@ -166,7 +166,9 @@ def cycle_row(n, states_seen, mic, provider, server_lines, voice_lines, on_s=ON_
         return None, f"cycle {n}: the voice sessions ran on {ends[-1].get('providers')}, not all on DirectML"
     before, after = states_seen[base]["microfone"], states_seen[-1]["microfone"]
     rose = after["volta_max_ms"] > before["volta_max_ms"]
+    crossed = 0 if crossing is None else states_seen[crossing]["microfone"]["secas"] - before["secas"]
     return {"cycle": n, "dry_outs": after["secas"] - before["secas"],
+            "dry_outs_maybe_before_the_pedal_turned_on": crossed,
             "dry_outs_while_starting": after["secas_pedal"] - before["secas_pedal"],
             "new_longest_return_ms": after["volta_max_ms"] if rose else None, "track_up_after_s": ups[0],
             "voice_blocks": ends[-1]["blocos"],
@@ -250,20 +252,22 @@ def main():
             for n in range(1, a.cycles + 1):
                 seen = len(lines(work / "server.err"))
                 try:
-                    sent_at = clock()
-                    call("POST", "/api/settings", {"effect": "pistavoz"})
+                    sent = call("POST", "/api/settings", {"effect": "pistavoz"})["n"]
                     on_at = clock()
                     during = record.until(on_at + a.on_s)
-                    before = [st for st, t in zip(during, record.times) if t < sent_at]
+                    numbers = record.numbers
+                    before = [st for st, k in zip(during, numbers) if k <= sent]
                     call("POST", "/api/settings", {"effect": "nenhum"})
                     off_at = clock()
                     during += record.until(off_at + OFF_S)
+                    numbers = numbers + record.numbers
                 except StreamBroken as ex:
                     sys.exit(f"cycle {n}: {ex} (see {server_err} and {log})")
                 states_seen = [start, *during]
                 start = states_seen[-1]
+                crossing = len(before) + 1 if numbers[len(before):len(before) + 1] == [sent + 1] else None
                 c, problem = cycle_row(n, states_seen, mic, a.provider, lines(server_err)[seen:], lines(log), a.on_s,
-                                       len(before))
+                                       len(before), crossing)
                 if problem:
                     sys.exit(f"{problem} (see {work / 'server.err'} and {log})")
                 counted.append((states_seen[len(before)]["microfone"]["secas"], start["microfone"]["secas"]))
@@ -291,6 +295,8 @@ def main():
               "cycles": cycles,
               "dry_outs": sum(c["dry_outs"] for c in cycles),
               "dry_outs_while_starting": sum(c["dry_outs_while_starting"] for c in cycles),
+              "dry_outs_maybe_before_the_pedal_turned_on": sum(c["dry_outs_maybe_before_the_pedal_turned_on"]
+                                                               for c in cycles),
               "slowest_track_up_s": slowest_up([c["track_up_after_s"] for c in cycles]),
               "longest_return_ms_since_the_ring_opened": start["microfone"]["volta_max_ms"],
               "voice_blocks": sum(c["voice_blocks"] or 0 for c in cycles),
@@ -298,7 +304,8 @@ def main():
               "dry_out_lines": dry, "work": str(work)}
     a.out.write_text(json.dumps(result, indent=1, ensure_ascii=False), encoding="utf-8")
     print(f"{result['dry_outs']} dry-outs in {len(cycles)} cycles, {result['dry_outs_while_starting']} while the pedal "
-          f"was starting; longest return {result['longest_return_ms_since_the_ring_opened']} ms; voice: "
+          f"was starting ({result['dry_outs_maybe_before_the_pedal_turned_on']} maybe before the pedal turned on); "
+          f"longest return {result['longest_return_ms_since_the_ring_opened']} ms; voice: "
           f"{result['voice_blocks']} blocks, the slowest {result['voice_slowest_block_ms']} ms; result: {a.out}",
           flush=True)
     return 0

@@ -888,6 +888,14 @@ async def papeis_no_guard():
             solta.set()
             await ate(lambda: com_t2(escrito1))
             await asyncio.sleep(5 * server.TICK)  # algumas voltas com os dois livres
+            A.save_cfg = lambda: None
+            _, antes, _ = await manda("POST", "/api/settings", de=pc, corpo={}, handler=rota[("POST", "/api/settings")])
+            lidas_antes = len(lidas)
+            await ate(lambda: len(lidas) >= lidas_antes + 2)
+            _, depois, _ = await manda("POST", "/api/settings", de=pc, corpo={}, handler=rota[("POST", "/api/settings")])
+            confere(depois.get("n", 0) - antes.get("n", 0) == len(lidas) - lidas_antes >= 2,
+                    f"o /api/settings responde o numero da ultima volta montada ({antes}, {depois}, "
+                    f"{len(lidas) - lidas_antes} voltas entre os dois)")
         finally:
             relogio.stop()
             solta.set()

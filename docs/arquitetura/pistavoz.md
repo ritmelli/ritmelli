@@ -80,30 +80,33 @@ o Ritmelli desligado), num servidor de verdade deste checkout, numa porta dele e
 sem proxy e sem seguir redirecionamento (o `so_mock.abre`), e só com o runtime do app (o `onnxruntime-directml`): sem o
 `DmlExecutionProvider`, ou com uma versão que não é a que o `instalador/travas.txt` trava, ele se recusa a rodar antes
 de abrir qualquer coisa, a não ser com `--provider cpu`; `--cycles` menor que 1 e um `--on-s` que não é um número
-positivo também são recusados, e o resultado leva a versão que rodou e só as linhas de seca entre o primeiro e o último
-corte (pelo total que cada uma diz e pelo injetor, que cada linha também diz); uma voz que não está no `vozes.json`
-também é recusada antes. Cada ciclo, com o pedal ligado por `--on-s` segundos, precisa da voz de verdade (o processo da
-voz disse `pronto`, sem `erro`, e o `fim` do log dele tem blocos e, com `--provider dml`, as quatro sessões no DirectML:
-o `fim` traz o `Conversor.providers()`), da linha da subida da pista no log do servidor (o intervalo dela,
-`track_up_after_s`, entra na linha do ciclo, e o resultado dá, em `slowest_track_up_s`, o maior limite de baixo e o
-maior de cima dos ciclos, entre os quais está a subida mais lenta; a linha leva também o `--on-s` pedido,
-`requested_on_s`, e o tempo entre as respostas dos dois `POST` do pedal, `on_s_between_responses`, que mostra um pedal
-ligado por mais tempo quando a ferramenta atrasou para ler o stream), de um stream de estado só, aberto depois de
-escolher o microfone, que dá a base (o primeiro state com o anel aberto, um leitor e a folga já medida, antes de o pedal
-ligar: o leitor sai no estado antes da primeira volta que confere a fila dele; e o `Injetor` conta e publica a seca de
-uma leitura vazia antes de a folga ir a zero, e o `estado()` lê a folga antes dos contadores, então nenhum state mostra
-a folga de uma leitura vazia sem a seca dela; o `folga_min_ms` sai arredondado a 0,1 ms, e uma leitura de um ou dois
-quadros também sai 0.0, com a folga medida) e os estados de todos os ciclos: cada `tick` leva a hora da captura da volta
-dele (`t`, o `time.monotonic` do servidor, o mesmo relógio da ferramenta, que sobe o servidor com o próprio Python), e o
-`state` de uma volta vem logo antes do `tick` dela, então cada state tem a hora da volta; uma janela do ciclo leva as
-voltas até a primeira do fim dela em diante, que fecha a janela com o que traz, e a seguinte começa depois dela (a conta
-de cada ciclo parte do último state de uma volta capturada antes de o `POST` que liga o pedal sair, pela hora que a
-ferramenta lê logo antes dele: uma seca de antes do envio não é do ciclo, nem uma entre dois ciclos, e o resultado só
-lista as linhas de seca dos ciclos), então cada volta é de uma janela só, não importa quanto a ferramenta atrasou para
-ler; o fim do ciclo é o último state da janela; o `tick` leva também o número da volta (`n`), e um salto nele (a conexão
-que ficou para trás pula para a volta mais nova) para a medição, porque um state do meio pode ter mostrado o anel
-quebrado; o stream que fecha para a medição, de um anel que mediu a folga e de um anel sem interrupção (leitor o tempo
-todo, o mesmo microfone, e contadores que não voltam; e o mesmo `injetor` do `/api/state`, o número que cada
+positivo também são recusados, e o resultado leva a versão que rodou e só as linhas de seca de dentro dos ciclos (pelo
+total que cada uma diz e pelo injetor, que cada linha também diz); uma voz que não está no `vozes.json` também é
+recusada antes. Cada ciclo, com o pedal ligado por `--on-s` segundos, precisa da voz de verdade (o processo da voz disse
+`pronto`, sem `erro`, e o `fim` do log dele tem blocos e, com `--provider dml`, as quatro sessões no DirectML: o `fim`
+traz o `Conversor.providers()`), da linha da subida da pista no log do servidor (o intervalo dela, `track_up_after_s`,
+entra na linha do ciclo, e o resultado dá, em `slowest_track_up_s`, o maior limite de baixo e o maior de cima dos
+ciclos, entre os quais está a subida mais lenta; a linha leva também o `--on-s` pedido, `requested_on_s`, e o tempo
+entre as respostas dos dois `POST` do pedal, `on_s_between_responses`, que mostra um pedal ligado por mais tempo quando
+a ferramenta atrasou para ler o stream), de um stream de estado só, aberto depois de escolher o microfone, que dá a base
+(o primeiro state com o anel aberto, um leitor e a folga já medida, antes de o pedal ligar: o leitor sai no estado antes
+da primeira volta que confere a fila dele; e o `Injetor` conta e publica a seca de uma leitura vazia antes de a folga ir
+a zero, e o `estado()` lê a folga antes dos contadores, então nenhum state mostra a folga de uma leitura vazia sem a
+seca dela; o `folga_min_ms` sai arredondado a 0,1 ms, e uma leitura de um ou dois quadros também sai 0.0, com a folga
+medida) e os estados de todos os ciclos: cada `tick` leva a hora da captura da volta dele (`t`, o `time.monotonic` do
+servidor, o mesmo relógio da ferramenta, que sobe o servidor com o próprio Python), e o `state` de uma volta vem logo
+antes do `tick` dela, então cada state tem a hora da volta; uma janela do ciclo leva as voltas até a primeira do fim
+dela em diante, que fecha a janela com o que traz, e a seguinte começa depois dela (a conta de cada ciclo parte do
+último state de uma volta capturada antes de o servidor ligar o pedal: a resposta do `POST` que liga o pedal traz o
+número da última volta montada, e a volta e o `POST` rodam no mesmo laço do servidor, então as voltas até esse número
+são de antes, sem comparar relógios, e a primeira depois dele atravessa o ligar do pedal: uma seca nela conta no ciclo,
+com a nota de que pode ter vindo antes de o pedal ligar (`dry_outs_maybe_before_the_pedal_turned_on`), e a de qualquer
+volta depois dela conta sem a nota; uma seca de antes do envio não é do ciclo, nem uma entre dois ciclos, e o resultado
+só lista as linhas de seca dos ciclos), então cada volta é de uma janela só, não importa quanto a ferramenta atrasou
+para ler; o fim do ciclo é o último state da janela; o `tick` leva também o número da volta (`n`), e um salto nele (a
+conexão que ficou para trás pula para a volta mais nova) para a medição, porque um state do meio pode ter mostrado o
+anel quebrado; o stream que fecha para a medição, de um anel que mediu a folga e de um anel sem interrupção (leitor o
+tempo todo, o mesmo microfone, e contadores que não voltam; e o mesmo `injetor` do `/api/state`, o número que cada
 `RingDryOuts` ganha ao nascer, que pega um `Injetor` aberto de novo, mesmo com os mesmos contadores; e o mesmo
 `leitores_trocados`, porque o vazio de um leitor que acabou de chegar não conta como seca), ou a medição para e diz qual
 ciclo. O `dev/test_measure_voice_pedal.py` confere a recusa e a linha de cada ciclo. Testes:
