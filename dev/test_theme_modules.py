@@ -219,7 +219,9 @@ def normalized(function):
     return " ".join(leaves)
 
 
-ESCAPES = {"n": "\n", "t": "\t", "r": "\r", "b": "\b", "f": "\f", "v": "\v", "0": "\0"}
+ESCAPES = {"n": "\n", "t": "\t", "r": "\r", "b": "\b", "f": "\f", "v": "\v"}
+OCTAL = re.compile(r"[0-3][0-7]{0,2}|[4-7][0-7]?")
+LAST_CODE_POINT = 0x10FFFF
 
 
 def unescaped(part):
@@ -228,14 +230,20 @@ def unescaped(part):
         return text
     body = text[1:]
     if body[0] in "xu" and len(body) > 1:
-        return chr(int(body[1:].strip("{}"), 16))
+        code = int(body[1:].strip("{}"), 16)
+        return chr(code) if code <= LAST_CODE_POINT else text
+    if octal := OCTAL.match(body):
+        return chr(int(octal.group(0), 8)) + body[octal.end():]
     if body[0] in "\r\n\u2028\u2029":
         return ""
     return ESCAPES.get(body, body)
 
 
 def key_text(node):
-    return "".join(unescaped(c) for c in node.named_children) if node.type == "string" else text_of(node)
+    if node.type != "string":
+        return text_of(node)
+    units = "".join(unescaped(c) for c in node.named_children).encode("utf-16-le", "surrogatepass")
+    return units.decode("utf-16-le", "surrogatepass")
 
 
 def object_keys(node):
@@ -243,7 +251,7 @@ def object_keys(node):
     for child in node.named_children:
         if child.type == "comment":
             continue
-        if child.type == "pair":
+        if child.type == "pair" and child.child_by_field_name("key").type in ("property_identifier", "string"):
             found.add(key_text(child.child_by_field_name("key")))
         elif child.type == "shorthand_property_identifier":
             found.add(text_of(child))
@@ -326,7 +334,7 @@ def returns(node):
     for child in node.named_children:
         if child.type == "return_statement":
             yield unwrapped(next((c for c in child.named_children if c.type != "comment"), None))
-        elif child.type not in FUNCTIONS:
+        elif child.type not in (*FUNCTIONS, "method_definition"):
             yield from returns(child)
 
 
@@ -407,13 +415,20 @@ def unjudged(root):
     found += [f"has a parameter default at line {n.start_point[0] + 1} that reads {text_of(n)}, which the function's "
               f"body or a later parameter declares, which this check does not judge: read it in the body"
               for n in early_defaults(root)]
+    found += [f"has a {n.type} at line {n.start_point[0] + 1}, which this check does not judge: write it with functions "
+              f"and objects" for n in walk(root) if n.is_named and n.type in ("class", "class_declaration")]
+    found += [f"has a method with a computed name at line {n.start_point[0] + 1}, which this check does not judge: name "
+              f"the method" for n in walk(root) if n.type == "method_definition"
+              and n.child_by_field_name("name").type == "computed_property_name"]
     return found
 
 
 def file_facts(text):
     root = PARSER.parse(text.encode("utf-8")).root_node
     facts = types.SimpleNamespace(imports={}, exports=set(), problems=[], top=set(), values={}, functions=[],
-                                  objects=[], writes=set(), imported_from={}, called={})
+                                  objects=[], writes=set(), imported_from={}, called={},
+                                  statements=[n.start_point[0] + 1 for n in walk(root)
+                                              if n.type in ("import_statement", "export_statement")])
     calls = []
     if root.has_error:
         broken = next(n for n in walk(root) if n.type == "ERROR" or n.is_missing)
@@ -511,17 +526,18 @@ def rewritten(folder, facts):
         for export, value in own.values.items():
             if value is not None and value.type in FUNCTIONS:
                 exported[normalized(value)] = (name, export)
-                shapes.update({keys: (name, export) for keys in returned_keys(value)})
+                for keys in returned_keys(value):
+                    shapes.setdefault(keys, []).append((name, export))
     problems = []
     for path in theme_files(folder):
         file = path.relative_to(folder).as_posix()
         own = file_facts(path.read_text(encoding="utf-8-sig"))
         problems += [f"{file}:{line}: writes again {exported[text][1]}, which {exported[text][0]} exports: import it"
                      for text, line in own.functions if text in exported and exported[text][0] != file]
-        problems += [f"{file}:{line}: builds by hand what {who[1]} of {who[0]} returns: call {who[1]}"
-                     for keys, line, values in own.objects for shape, who in shapes.items()
-                     if keys >= shape and who[0] != file
-                     and not composed(own, values, shape, who)]
+        problems += [f"{file}:{line}: builds by hand what {others[0][1]} of {others[0][0]} returns: call {others[0][1]}"
+                     for keys, line, values in own.objects for shape, origins in shapes.items()
+                     if keys >= shape and (others := [who for who in origins if who[0] != file])
+                     and not any(composed(own, values, shape, who) for who in origins)]
     return problems
 
 
@@ -534,6 +550,8 @@ def module_problems(folder, page):
     classics = [(name, file_facts(text)) for name, text in classic_texts(folder, read)]
     problems = [f"{name}: {problem}" for name, own in classics for problem in own.problems
                 if "dynamic import()" in problem or "does not parse" in problem or "does not judge" in problem]
+    problems += [f"{name}: has an import or an export at line {line}, which a classic script refuses: only a module "
+                 f"imports or exports" for name, own in classics for line in own.statements]
     problems += [f"{name}: {problem}" for name, own in facts.items() for problem in own.problems + own.module_only]
     problems += [f"{name}: imports {target}, which is not a module of the page" for name, own in facts.items()
                  for target in own.imports if target not in facts]
@@ -569,7 +587,8 @@ def engine_fonts(folder):
             if node.type != "call_expression" or text_of(node.child_by_field_name("function")) != "document.fonts.load":
                 continue
             given = node.child_by_field_name("arguments")
-            first = text_of(given.named_children[0]) if given is not None and given.named_children else ""
+            values = [c for c in given.named_children if c.type != "comment"] if given is not None else []
+            first = text_of(values[0]) if values else ""
             loads += [f"{path.relative_to(folder).as_posix()}:{node.start_point[0] + 1}: loads {family}, which "
                       f"pixel.js's fontesProntas loads" for family in sorted(families)
                       if re.search(rf"(?<![\w-]){re.escape(family)}(?![\w-])", first)]
@@ -612,8 +631,9 @@ def samples():
                 files('import { b } from "b.js";\nconst f = ({ key: b }) => b;\nf();\n', b), ["a.js: declares b again"]),
             "an import declared again in a for of": (files('import { b } from "b.js";\nfor (const b of []) b();\n', b),
                                                      ["a.js: declares b again"]),
-            "an import declared again as a class name": (
-                files('import { b } from "b.js";\nconst k = class b {};\nnew k();\n', b), ["a.js: declares b again"]),
+            "an import declared again as a class name, and a class, which the check does not judge": (
+                files('import { b } from "b.js";\nconst k = class b {};\nnew k();\n', b),
+                ["a.js: declares b again", "a.js: has a class at line 2, which this check does not judge"]),
             "an import declared again as a generator name": (
                 files('import { b } from "b.js";\nconst g = function* b() {};\ng();\n', b), ["a.js: declares b again"]),
             "an import of a name the module does not export": (files('import { b, c } from "b.js";\nb(c);\n', b),
@@ -661,7 +681,8 @@ def samples():
                 files(uses_b + "function f(q = { r }) { var r; return q; }\nf();\n", b),
                 ["a.js: has a parameter default at line 3 that reads r"]),
             "a module that awaits in a method's computed key": (
-                files(uses_b + "const o = { async [await b()]() {} };\ngo(o);\n", b), ["a.js: awaits at the top at line 3"]),
+                files(uses_b + "const o = { async [await b()]() {} };\ngo(o);\n", b),
+                ["a.js: awaits at the top at line 3", "a.js: has a method with a computed name at line 3"]),
             "a module that awaits in an async method's body": (
                 files(uses_b + "const o = { async m() { await b(); } };\ngo(o);\n", b), []),
             "an object built by hand with an escaped key, like the one the factory returns": (
@@ -680,6 +701,37 @@ def samples():
             "an object like the one a function inside the factory returns": (
                 files('import { mk } from "b.js";\nmk(1);\nconst o = { u: 2, w: 3, h: 4 };\ngo(o);\n',
                       "export function mk(w) { const inner = () => { return { u: 1, w, h: 2 }; }; return inner; }\n"), []),
+            "a class declaration in a classic script": (files(uses_b, b, "class Panel { static { var q = 1; } }\n"),
+                                                        ["c.js: has a class_declaration at line 1"]),
+            "a method with a computed name in an object": (
+                files(uses_b + "const o = { [b()](q) { return q; } };\ngo(o);\n", b),
+                ["a.js: has a method with a computed name at line 3"]),
+            "an import in a classic script": (files(uses_b, b, 'import { b } from "b.js";\n'),
+                                              ["c.js: has an import or an export at line 1"]),
+            "an export in a classic script": (files(uses_b, b, "export const q = 1;\n"),
+                                              ["c.js: has an import or an export at line 1"]),
+            "an object like the one a method inside the factory returns": (
+                files('import { mk } from "b.js";\nmk(1);\nconst o = { a: 2, b: 3, c: 4 };\ngo(o);\n',
+                      "export function mk(w) { const t = { m() { return { a: 1, b: 2, c: 3 }; } }; return t; }\n"), []),
+            "an object built by hand in the file of the second of two factories with the same keys": (
+                files('import { mk } from "b.js";\nimport { mk2 } from "d.js";\nmk(1);\nmk2(1);\n', factory,
+                      d="export function mk2(w) { return { u: w, w, h: 3 }; }\nconst o = { u: 2, w: 3, h: 4 };\ngo(o);\n"),
+                ["d.js:2: builds by hand what mk of b.js returns", "d.js:1: builds by hand what mk of b.js returns",
+                 "b.js:1: builds by hand what mk2 of d.js returns"]),
+            "an object built by hand in a sloppy classic with a legacy octal key": (
+                files('import { mk } from "b.js";\nmk(1);\n', factory, "go({ '\\165': 3, w: 2, h: 1 });\n"),
+                ["c.js:1: builds by hand what mk of b.js returns"]),
+            "an object with a key past the last code point": (
+                files('import { mk } from "b.js";\nmk(1);\n', factory, "go({ '\\u{110000}': 3, w: 2, h: 1 });\n"), []),
+            "an object built by hand with a key written as a surrogate pair": (
+                files('import { mk } from "b.js";\nmk(1);\n', "export function mk(w) { return { '😀': 1, w, h: 2 }; }\n",
+                      "go({ '\\uD83D\\uDE00': 3, w: 2, h: 1 });\n"),
+                ["c.js:1: builds by hand what mk of b.js returns"]),
+            "an object with a computed key, which the promise leaves out": (
+                files('import { mk } from "b.js";\nmk(1);\n', "export function mk(w) { return { [w]: 1, x: w, h: 2 }; }\n",
+                      "go({ '[w]': 3, x: 2, h: 1 });\n"), []),
+            "an object with a numeric key, which the promise leaves out": (
+                files('import { mk } from "b.js";\nmk(1);\n', factory, "go({ u: 2, w: 3, h: 4, 16: 0 });\n"), []),
             "a module that binds yield": (files(uses_b + "const yield = 1;\ngo(yield);\n", b), ["a.js: binds yield"]),
             "a module that binds arguments in a function": (
                 files(uses_b + "function f() { var arguments = 1; return arguments; }\nf();\n", b),
@@ -804,11 +856,12 @@ def samples():
         results.append((len(shared) == 1 and "/t/other/x.js: a dynamic import()" in shared[0],
                         f"a dynamic import() in a classic script of another theme's folder: {shared}"))
         (folder / "pixel.js").write_text("const FONTES = { j: { fam: '\"Jersey 10\"', S: 300 } };\n", encoding="utf-8")
-        (folder / "c.js").write_text('document.fonts.load(`300px "Jersey 10"`);\n// document.fonts.load("Jersey 10")\n',
-                                     encoding="utf-8")
+        (folder / "c.js").write_text('document.fonts.load(`300px "Jersey 10"`);\n// document.fonts.load("Jersey 10")\n'
+                                     'document.fonts.load(/* the deck */ \'300px "Jersey 10"\');\n', encoding="utf-8")
         families, loads = engine_fonts(folder)
-        results.append((families == {"Jersey 10"} and len(loads) == 1 and loads[0].startswith("c.js:1: loads"),
-                        f"a font of the engine loaded outside it, in a template, and none read in a comment: {loads}"))
+        results.append((families == {"Jersey 10"} and [x.split(": ")[0] for x in loads] == ["c.js:1", "c.js:3"],
+                        f"a font of the engine loaded outside it, in a template and after a comment, and none read in a "
+                        f"comment: {loads}"))
     return results
 
 

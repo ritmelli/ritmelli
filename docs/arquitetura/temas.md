@@ -119,7 +119,7 @@ faça ao servidor. O `dev/test_theme_modules.py` lê o tema pela árvore de sint
   function`; outra forma (o `default`, o `* as`, o `as`, a reexportação, o `export { }`, o `export let`, o `export
   class`, o import só pelo efeito, o `import {}`, os atributos) reprova, com o arquivo e a linha, como forma que a
   conferência não julga. Cada import nomeia um módulo da página e um nome que ele exporta, e nenhum módulo importa ou
-  exporta o mesmo nome duas vezes;
+  exporta o mesmo nome duas vezes; num clássico, um import ou um export reprova;
 - cada nome importado é usado e não é declarado de novo, e um módulo não escreve no import nem num nome que ninguém
   declara (o modo estrito lança erro nos dois); cada nome se resolve pelos escopos em volta dele, e uma atribuição por
   desestruturação não declara nada; um módulo não liga `arguments`, `yield` nem outra palavra que o modo estrito
@@ -130,19 +130,24 @@ faça ao servidor. O `dev/test_theme_modules.py` lê o tema pela árvore de sint
   arquivo);
 - nos lugares onde um nome é ligado ou escrito, só cabem os nós que a conferência lê (o nome, os padrões de objeto e de
   lista, o valor padrão, o resto, e na escrita também o membro de um objeto); outro nó ali reprova, com o arquivo e a
-  linha, como forma que ela não julga, e o trecho se reescreve numa forma da lista; também não julga, e reprova, um
-  nome que não é ASCII simples (letra, `_` ou `$`, depois letras, dígitos, `_` ou `$`), como o escrito com escape, e o
-  valor padrão de um parâmetro que lê um nome que o corpo da função declara ou um parâmetro de depois;
+  linha, como forma que ela não julga, e o trecho se reescreve numa forma da lista; também não julga, e reprova, um nome
+  que não é ASCII simples (letra, `_` ou `$`, depois letras, dígitos, `_` ou `$`), como o escrito com escape, e o valor
+  padrão de um parâmetro que lê um nome que o corpo da função declara ou um parâmetro de depois, uma `class` (declaração
+  ou expressão, com o bloco estático, os campos e os nomes privados dela) e um método de nome computado, num objeto ou
+  numa classe;
 - cada script se analisa sem erro, nenhum script, clássico ou módulo, usa `import()`, e nenhum arquivo lê um nome que
   só outro módulo declara (um módulo chega a ele só pelo import);
 - nenhum arquivo escreve de novo uma função que um módulo exporta (com os nomes ligados dentro dela trocados), e só o
   `pixel.js` carrega as fontes do motor (o `fontesProntas`);
 - a regra do objeto montado à mão promete isto: num arquivo que não é o da função, um literal de objeto só de pares e de
   nomes, com todas as chaves (pelo menos três) do literal que uma função exportada devolve (num `return` do corpo dela,
-  fora das funções de dentro, entre parênteses ou não), reprova, a não ser que o valor de cada uma dessas chaves seja o
-  nome que a desestruturação de topo da chamada à função importada liga pela mesma chave (com aspas ou sem, e com os
-  escapes da chave lidos). Ela não promete pegar o objeto montado por atribuição de campo, por `...` ou por
-  `Object.assign`, o que tem chave computada, o de menos de três chaves, nem a função que devolve o objeto por um nome;
+  fora das funções e dos métodos de dentro, entre parênteses ou não), reprova, a não ser que o valor de cada uma dessas
+  chaves seja o nome que a desestruturação de topo da chamada à função importada liga pela mesma chave (com aspas ou
+  sem, e com os escapes da chave lidos). Ela não promete pegar o objeto montado por atribuição de campo, por `...` ou
+  por `Object.assign`, o que tem chave computada ou numérica, o de menos de três chaves, nem a função que devolve o
+  objeto por um nome. Numa chave entre aspas, ela lê os escapes `\n`, `\t`, `\r`, `\b`, `\f`, `\v`, `\xHH`, `\uHHHH` (o
+  par substituto escrito assim vira um caractere só), `\u{…}` até `10FFFF`, o octal antigo (`\165`) e a barra antes da
+  quebra de linha; outro caractere depois da barra vale ele mesmo, e um `\u{…}` acima de `10FFFF` fica como está;
 - nenhuma sequência de 8 linhas não triviais aparece em dois `.js` do tema.
 
 O `dev/garden.py` conta as linhas de CSS e
