@@ -816,10 +816,13 @@ async def papeis_no_guard():
         # do envio, e o snapshot base e montado uma vez por volta para todas as conexoes (server.Voltas). Dois PCs
         # ligados: o envio do primeiro fica suspenso logo depois do state, e a virada acontece ali (a faixa nova, com a
         # posicao dela); o segundo segue livre e recebe a virada enquanto o primeiro esta parado
-        capturas, lidas, horas, comeco = [({"status": "playing", "track": {"id": "t1"}}, 100.0)], [], [], time.monotonic()
+        def relogio_ms():
+            return int(time.monotonic() * 1000) / 1000 + 0.0004
+
+        capturas, lidas, horas, comeco = [({"status": "playing", "track": {"id": "t1"}}, 100.0)], [], [], relogio_ms()
 
         def hora():
-            horas.append(int(time.monotonic() * 1000) / 1000 + 0.0004)
+            horas.append(relogio_ms())
             return horas[-1]
 
         def leitura():
@@ -899,7 +902,7 @@ async def papeis_no_guard():
                     f"volta dela ({p})")
         ts = [d.get("t") for e, d in eventos(escrito2) if e == "tick"]
         confere(ts and all(isinstance(x, float) for x in ts) and all(a < b for a, b in zip(ts, ts[1:]))
-                and comeco <= ts[0] <= ts[-1] <= time.monotonic() and all(x in lidas for x in ts),
+                and comeco <= ts[0] <= ts[-1] <= relogio_ms() and all(x in lidas for x in ts),
                 f"o tick leva a hora da captura da volta dele, no time.monotonic e sem arredondar ({ts[:3]})")
         numeros = {nome: [d.get("n") for e, d in eventos(escrito) if e == "tick"]
                    for nome, escrito in (("suspenso", escrito1), ("livre", escrito2))}
