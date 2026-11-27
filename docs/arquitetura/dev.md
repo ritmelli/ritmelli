@@ -33,8 +33,8 @@ e os passos que a condição e o env leem pelo `id` (os do `SOURCE_STEPS`, fixad
 nenhuma execução de PR exercita: o bloco do "Testa o PR" num bash com um `gh` falso (o comentário
 que o GitHub não confirma reprova dizendo isso; no push, os jobs pulados só passam com uma
 execução da fila aprovada no mesmo commit), os jobs que o push pula, as chaves de cache, essa trava
-(com um mutante de cada modo), o leitor de YAML dos testes (o `dev/workflow_yaml.py`, só da biblioteca
-padrão, que recusa o que não conhece), os gatilhos exatos do `testa.yml`, sem filtro de caminho nem
+(com um mutante de cada modo), o leitor de YAML dos testes (o `dev/workflow_yaml.py`, por cima do
+`dev/syntax/yaml.py`: lê o YAML inteiro e recusa o inválido), os gatilhos exatos do `testa.yml`, sem filtro de caminho nem
 de branch, um job só com o nome "Testa o PR" em todos os workflows, nenhum passo dele com `if:` além
 do "Cancelada", com um mutante de cada, e que toda biblioteca da CI tem versão exata (no `instalador/travas.txt`, no
 `dev/travas.txt` ou na própria linha), menos o yt-dlp, que a ação do Python instala o mais novo a cada execução. O
@@ -143,14 +143,40 @@ linguagem e as de docstring, as supressões, as esperas do app e as de `dev/`, o
 `except` largos, os testes pulados, as marcas de pendência, a prosa sem issue, os nomes sem ASCII, os acessos que o
 `dev/testa_ganchos.py` conta (e as escritas diretas no estado do `App` e do motor), as linhas inline do tema, as linhas dos arquivos grandes e do `AGENTS.md` e as regras
 dele sem verificação. Cada número tem um teto no `dev/garden.json`: acima dele, ou abaixo sem o teto descer junto, o
-check reprova, e o teto do PR nunca passa o da base (o `$env:BASE` no PR; na fila, o commit sobre o qual a entrada
-foi montada, que vem no nome da ref dela, como no `compara`). Uma base sem `dev/garden.json` é medida. Cada contador
+check reprova, e o teto do PR nunca passa a contagem da base medida pelo código do próprio PR (o `$env:BASE` no PR; na
+fila, o commit sobre o qual a entrada foi montada, que vem no nome da ref dela, como no `compara`): um contador que
+aprende a ver mais sobe o teto só até o que a base já tinha, e mato novo continua reprovando. Cada contador
 que mudou vai para o resumo do PR numa linha `-- summary:`, e o `--list <contador>` mostra onde está cada item. O passo "PR description" do job de
 Testes lê a descrição do PR pela API, no PR e na fila (que pega a edição depois do verde), e reprova sem a seção de
 prova, com uma frase de justificativa sem link de issue, ou com uma palavra de fechar (`Closes`, `Fixes`, `Resolves`)
 com issue no meio de uma frase: o GitHub fecha a issue onde quer que ela esteja, também num "does not fix", e
 ela só vale numa linha que começa por ela. O `dev/test_garden.py` tem, por contador, um caso que
 sobe e um que não conta.
+
+O placar lê o YAML, o PowerShell e o Python pela estrutura, com os leitores do `dev/syntax/` (só da biblioteca padrão,
+como o resto do `STDLIB`), e não por padrão de texto linha a linha:
+- **O YAML (`yaml.py`):** blocos e flow, todos os escalares, âncoras, tags e vários documentos. Cada caractere de um
+  escalar guarda a posição dele no arquivo, e é assim que o código de um passo aponta a própria linha.
+- **O PowerShell (`powershell.py`):** os modos de comando e de expressão, as strings expansíveis com o `$()` de dentro,
+  as here-strings, o `--%` e as classes. Os tokens cobrem o texto inteiro.
+- **O IR comum (`ir.py`):** o Python e o PowerShell viram as mesmas peças (função, laço, condição, try e handler,
+  chamada, saída, atribuição). As regras de espera, de retry e de `except` largo valem para as duas linguagens:
+  - o retry também se vê quando o `try` está numa função do mesmo arquivo, num laço de tentativas que para quando a
+    chamada dá certo;
+  - um `catch` do PowerShell sem tipo é largo.
+- **As peças (`units.py`):**
+  - cada passo `run:` de `jobs.<id>.steps` ou de `runs.steps`, no shell do passo, do job ou do runner, com o
+    `${{ … }}` lido como um valor;
+  - o PowerShell que o Python monta numa lista com `-Command`, numa string, numa f-string ou num `"\n".join([...])`,
+    num arquivo ou num passo Python, com cada caractere na linha onde está escrito.
+
+Um arquivo que um desses leitores não consegue ler reprova com o lugar, e também o script depois do `-Command` que o
+leitor não consegue seguir. Nos arquivos e nos passos que ainda não têm leitor (batch, Inno, shell), o `Start-Sleep` e
+o `-ErrorAction SilentlyContinue` continuam contados pelo texto. O `dev/test_syntax.py` tem os casos de cada leitor, a
+posição de cada caractere dos escalares do `.github`, os tokens sem buraco de todo PowerShell do repo e cada string
+do Python do repo lida como o Python a lê. O `dev/test_syntax_oracles.py` (no `COMPLETO`) confere que o PyYAML e o
+parser do Windows PowerShell leem tudo igual: os YAML do `.github`, mil documentos gerados em todos os estilos, todo
+PowerShell do repo e os casos difíceis.
 
 `dev/shot.py` (print + erros de console pelo Chrome headless), `dev/fitcheck.py` (gate
 de "cabe em qualquer tela", de 1024x600 a 2560x1300, no celular em pé e no celular grande
