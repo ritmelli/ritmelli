@@ -115,9 +115,10 @@ de um `--mock` como o PC e de outro como o celular, pela mesma gramática da mon
 reprova com um `<script src>` ou um `<link rel="stylesheet">` nelas ou com um pedido de script ou de folha que o Chrome
 faça ao servidor. O `dev/test_theme_modules.py` lê o tema pela árvore de sintaxe:
 - a conferência desce na árvore por um leitor só, que pula os comentários e tira os parênteses de uma expressão (o
-  `(zz) = 1` é a escrita no `zz`), e nenhuma regra decide a forma pelo texto de um nó; cada caso do teste, reescrito com
-  um comentário entre cada dois tokens e com parênteses em volta de cada expressão onde o JavaScript os aceita, dá o
-  mesmo veredito;
+  `(zz) = 1` é a escrita no `zz`, e o `x['load']` é o `x.load`), e nenhuma regra decide a forma pelo texto de um nó;
+  cada caso do teste, reescrito com um comentário entre cada dois tokens e com parênteses em volta de cada expressão nos
+  lugares que a conferência lê (o valor, o alvo de uma escrita e o lado esquerdo do `for…of`, o devolvido, a chamada, o
+  membro, os operandos e os argumentos), dá o mesmo veredito;
 - cada import e cada export ficam no alto do módulo; cada import tem a forma `import { a, b } from "arquivo.js"`, com
   pelo menos um nome, nomes simples e sem `as`, e cada export é um `export const` de nomes simples ou um `export
   function`; outra forma (o `default`, o `* as`, o `as`, a reexportação, o `export { }`, o `export let`, o `export
@@ -126,9 +127,9 @@ faça ao servidor. O `dev/test_theme_modules.py` lê o tema pela árvore de sint
   exporta o mesmo nome duas vezes; num clássico, um import, um export ou um `import.meta` reprova;
 - cada nome importado é usado e não é declarado de novo, e um módulo não escreve no import nem num nome que ninguém
   declara (o modo estrito lança erro nos dois); cada nome se resolve pelos escopos em volta dele, e uma atribuição por
-  desestruturação não declara nada; um módulo não liga `arguments`, `yield` nem outra palavra que o modo estrito
-  reserva, nem no import, não escreve em `arguments` nem em `eval`, e não repete um parâmetro (o clássico pode); um
-  módulo não tem `await` fora de função, que o `DOMContentLoaded` não espera;
+  desestruturação não declara nada; um módulo não liga `yield` nem outra palavra que o modo estrito reserva, nem no
+  import, e não repete um parâmetro (o clássico pode); um módulo não tem `await` fora de função, que o
+  `DOMContentLoaded` não espera;
 - cada export é importado por outro arquivo do tema;
 - um módulo que exporta função não exporta um dado que ele não usa e que um arquivo só importa (o dado fica nesse
   arquivo);
@@ -138,8 +139,9 @@ faça ao servidor. O `dev/test_theme_modules.py` lê o tema pela árvore de sint
   que não é ASCII simples (letra, `_` ou `$`, depois letras, dígitos, `_` ou `$`), como o escrito com escape, e o valor
   padrão de um parâmetro que lê um nome que o corpo da função declara ou um parâmetro de depois, uma `class` (declaração
   ou expressão, com o bloco estático, os campos e os nomes privados dela), um método de nome computado, num objeto ou
-  numa classe, e uma função ou um generator declarado dentro de um bloco (fora do alto do arquivo e do alto do corpo de
-  uma função);
+  numa classe, uma função ou um generator declarado dentro de um bloco (fora do alto do arquivo e do alto do corpo de
+  uma função), o nome de um valor do objeto global (`undefined`, `NaN`, `Infinity`, `arguments` ou `eval`) ligado,
+  importado ou escrito, e um `with`, num clássico ou num módulo;
 - cada script se analisa sem erro, nenhum script, clássico ou módulo, usa `import()`, e nenhum arquivo lê um nome que
   só outro módulo declara (um módulo chega a ele só pelo import);
 - nenhum arquivo escreve de novo uma função que um módulo exporta (com os nomes ligados dentro dela trocados), e só o

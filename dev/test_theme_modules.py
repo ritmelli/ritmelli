@@ -74,6 +74,14 @@ def parts(node):
     return [unwrapped(c) for c in node.named_children if c.type != "comment"]
 
 
+def property_of(node):
+    if node.type == "member_expression":
+        return text_of(node.child_by_field_name("property"))
+    if node.type == "subscript_expression" and (index := field(node, "index")).type == "string":
+        return key_text(index)
+    return None
+
+
 def literal(node):
     return node.text.decode("utf-8")[1:-1] if node is not None and node.type == "string" else None
 
@@ -220,17 +228,29 @@ def normalized(function):
             scopes[text_of(node)].add(where := key(scope_of(own)))
             declared_at[key(node)] = where
     names, leaves = {}, []
-    for node in walk(function):
-        if node.children or node.type == "comment" or node.parent.type == "parenthesized_expression" and \
-                node.type in ("(", ")"):
-            continue
-        if node.type not in NAMES:
-            leaves.append(text_of(node))
-            continue
+
+    def name_of(node):
         name = text_of(node)
         where = declared_at.get(key(node)) or resolved(node, scopes)
         renamed = names.setdefault((name, where), f"${len(names)}") if where else name
-        leaves.append(renamed if node.type == "identifier" else f"{name}:{renamed}")
+        return renamed if node.type == "identifier" else f"{name}:{renamed}"
+
+    def read(node):
+        if node.type == "comment":
+            return
+        if node.type == "parenthesized_expression":
+            read(unwrapped(node))
+        elif node.parent.type == "arrow_function" and node.parent.child_by_field_name("parameter") == node:
+            leaves.extend(["<", "(", name_of(node), ")", ">"])
+        elif not node.children:
+            leaves.append(name_of(node) if node.type in NAMES else text_of(node))
+        else:
+            leaves.append("<")
+            for child in node.children:
+                read(child)
+            leaves.append(">")
+
+    read(function)
     return " ".join(leaves)
 
 
@@ -301,8 +321,9 @@ def destructured_keys(pattern):
     return found
 
 
-STRICT_NAMES = frozenset({"arguments", "eval", "yield", "await", "let", "static", "implements", "interface", "package",
-                          "private", "protected", "public"})
+STRICT_NAMES = frozenset({"yield", "await", "let", "static", "implements", "interface", "package", "private",
+                          "protected", "public"})
+GLOBAL_VALUES = frozenset({"undefined", "NaN", "Infinity", "arguments", "eval"})
 
 
 def at_top(node):
@@ -319,9 +340,6 @@ def module_only(root):
     bound += [name for _, _, names in allowed_imports(root) for name in names]
     found = [f"binds {text_of(n)} at line {n.start_point[0] + 1}, which a module, in strict mode, refuses"
              for n in bound if text_of(n) in STRICT_NAMES]
-    found += [f"writes {text_of(n)} at line {n.start_point[0] + 1}, which a module, in strict mode, refuses"
-              for what, node, _ in places(root) if what == "write"
-              for n in pattern_nodes(node) if text_of(n) in ("arguments", "eval")]
     for node in walk(root):
         if (node.type == "await_expression" or node.type == "for_in_statement" and any(
                 c.type == "await" for c in node.children)) and at_top(node):
@@ -427,6 +445,13 @@ def unjudged(root):
     found += [f"has a method with a computed name at line {n.start_point[0] + 1}, which this check does not judge: name "
               f"the method" for n in walk(root) if n.type == "method_definition"
               and n.child_by_field_name("name").type == "computed_property_name"]
+    named = [n for _, node, _ in places(root) for n in pattern_nodes(node)]
+    named += [name for node in walk(root) if node.type in FUNCTIONS and (name := node.child_by_field_name("name"))]
+    named += [s.child_by_field_name("name") for s in walk(root) if s.type == "import_specifier"]
+    found += [f"binds or writes {text_of(n)} at line {n.start_point[0] + 1}, a value of the global object, which this "
+              f"check does not judge: use another name" for n in named if text_of(n) in GLOBAL_VALUES]
+    found += [f"has a with at line {n.start_point[0] + 1}, whose scope this check does not judge: name the object"
+              for n in walk(root) if n.type == "with_statement"]
     found += [f"has a {n.type} inside a block at line {n.start_point[0] + 1}, which this check does not judge: declare "
               f"it at the top of the file or of a function's body" for n in walk(root)
               if n.type in ("function_declaration", "generator_function_declaration") and in_block(n)]
@@ -599,9 +624,17 @@ def module_problems(folder, page):
 def member_chain(node):
     if node.type == "identifier":
         return [text_of(node)]
-    if node.type != "member_expression" or not (inner := member_chain(field(node, "object"))):
+    if (name := property_of(node)) is None or not (inner := member_chain(field(node, "object"))):
         return []
-    return [*inner, text_of(node.child_by_field_name("property"))]
+    return [*inner, name]
+
+
+def literal_text(node):
+    if node.type == "string":
+        return key_text(node)
+    if node.type == "template_string" and not any(c.type == "template_substitution" for c in node.children):
+        return "".join(unescaped(c) for c in node.named_children)
+    return text_of(node)
 
 
 def engine_fonts(folder):
@@ -616,7 +649,7 @@ def engine_fonts(folder):
             if node.type != "call_expression" or member_chain(field(node, "function")) != ["document", "fonts", "load"]:
                 continue
             values = parts(node.child_by_field_name("arguments"))
-            first = text_of(values[0]) if values else ""
+            first = literal_text(values[0]) if values else ""
             loads += [f"{path.relative_to(folder).as_posix()}:{node.start_point[0] + 1}: loads {family}, which "
                       f"pixel.js's fontesProntas loads" for family in sorted(families)
                       if re.search(rf"(?<![\w-]){re.escape(family)}(?![\w-])", first)]
@@ -653,6 +686,8 @@ def wrappable(node):
     if parent is None or any(a.type in (*OPAQUE, "ERROR") for a in ancestors(node)) or any(
             c.type == "optional_chain" for c in parent.children):
         return False
+    if parent.type == "for_in_statement" and parent.child_by_field_name("kind") is None and node.type in WRITTEN_LEAVES:
+        return parent.child_by_field_name("left") == node
     if parent.type in TARGET_SLOTS and node.type in WRITTEN_LEAVES:
         return any(parent.child_by_field_name(f) == node for f in TARGET_SLOTS[parent.type])
     if node.type not in EXPRESSIONS or parent.type not in VALUE_SLOTS:
@@ -722,11 +757,22 @@ def samples():
             "a for await at the top": (files(uses_b + "for await (const q of []) go(q);\n", b),
                                        ["a.js: awaits at the top at line 3"]),
             "an await inside an async function": (files(uses_b + "async function f() { await b(); }\nf();\n", b), []),
-            "a module that imports a name strict mode refuses": (
+            "a module that imports a value of the global object": (
                 files('import { arguments } from "b.js";\ngo(arguments);\n', "export const arguments = 1;\n"),
-                ["a.js: binds arguments at line 1", "b.js: binds arguments at line 1"]),
+                ["a.js: binds or writes arguments at line 1", "b.js: binds or writes arguments at line 1"]),
             "a module that writes arguments, which a classic script declares": (
-                files(uses_b + "arguments = 1;\n", b, "var arguments = 0;\n"), ["a.js: writes arguments at line 3"]),
+                files(uses_b + "arguments = 1;\n", b, "var arguments = 0;\n"),
+                ["a.js: binds or writes arguments at line 3", "c.js: binds or writes arguments at line 1"]),
+            "a classic script that binds undefined, NaN and Infinity, and names a function eval": (
+                files(uses_b, b, "const undefined = 1;\nconst { NaN } = {};\nlet Infinity;\nfunction eval() {}\n"
+                                 "go(undefined, NaN, Infinity);\n"),
+                ["c.js: binds or writes undefined at line 1", "c.js: binds or writes NaN at line 2",
+                 "c.js: binds or writes Infinity at line 3", "c.js: binds or writes eval at line 4"]),
+            "a module that imports undefined, which the check does not judge past that": (
+                files('import { undefined } from "b.js";\ngo(undefined);\n', "export const undefined = 1;\n"),
+                ["a.js: binds or writes undefined at line 1", "b.js: binds or writes undefined at line 1",
+                 "a.js: imports undefined, which it never uses"]),
+            "a classic script with a with": (files(uses_b, b, "with ({ q: 1 }) { go(q); }\n"), ["c.js: has a with at line 1"]),
             "a module that imports a name twice": (
                 files('import { b } from "b.js";\nimport { b } from "d.js";\nb();\n', b, d=b), ["a.js: imports b twice"]),
             "a module that exports a name twice": (
@@ -826,12 +872,18 @@ def samples():
             "a function a module exports, written again with more parentheses": (
                 files(f'import {{ f }} from "b.js";\nconst g = {body.replace("x * 2", "((x) * (2))")};\nf(g(1));\n', long),
                 ["a.js:2: writes again f, which b.js exports"]),
+            "a function a module exports, written again with its parameter in parentheses": (
+                files(f'import {{ f }} from "b.js";\nconst g = {body.replace("x =>", "(x) =>")};\nf(g(1));\n', long),
+                ["a.js:2: writes again f, which b.js exports"]),
+            "a function that differs from the one a module exports only by where its parentheses group": (
+                files(f'import {{ f }} from "b.js";\nconst g = {body.replace("x * 2 + 1", "x * (2 + 1)")};\nf(g(1));\n',
+                      long), []),
             "an import.meta in a classic script": (files(uses_b, b, "go(import.meta);\n"),
                                                    ["c.js: has an import, an export or an import.meta at line 1"]),
             "a module that binds yield": (files(uses_b + "const yield = 1;\ngo(yield);\n", b), ["a.js: binds yield"]),
             "a module that binds arguments in a function": (
                 files(uses_b + "function f() { var arguments = 1; return arguments; }\nf();\n", b),
-                ["a.js: binds arguments"]),
+                ["a.js: binds or writes arguments at line 3"]),
             "a module with a parameter twice": (files(uses_b + "function f(q, q) { return q; }\nf();\n", b),
                                                 ["a.js: has the parameter q twice"]),
             "a classic script that binds yield and has a parameter twice, which it may": (
@@ -974,10 +1026,12 @@ def samples():
             {"pixel.js": "const FONTES = { j: { fam: '\"Jersey 10\"', S: 300 } };\n",
              "c.js": 'document.fonts.load(`300px "Jersey 10"`);\n// document.fonts.load("Jersey 10")\n'
                      'document.fonts.load(/* the deck */ \'300px "Jersey 10"\');\n'
-                     'document.fonts /* the deck */ .load(\'300px "Jersey 10"\');\n'}, lambda: [sorted(found) for found in engine_fonts(folder)])
-        results.append((families == ["Jersey 10"] and [x.split(": ")[0] for x in loads] == ["c.js:1", "c.js:3", "c.js:4"],
+                     'document.fonts /* the deck */ .load(\'300px "Jersey 10"\');\n'
+                     'document.fonts[\'load\'](\'300px "Jersey 10"\');\n'
+                     'document.fonts.load(\'300px "Jersey\\x2010"\');\n'}, lambda: [sorted(found) for found in engine_fonts(folder)])
+        results.append((families == ["Jersey 10"] and [x.split(": ")[0] for x in loads] == ["c.js:1", "c.js:3", "c.js:4", "c.js:5", "c.js:6"],
                         f"a font of the engine loaded outside it, in a template and after a comment, in the argument or "
-                        f"in the call, and none read in a comment: {loads}"))
+                        f"in the call, by a string index and with an escape, and none read in a comment: {loads}"))
         results.append((not changed, f"each case, with a comment between every two tokens and parentheses around every "
                                      f"expression where JavaScript takes them, keeps its verdict ({changed or 'all do'})"))
     return results
