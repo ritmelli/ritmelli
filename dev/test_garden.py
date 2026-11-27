@@ -3,6 +3,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -41,9 +42,27 @@ TUDO = ('STDLIB = ["dev/testa_x.py"]\nCOMPLETO = list(STDLIB)\nLONG_TESTS = {}\n
 AGENTS_OK ="# AGENTS.md\n\n- A rule that `testa_i18n` holds.\n"
 
 MOLDURAS = next(iter(garden.GENERATED_MARKERS))
+RUN_PS = "subprocess.run([POWERSHELL, '-Command', ps])\n"
+ATTEMPT = "import time\ndef attempt():\n    try:\n        return f()\n    except OSError:\n        return None\n"
+ATTEMPT_PS = "function attempt { try { f } catch { $null } }\n"
+NESTED_FSTRING = ("import subprocess\nsubprocess.run(['powershell', '-Command', "
+                  "f\"Write-Output '{f\"{\"}\"}\"}'{TAIL}\"])\n")
+ASYNC_RETRY = ("import asyncio\nasync def attempt():\n    try:\n        return await f()\n    except OSError:\n"
+               "        return None\nasync def main():\n    while True:\n        if await CALL():\n"
+               "            break\n        await asyncio.sleep(1)\n")
+ACTION = "runs:\n  using: composite\n  steps:\n    - shell: pwsh\n      run: RUN\n"
+ALIASED_JOB = "jobs:\n  test: &t\n    runs-on: windows-2025\n    steps:\n      - run: RUN\n  build: *t\n"
+COMPOSITE_PYTHON_STEP = "runs:\n  using: composite\n  steps:\n    - shell: python\n      run: |\nDOC        x = 1\n"
 
 CASES = {
     "comment_lines": [
+        ("a quoted run that goes on to the next line",
+         {"action.yml": "runs:\n  steps:\n    - shell: pwsh\n      run: \"Write-Output 'a #b'\n        'c'\"\n"},
+         {"action.yml": "runs:\n  steps:\n    - shell: pwsh\n      run: \"Write-Output 'a #b'\n        # why\"\n"}),
+        ("a version comment after a tag is no pin", {"a.yml": "steps:\n  - uses: o/r@" + "a" * 40 + " # v3.2\n"},
+         {"a.yml": "steps:\n  - uses: o/r@v3 # v3.2\n"}),
+        ("a uses: inside a step name is no pin", {"a.yml": "steps:\n  - uses: o/r@" + "a" * 40 + " # v3.2\n"},
+         {"a.yml": "steps:\n  - name: 'uses: o/r@" + "a" * 40 + "' # v3.2\n"}),
         ("python", {"a.py": "x = '#not a comment'\n"}, {"a.py": "x = 1  # a comment\n"}),
         ("python shebang and encoding", {"a.py": "#!/usr/bin/env python\n# -*- coding: utf-8 -*-\nx = 1\n"},
          {"a.py": "#!/usr/bin/env python\n# -*- coding: utf-8 -*-\n# why\nx = 1\n"}),
@@ -72,12 +91,12 @@ CASES = {
         ("yml", {"a.yml": "a: 'b # c'\n"}, {"a.yml": "a: b  # why\n"}),
         ("yml pin", {"a.yml": "steps:\n  - uses: o/r@" + "a" * 40 + " # v3.2\n"},
          {"a.yml": "steps:\n  - uses: o/r@v3 # why\n"}),
-        ("yml run block in bash", {"a.yml": "jobs:\n  j:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: |\n"
+        ("yml run block in bash", {".github/workflows/a.yml": "jobs:\n  j:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: |\n"
                                             "          echo \"## title\"\n"},
-         {"a.yml": "jobs:\n  j:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: |\n          # why\n"
+         {".github/workflows/a.yml": "jobs:\n  j:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: |\n          # why\n"
                    "          echo hi\n"}),
-        ("yml run block in python", {"a.yml": "steps:\n  - shell: python3 {0}\n    run: |\n      x = '# no'\n"},
-         {"a.yml": "steps:\n  - shell: python3 {0}\n    run: |\n      x = 1  # why\n"}),
+        ("yml run block in python", {"action.yml": "runs:\n  steps:\n    - shell: python3 {0}\n      run: |\n        x = '# no'\n"},
+         {"action.yml": "runs:\n  steps:\n    - shell: python3 {0}\n      run: |\n        x = 1  # why\n"}),
         ("cpp", {"a.cpp": "#pragma once\n#include <x>\nconst char* s = \"// no\";\n"},
          {"a.cpp": "int a = 1; // why\n"}),
         ("h", {"a.h": "#pragma once\n"}, {"a.h": "#pragma once\n/* why */\n"}),
@@ -89,10 +108,10 @@ CASES = {
         ("isl", {"a.isl": "[Messages]\nA=b ; c\n"}, {"a.isl": "; why\n[Messages]\n"}),
         ("bat", {"a.bat": "@echo off\necho remove\n"}, {"a.bat": "@echo off\nrem why\n"}),
         ("bat double colon", {"a.bat": "echo a::b\n"}, {"a.bat": ":: why\necho a::b\n"}),
-        ("html", {"a.html": "<!-- inline-script: a.js -->\n<p>x</p>\n"}, {"a.html": "<!-- why -->\n<p>x</p>\n"}),
+        ("html", {"a.html": "<p>x</p>\n"}, {"a.html": "<!-- why -->\n<p>x</p>\n"}),
         ("an i18n-ok marker with prose", {"a.py": "x = 1  # i18n-ok\n"}, {"a.py": "x = 1  # i18n-ok: workaround\n"}),
-        ("an inline-script marker with prose", {"a.html": "<!-- inline-script: script-failed.js -->\n"},
-         {"a.html": "<!-- inline-script: script-failed.js and why it is here -->\n"}),
+        ("the inline-script marker is a comment", {"a.html": "<p>x</p>\n"},
+         {"a.html": "<!-- inline-script: script-failed.js -->\n"}),
         ("html inline js and css", {"a.html": "<script>\nlet a = '//';\n</script>\n<style>\na {}\n</style>\n"},
          {"a.html": "<script>\nlet a = 1; // why\n</script>\n<style>\na {} /* why */\n</style>\n"}, 2),
         ("spec", {"a.spec": "a = Analysis(['x'])\n"}, {"a.spec": "# why\na = Analysis(['x'])\n"}),
@@ -102,8 +121,23 @@ CASES = {
     "docstring_lines": [
         ("a function", {"a.py": "def f():\n    return '''not a docstring'''\n"},
          {"a.py": "def f():\n    '''Why.'''\n    return 1\n"}),
+        ("a docstring in a Python step of a composite action", {"tools/a/action.yml": COMPOSITE_PYTHON_STEP.replace("DOC", "")},
+         {"tools/a/action.yml": COMPOSITE_PYTHON_STEP.replace("DOC", "        '''Why the step reads it.'''\n")}),
     ],
     "suppressions": [
+        ("-EA 0", {"a.ps1": "Get-Item x -EA Stop\n"}, {"a.ps1": "Get-Item x -EA 0\n"}),
+        ("-ErrorAction:Ignore", {"a.ps1": "Get-Item x -ErrorAction:Stop\n"}, {"a.ps1": "Get-Item x -ErrorAction:Ignore\n"}),
+        ("the error preference", {"a.ps1": "$ErrorActionPreference = 'Stop'\n"},
+         {"a.ps1": "$ErrorActionPreference = 'SilentlyContinue'\n"}),
+        ("the error preference of a scope", {"a.ps1": "$global:ErrorActionPreference = 'Stop'\n"},
+         {"a.ps1": "$global:ErrorActionPreference = 'SilentlyContinue'\n"}),
+        ("a quiet error in a cmd step",
+         {".github/workflows/w.yml": "jobs:\n  j:\n    steps:\n      - shell: cmd\n"
+                                     "        run: powershell -Command \"Get-Item x\"\n"},
+         {".github/workflows/w.yml": "jobs:\n  j:\n    steps:\n      - shell: cmd\n"
+                                     "        run: powershell -Command \"Get-Item x -ErrorAction SilentlyContinue\"\n"}),
+        ("a quoted continue-on-error", {"a.yml": "steps:\n  - run: echo\n    'continue-on-error': false\n"},
+         {"a.yml": "steps:\n  - run: echo\n    'continue-on-error': true\n"}),
         ("noqa", {"a.py": "x = 'noqa'\n"}, {"a.py": "x = 1  # noqa: E501\n"}),
         ("type: ignore", {"a.py": "x: int = 1\n"}, {"a.py": "x: int = 'a'  # type: ignore\n"}),
         ("pragma: no cover", {"a.py": "def f():\n    pass\n"}, {"a.py": "def f():  # pragma: no cover\n    pass\n"}),
@@ -122,20 +156,175 @@ CASES = {
                                      "        run: \"print(1)  # noqa\"  # why\n"}),
         ("SilentlyContinue", {"a.ps1": "$ProgressPreference = 'SilentlyContinue'\n"},
          {"a.ps1": "Get-Item x -ErrorAction SilentlyContinue\n"}),
-        ("SilentlyContinue in a Python string", {"a.py": "ps = 'Get-Item x'\n"},
-         {"a.py": "ps = 'Get-Item x -ErrorAction SilentlyContinue'\n"}),
+        ("SilentlyContinue in the PowerShell a Python script runs", {"a.py": "ps = 'Get-Item x'\n" + RUN_PS},
+         {"a.py": "ps = 'Get-Item x -ErrorAction SilentlyContinue'\n" + RUN_PS}),
     ],
     "sleeps_app": [
+        ("Start-Sleep in a Python string that is no PowerShell", {"a.py": "x = 'Start-Sleep 1'\n"},
+         {"a.py": 'import subprocess\nsubprocess.run(["powershell", "-Command", "Start-Sleep 1"])\n'}),
+        ("the sleep alias", {"a.ps1": "Write-Output sleep\n"}, {"a.ps1": "sleep 1\n"}),
+        ("the module name of Start-Sleep", {"a.ps1": "Microsoft.PowerShell.Utility\\Write-Output 1\n"},
+         {"a.ps1": "Microsoft.PowerShell.Utility\\Start-Sleep 1\n"}),
+        ("Start-Sleep by its quoted name", {"a.ps1": "& \"Write-Output\" 1\n"}, {"a.ps1": "& \"Start-Sleep\" 1\n"}),
+        ("a Thread.Sleep joined to another test", {"a.ps1": "if ([System.Threading.Thread]::CurrentThread -and $x) { }\n"},
+         {"a.ps1": "if ([System.Threading.Thread]::Sleep(1) -and $x) { }\n"}),
+        ("Start-Sleep in a switch predicate", {"a.ps1": "switch ($x) { { $true } { 'y' } }\n"},
+         {"a.ps1": "switch ($x) { { Start-Sleep 1; $true } { 'y' } }\n"}),
+        ("a sleep in the iterable of a for", {"a.py": "import time\nfor item in items:\n    pass\n"},
+         {"a.py": "import time\nfor item in time.sleep(1):\n    pass\n"}),
+        ("a sleep in the subject of a match", {"a.py": "import time\nmatch x:\n    case _:\n        pass\n"},
+         {"a.py": "import time\nmatch time.sleep(1):\n    case _:\n        pass\n"}),
+        ("a sleep in the guard of a case", {"a.py": "import time\nmatch x:\n    case 1 if ready():\n        pass\n"},
+         {"a.py": "import time\nmatch x:\n    case 1 if time.sleep(1):\n        pass\n"}),
+        ("a script set in either branch",
+         {"a.py": "import subprocess\nif flag:\n    ps = 'Get-Date'\nelse:\n    ps = 'Get-Item x'\n" + RUN_PS},
+         {"a.py": "import subprocess\nif flag:\n    ps = 'Start-Sleep 1'\nelse:\n    ps = 'Get-Item x'\n" + RUN_PS}),
+        ("the Thread.Sleep of PowerShell", {"a.ps1": "[System.Threading.Thread]::CurrentThread\n"},
+         {"a.ps1": "[System.Threading.Thread]::Sleep(10)\n"}),
         ("time.sleep", {"a.py": "import time\ntime.perf_counter()\n"}, {"a.py": "import time\ntime.sleep(1)\n"}),
         ("an alias", {"a.py": "import time as t\nt.monotonic()\n"}, {"a.py": "import time as t\nt.sleep(1)\n"}),
         ("from time import sleep", {"a.py": "from time import monotonic\n"},
          {"a.py": "from time import sleep\nsleep(1)\n"}),
         ("asyncio.sleep", {"a.py": "import asyncio\n"}, {"a.py": "import asyncio\nawait asyncio.sleep(1)\n"}),
         ("Start-Sleep", {"a.ps1": "# Start-Sleep in a comment\n"}, {"a.ps1": "Start-Sleep 1\n"}),
+        ("Start-Sleep in a batch file", {"a.bat": "rem Start-Sleep 1\n"}, {"a.bat": "powershell -Command \"Start-Sleep 1\"\n"}),
+        ("the Sleep of a type that is no Thread", {"a.ps1": "[MyThread]::Sleep(1)\n"},
+         {"a.ps1": "[Threading.Thread]::Sleep(1)\n"}),
+        ("a sleep in a PowerShell if counts once", {"a.ps1": "if (Test-Path x) { }\n"},
+         {"a.ps1": "if (Start-Sleep 1) { }\n"}),
+        ("a sleep in a PowerShell while counts once", {"a.ps1": "while (Test-Path x) { }\n"},
+         {"a.ps1": "while (Start-Sleep 1) { }\n"}),
+        ("a sleep in a Python while counts once", {"a.py": "import time\nwhile not ready():\n    pass\n"},
+         {"a.py": "import time\nwhile not time.sleep(1):\n    pass\n"}),
+        ("a sleep in a default", {"a.py": "import time\ndef f(delay=1):\n    pass\n"},
+         {"a.py": "import time\ndef f(delay=time.sleep(1)):\n    pass\n"}),
+        ("a script set earlier on the same line",
+         {"a.py": "import subprocess\nps = 'Get-Date'; subprocess.run(['powershell', '-Command', ps])\n"},
+         {"a.py": "import subprocess\nps = 'Start-Sleep 1'; subprocess.run(['powershell', '-Command', ps])\n"}),
+        ("a parameter hides the module's script",
+         {"a.py": "import subprocess\nps = 'Start-Sleep 1'\ndef run(ps):\n    subprocess.run(['powershell', '-Command', ps])\n"},
+         {"a.py": "import subprocess\nps = 'Start-Sleep 1'\ndef run():\n    subprocess.run(['powershell', '-Command', ps])\n"}),
         ("in microfone/", {"dev/a.py": "import time\ntime.sleep(1)\n"},
          {"dev/a.py": "import time\ntime.sleep(1)\n", "microfone/a.py": "import time\ntime.sleep(1)\n"}),
+        ("a sleep in the type of an except",
+         {"a.py": "import time\ntry:\n    f()\nexcept get_type(x):\n    pass\n"},
+         {"a.py": "import time\ntry:\n    f()\nexcept get_type(time.sleep(1)):\n    pass\n"}),
+        ("a sleep in the annotation of a parameter", {"a.py": "import time\ndef f(x: int):\n    pass\n"},
+         {"a.py": "import time\ndef f(x: time.sleep(1)):\n    pass\n"}),
+        ("a sleep in the annotation of a result", {"a.py": "import time\ndef f() -> int:\n    pass\n"},
+         {"a.py": "import time\ndef f() -> time.sleep(1):\n    pass\n"}),
+        ("a sleep in the index of a PowerShell assignment", {"a.ps1": "$a[$(Get-Date)] = 42\n"},
+         {"a.ps1": "$a[$(Start-Sleep 1)] = 42\n"}),
+        ("a module script set in either branch",
+         {"a.py": "import subprocess\nif flag:\n    PS = 'Get-Item x'\nelse:\n    PS = 'Get-Date'\n"
+                  "def run():\n    subprocess.run(['powershell', '-Command', PS])\n"},
+         {"a.py": "import subprocess\nif flag:\n    PS = 'Start-Sleep 1'\nelse:\n    PS = 'Get-Date'\n"
+                  "def run():\n    subprocess.run(['powershell', '-Command', PS])\n"}),
+        ("a script set before an if that sets it in both branches",
+         {"a.py": "import subprocess\nps = loader()\nif flag:\n    ps = 'Get-Date'\nelse:\n    ps = 'Get-Item x'\n"
+                  + RUN_PS},
+         {"a.py": "import subprocess\nps = loader()\nif flag:\n    ps = 'Start-Sleep 1'\nelse:\n    ps = 'Get-Item x'\n"
+                  + RUN_PS}),
+        ("a script with an f-string inside a field", {"a.py": NESTED_FSTRING.replace("{TAIL}", "")},
+         {"a.py": NESTED_FSTRING.replace("{TAIL}", "; Start-Sleep 1")}),
+        ("a composite action outside .github", {"tools/a/action.yml": ACTION.replace("RUN", "Write-Output 1")},
+         {"tools/a/action.yml": ACTION.replace("RUN", "Start-Sleep 1")}),
+        ("a script with a raw f-string inside a field", {"a.py": "import subprocess\nps = f'{rf\"\\{{\"}'\n" + RUN_PS},
+         {"a.py": "import subprocess\nps = f'{rf\"\\{{\"}; Start-Sleep 1'\n" + RUN_PS}),
+        ("an annotation that Python keeps as text",
+         {"a.py": "from __future__ import annotations\nimport time\ndef f(x: time.sleep(1)) -> time.sleep(2):\n    pass\n"},
+         {"a.py": "from __future__ import annotations\nimport time\ndef f(x=time.sleep(1)):\n    pass\n"}),
+        ("the annotation of a class variable runs, also inside a function",
+         {"a.py": "import time\ndef f():\n    class A:\n        x: int = 3\n"},
+         {"a.py": "import time\ndef f():\n    class A:\n        x: time.sleep(1) = 3\n"}),
+        ("a sleep in the annotation of a module variable", {"a.py": "import time\nx: int = 3\n"},
+         {"a.py": "import time\nx: time.sleep(1) = 3\n"}),
+        ("the annotation of a local variable never runs", {"a.py": "import time\ndef f():\n    x: time.sleep(1) = 3\n"},
+         {"a.py": "import time\ndef f():\n    x: int = time.sleep(1)\n"}),
+        ("a sleep in the index of an assignment in a PowerShell condition", {"a.ps1": "if ($a[$(Get-Date)] = 1) { }\n"},
+         {"a.ps1": "if ($a[$(Start-Sleep 1)] = 1) { }\n"}),
+        ("a function's script set in its branch, beside another in the other branch",
+         {"a.py": "import subprocess\nif flag:\n    ps = 'Get-Date'\n    def run():\n        subprocess.run(['powershell', '-Command', ps])\n    run()\nelse:\n    ps = 'Start-Sleep 1'\n"},
+         {"a.py": "import subprocess\nif flag:\n    ps = 'Start-Sleep 1'\n    def run():\n        subprocess.run(['powershell', '-Command', ps])\n    run()\nelse:\n    ps = 'Get-Date'\n"}),
+        ("a function's joined script set in its branch, beside another in the other branch",
+         {"a.py": "import subprocess\nif flag:\n    ps = 'Get-Date'\n    def run():\n        subprocess.run(['powershell', '-Command', '\\n'.join([ps])])\n    run()\nelse:\n    ps = 'Start-Sleep 1'\n"},
+         {"a.py": "import subprocess\nif flag:\n    ps = 'Start-Sleep 1'\n    def run():\n        subprocess.run(['powershell', '-Command', '\\n'.join([ps])])\n    run()\nelse:\n    ps = 'Get-Date'\n"}),
+        ("a script in an annotation that Python keeps as text",
+         {"a.py": "from __future__ import annotations\nimport subprocess\nx: subprocess.run(['powershell', '-Command', 'Start-Sleep 1'])\n"},
+         {"a.py": "import subprocess\nx: subprocess.run(['powershell', '-Command', 'Start-Sleep 1'])\n"}),
+        ("a script in a result annotation that Python keeps as text",
+         {"a.py": "from __future__ import annotations\nimport subprocess\ndef f() -> subprocess.run(['powershell', '-Command', 'Start-Sleep 1']):\n    pass\n"},
+         {"a.py": "import subprocess\ndef f() -> subprocess.run(['powershell', '-Command', 'Start-Sleep 1']):\n    pass\n"}),
+        ("a script in the annotation of a local variable",
+         {"a.py": "import subprocess\ndef f():\n    x: subprocess.run(['powershell', '-Command', 'Start-Sleep 1'])\n"},
+         {"a.py": "import subprocess\ndef f():\n    x: int = subprocess.run(['powershell', '-Command', 'Start-Sleep 1'])\n"}),
+        ("a script in the annotation of a class variable inside a function",
+         {"a.py": "import subprocess\ndef f():\n    class C:\n        x: int\n"},
+         {"a.py": "import subprocess\ndef f():\n    class C:\n        x: subprocess.run(['powershell', '-Command', 'Start-Sleep 1'])\n"}),
+        ("an annotation with no value keeps the module's script",
+         {"a.py": "import subprocess\nps = 'Get-Date'\nps: str\n" + RUN_PS},
+         {"a.py": "import subprocess\nps = 'Start-Sleep 1'\nps: str\n" + RUN_PS}),
+        ("an annotation with no value keeps the class's script",
+         {"a.py": "import subprocess\nclass C:\n    ps = 'Get-Date'\n    ps: str\n    " + RUN_PS},
+         {"a.py": "import subprocess\nclass C:\n    ps = 'Start-Sleep 1'\n    ps: str\n    " + RUN_PS}),
+        ("a keyword glued to a string in an f-string field",
+         {"a.py": "import subprocess\nps = f'{1 if\"{\"else 2}; Get-Date'\n" + RUN_PS},
+         {"a.py": "import subprocess\nps = f'{1 if\"{\"else 2}; Start-Sleep 1'\n" + RUN_PS}),
+        ("a script in a default value is read around the definition",
+         {"a.py": "import subprocess\nps = 'Get-Date'\ndef run(ps=subprocess.run(['powershell', '-Command', ps])):\n    pass\n"},
+         {"a.py": "import subprocess\nps = 'Start-Sleep 1'\ndef run(ps=subprocess.run(['powershell', '-Command', ps])):\n"
+                  "    pass\n"}),
+        ("a script that one command reaches by two paths counts once",
+         {"a.py": "import subprocess\nscript = 'Get-Date'\nif flag:\n    alias = script\nelse:\n    alias = script\n"
+                  "subprocess.run(['powershell', '-Command', alias])\n"},
+         {"a.py": "import subprocess\nscript = 'Start-Sleep 1'\nif flag:\n    alias = script\nelse:\n    alias = script\n"
+                  "subprocess.run(['powershell', '-Command', alias])\n"}),
+        ("a script that one command reaches twice counts once",
+         {"a.py": "import subprocess\nscript = 'Get-Date'\nsubprocess.run(['powershell', '-Command', script])\n"
+                  "if flag:\n    alias = script\nelse:\n    alias = script\nsubprocess.run(['powershell', '-Command', alias])\n"},
+         {"a.py": "import subprocess\nscript = 'Start-Sleep 1'\nsubprocess.run(['powershell', '-Command', script])\n"
+                  "if flag:\n    alias = script\nelse:\n    alias = script\nsubprocess.run(['powershell', '-Command', alias])\n"}),
+        ("a walrus in a default value reaches only what comes after it",
+         {"a.py": "import subprocess\ns = 'Get-Date'\ndef f(x=(s := s)):\n    pass\nsubprocess.run(['powershell', '-Command', s])\n"},
+         {"a.py": "import subprocess\ns = 'Start-Sleep 1'\ndef f(x=(s := s)):\n    pass\n"
+                  "subprocess.run(['powershell', '-Command', s])\n"}),
+        ("a joined element that reaches one origin by two paths",
+         {"a.py": "import subprocess\ns = 'Get-Date'\nif flag:\n    part = s\nelse:\n    part = s\n"
+                  "subprocess.run(['powershell', '-Command', '\\n'.join([part])])\n"},
+         {"a.py": "import subprocess\ns = 'Start-Sleep 1'\nif flag:\n    part = s\nelse:\n    part = s\n"
+                  "subprocess.run(['powershell', '-Command', '\\n'.join([part])])\n"}),
+        ("a name the class sets after a method is read from around the class",
+         {"a.py": "import subprocess\nps = 'Get-Date'\nclass C:\n    def f(self, x=subprocess.run(['powershell', '-Command', ps])):\n"
+                  "        pass\n    ps = 'Start-Sleep 1'\n"},
+         {"a.py": "import subprocess\nps = 'Start-Sleep 1'\nclass C:\n    def f(self, x=subprocess.run(['powershell', '-Command', ps])):\n"
+                  "        pass\n    ps = 'Get-Date'\n"}),
+        ("a class in a function that sets the name later reads it from the module, as LOAD_NAME does",
+         {"a.py": "import subprocess\nps = 'Get-Date'\ndef g():\n    ps = 'Start-Sleep 1'\n    class C:\n"
+                  "        x = subprocess.run(['powershell', '-Command', ps])\n        ps = 'Get-Item x'\n"},
+         {"a.py": "import subprocess\nps = 'Start-Sleep 1'\ndef g():\n    ps = 'Get-Date'\n    class C:\n"
+                  "        x = subprocess.run(['powershell', '-Command', ps])\n        ps = 'Get-Item x'\n"}),
+        ("a class in a function that declares the name nonlocal reads it from the function",
+         {"a.py": "import subprocess\nps = 'Start-Sleep 1'\ndef f():\n    ps = 'Get-Date'\n    class C:\n        nonlocal ps\n"
+                  "        subprocess.run(['powershell', '-Command', ps])\n        ps = 'Get-Item x'\n"},
+         {"a.py": "import subprocess\nps = 'Get-Date'\ndef f():\n    ps = 'Start-Sleep 1'\n    class C:\n        nonlocal ps\n"
+                  "        subprocess.run(['powershell', '-Command', ps])\n        ps = 'Get-Item x'\n"}),
+        ("a comprehension in a class reads the name from around the class",
+         {"a.py": "import subprocess\nps = 'Start-Sleep 1'\ndef f():\n    ps = 'Get-Date'\n    class C:\n"
+                  "        x = [subprocess.run(['powershell', '-Command', ps]) for i in (0,)]\n        ps = 'Get-Item x'\n"},
+         {"a.py": "import subprocess\nps = 'Get-Date'\ndef f():\n    ps = 'Start-Sleep 1'\n    class C:\n"
+                  "        x = [subprocess.run(['powershell', '-Command', ps]) for i in (0,)]\n        ps = 'Get-Item x'\n"}),
+        ("a name the class body uses before setting it is read from around the class",
+         {"a.py": "import subprocess\nps = 'Get-Date'\nclass C:\n    x = subprocess.run(['powershell', '-Command', ps])\n"
+                  "    ps = 'Start-Sleep 1'\n"},
+         {"a.py": "import subprocess\nps = 'Start-Sleep 1'\nclass C:\n    x = subprocess.run(['powershell', '-Command', ps])\n"
+                  "    ps = 'Get-Date'\n"}),
+        ("a branch's script does not reach the other branch",
+         {"a.py": "import subprocess\nps = 'Get-Date'\nif flag:\n    ps = 'Start-Sleep 1'\nelse:\n    " + RUN_PS},
+         {"a.py": "import subprocess\nps = 'Get-Date'\nif flag:\n    ps = 'Start-Sleep 1'\n" + RUN_PS}),
     ],
     "sleeps_dev": [
+        ("a composite action inside .github/workflows", {".github/workflows/action.yml": ACTION.replace("RUN", "Write-Output 1")},
+         {".github/workflows/action.yml": ACTION.replace("RUN", "Start-Sleep 1")}),
         ("Start-Sleep in a one-line PowerShell step",
          {".github/workflows/w.yml": "jobs:\n  monta:\n    steps:\n      - shell: pwsh\n"
                                      "        run: \"Write-Output ok # Start-Sleep 1\"\n"},
@@ -154,8 +343,44 @@ CASES = {
          {".github/workflows/w.yml": "jobs:\n  testes:\n    runs-on: windows-2025\n    steps:\n      - run: Start-Sleep 1\n"},
          {".github/workflows/w.yml": "jobs:\n  testes:\n    runs-on: windows-2025\n    steps:\n      - run: Start-Sleep 1\n"
                                      "  monta:\n    runs-on: windows-2025\n    steps:\n      - run: Start-Sleep 1\n"}),
+        ("a PowerShell command in a bash step",
+         {".github/workflows/w.yml": "jobs:\n  j:\n    steps:\n      - run: pwsh -Command 'Get-Date'\n"},
+         {".github/workflows/w.yml": "jobs:\n  j:\n    steps:\n      - run: pwsh -Command 'Start-Sleep 1'\n"}),
+        ("a run key outside a step",
+         {".github/workflows/w.yml": "jobs:\n  j:\n    runs-on: windows-2025\n    env:\n      run: Start-Sleep 1\n"
+                                     "    steps:\n      - run: Get-Date\n"},
+         {".github/workflows/w.yml": "jobs:\n  j:\n    runs-on: windows-2025\n    env:\n      run: Get-Date\n"
+                                     "    steps:\n      - run: Start-Sleep 1\n"}),
+        ("a step that runs an anchored script",
+         {".github/workflows/w.yml": "jobs:\n  j:\n    runs-on: windows-2025\n    env:\n      D: &d Start-Sleep 1\n"
+                                     "    steps:\n      - run: Get-Date\n"},
+         {".github/workflows/w.yml": "jobs:\n  j:\n    runs-on: windows-2025\n    env:\n      D: &d Start-Sleep 1\n"
+                                     "    steps:\n      - run: *d\n"}),
+        ("steps shared with a test job by an alias",
+         {".github/workflows/w.yml": "jobs:\n  test:\n    runs-on: windows-2025\n    steps: &s\n      - run: Start-Sleep 1\n"},
+         {".github/workflows/w.yml": "jobs:\n  test:\n    runs-on: windows-2025\n    steps: &s\n      - run: Start-Sleep 1\n"
+                                     "  build:\n    runs-on: windows-2025\n    steps: *s\n"}),
+        ("a GitHub expression with a quoted }}",
+         {".github/workflows/w.yml": "jobs:\n  j:\n    runs-on: windows-2025\n    steps:\n"
+                                     "      - run: Write-Output ${{ '}}' }}\n"},
+         {".github/workflows/w.yml": "jobs:\n  j:\n    runs-on: windows-2025\n    steps:\n"
+                                     "      - run: Start-Sleep ${{ '}}' }}\n"}),
+        ("a GitHub expression in a PowerShell step",
+         {".github/workflows/w.yml": "jobs:\n  j:\n    runs-on: windows-2025\n    steps:\n"
+                                     "      - run: Write-Output ${{ inputs.seconds }}\n"},
+         {".github/workflows/w.yml": "jobs:\n  j:\n    runs-on: windows-2025\n    steps:\n"
+                                     "      - run: Start-Sleep -Seconds ${{ inputs.seconds }}\n"}),
+        ("the PowerShell a Python step runs",
+         {".github/workflows/w.yml": "jobs:\n  j:\n    steps:\n      - shell: python\n        run: |\n"
+                                     "          import subprocess\n"
+                                     "          subprocess.run(['powershell', '-Command', 'Get-Date'])\n"},
+         {".github/workflows/w.yml": "jobs:\n  j:\n    steps:\n      - shell: python\n        run: |\n"
+                                     "          import subprocess\n"
+                                     "          subprocess.run(['powershell', '-Command', 'Start-Sleep 1'])\n"}),
         ("a workflow", {"instalador/testa-x.ps1": "Start-Sleep 1\n"},
          {".github/workflows/w.yml": "jobs:\n  j:\n    runs-on: windows-2025\n    steps:\n      - run: Start-Sleep 1\n"}),
+        ("a job that is an alias of another", {".github/workflows/w.yml": ALIASED_JOB.replace("RUN", "Write-Output 1")},
+         {".github/workflows/w.yml": ALIASED_JOB.replace("RUN", "Start-Sleep 1")}),
     ],
     "theme_timers": [
         ("setTimeout", {"themes/t/a.js": "// setTimeout(f, 1)\nconst s = 'setTimeout(';\n"},
@@ -172,6 +397,187 @@ CASES = {
         ("requestAnimationFrame", {"themes/t/a.js": "setTimeout(f, 1);\n"}, {"themes/t/a.js": "requestAnimationFrame(f);\n"}),
     ],
     "retries": [
+        ("a wait in the default of a lambda runs in the loop",
+         {"a.py": "import time\nwhile True:\n    try:\n        action()\n        break\n    except OSError:\n        pass\n"
+                  "    f = lambda: time.sleep(1)\n"},
+         {"a.py": "import time\nwhile True:\n    try:\n        action()\n        break\n    except OSError:\n        pass\n"
+                  "    f = lambda x=time.sleep(1): x\n"}),
+        ("a for over items whose body uses _",
+         {"a.py": "import time\ndef attempt(item):\n    try:\n        return action(item)\n    except OSError:\n"
+                  "        return None\nfor _ in items:\n    if attempt(_):\n        break\n    time.sleep(1)\n"},
+         {"a.py": "import time\ndef attempt():\n    try:\n        return action()\n    except OSError:\n"
+                  "        return None\nfor _ in items:\n    if attempt():\n        break\n    time.sleep(1)\n"}),
+        ("a for over items that only sets _ again",
+         {"a.py": "import time\ndef attempt():\n    try:\n        return action()\n    except OSError:\n"
+                  "        return None\nfor _ in items:\n"
+                  "    x = _\n    if attempt():\n        break\n    time.sleep(1)\n"},
+         {"a.py": "import time\ndef attempt():\n    try:\n        return action()\n    except OSError:\n"
+                  "        return None\nfor _ in items:\n"
+                  "    _ = None\n    if attempt():\n        break\n    time.sleep(1)\n"}),
+        ("a for over items that sets _ again by unpacking or by another for",
+         {"a.py": "import time\ndef attempt():\n    try:\n        return action()\n    except OSError:\n"
+                  "        return None\nfor _ in items:\n"
+                  "    for x in _:\n        pass\n    if attempt():\n        break\n    time.sleep(1)\n"},
+         {"a.py": "import time\ndef attempt():\n    try:\n        return action()\n    except OSError:\n"
+                  "        return None\nfor _ in items:\n"
+                  "    for _ in range(2):\n        pass\n    if attempt():\n        break\n    time.sleep(1)\n"}),
+        ("a for over items that adds to _",
+         {"a.py": "import time\ndef attempt():\n    try:\n        return action()\n    except OSError:\n"
+                  "        return None\nfor _ in items:\n"
+                  "    _ += 1\n    if attempt():\n        break\n    time.sleep(1)\n"},
+         {"a.py": "import time\ndef attempt():\n    try:\n        return action()\n    except OSError:\n"
+                  "        return None\nfor _ in items:\n"
+                  "    _ = 1\n    if attempt():\n        break\n    time.sleep(1)\n"}),
+        ("a for over items that binds _ by an import",
+         {"a.py": "import time\ndef attempt():\n    try:\n        return action()\n    except OSError:\n"
+                  "        return None\nfor _ in items:\n"
+                  "    import m\n    print(_)\n    if attempt():\n        break\n    time.sleep(1)\n"},
+         {"a.py": "import time\ndef attempt():\n    try:\n        return action()\n    except OSError:\n"
+                  "        return None\nfor _ in items:\n"
+                  "    import m as _\n    print(_)\n    if attempt():\n        break\n    time.sleep(1)\n"}),
+        ("a for over items that names _ only as a keyword",
+         {"a.py": "import time\ndef attempt():\n    try:\n        return action()\n    except OSError:\n"
+                  "        return None\nfor _ in items:\n"
+                  "    f(_=_)\n    if attempt():\n        break\n    time.sleep(1)\n"},
+         {"a.py": "import time\ndef attempt():\n    try:\n        return action()\n    except OSError:\n"
+                  "        return None\nfor _ in items:\n"
+                  "    f(_=None)\n    if attempt():\n        break\n    time.sleep(1)\n"}),
+        ("a for over items that imports _ under another name",
+         {"a.py": "import time\ndef attempt():\n    try:\n        return action()\n    except OSError:\n"
+                  "        return None\nfor _ in items:\n"
+                  "    from m import _ as y\n    print(_)\n    if attempt():\n        break\n    time.sleep(1)\n"},
+         {"a.py": "import time\ndef attempt():\n    try:\n        return action()\n    except OSError:\n"
+                  "        return None\nfor _ in items:\n"
+                  "    from m import y as _\n    print(_)\n    if attempt():\n        break\n    time.sleep(1)\n"}),
+        ("a for over items that deletes _ after reading it",
+         {"a.py": "import time\ndef attempt():\n    try:\n        return action()\n    except OSError:\n"
+                  "        return None\nfor _ in items:\n"
+                  "    print(_)\n    del _\n    if attempt():\n        break\n    time.sleep(1)\n"},
+         {"a.py": "import time\ndef attempt():\n    try:\n        return action()\n    except OSError:\n"
+                  "        return None\nfor _ in items:\n"
+                  "    print(x)\n    del x\n    if attempt():\n        break\n    time.sleep(1)\n"}),
+        ("a for over items whose only _ is in the annotation of a local variable",
+         {"a.py": "import time\ndef attempt():\n    try:\n        return action()\n    except OSError:\n"
+                  "        return None\ndef poll():\n    for _ in items:\n"
+                  "        print(_)\n        if attempt():\n            break\n        time.sleep(1)\n"},
+         {"a.py": "import time\ndef attempt():\n    try:\n        return action()\n    except OSError:\n"
+                  "        return None\ndef poll():\n    for _ in items:\n"
+                  "        x: _\n        if attempt():\n            break\n        time.sleep(1)\n"}),
+        ("a for over items that annotates _ with no value",
+         {"a.py": "import time\ndef attempt():\n    try:\n        return action()\n    except OSError:\n"
+                  "        return None\nfor _ in items:\n"
+                  "    print(_)\n    _: int\n    if attempt():\n        break\n    time.sleep(1)\n"},
+         {"a.py": "import time\ndef attempt():\n    try:\n        return action()\n    except OSError:\n"
+                  "        return None\nfor _ in items:\n"
+                  "    print(x)\n    _: int\n    if attempt():\n        break\n    time.sleep(1)\n"}),
+        ("a redirection of the errors keeps the test of an expression",
+         {"a.ps1": "function attempt { try { Get-Date } catch { $null } }\nwhile ($true) {\n    $done = attempt\n"
+                   "    if (($done) >$null) { break }\n    Start-Sleep 1\n}\n"},
+         {"a.ps1": "function attempt { try { Get-Date } catch { $null } }\nwhile ($true) {\n    $done = attempt\n"
+                   "    if (($done) 2>$null) { break }\n    Start-Sleep 1\n}\n"}),
+        ("a loop that stops on the flag its helper sets",
+         {"a.py": "import time\ndef attempt():\n    try:\n        return f()\n    except OSError:\n        return None\n"
+                  "while not done:\n    other = attempt()\n    time.sleep(1)\n"},
+         {"a.py": "import time\ndef attempt():\n    try:\n        return f()\n    except OSError:\n        return None\n"
+                  "while not done:\n    done = attempt()\n    time.sleep(1)\n"}),
+        ("a do-until on the flag its helper sets",
+         {"a.ps1": "function attempt { try { f } catch { $null } }\ndo { $other = attempt; Start-Sleep 1 } until ($done)\n"},
+         {"a.ps1": "function attempt { try { f } catch { $null } }\ndo { $done = attempt; Start-Sleep 1 } until ($done)\n"}),
+        ("a helper called twice, tested once",
+         {"a.py": "import time\ndef attempt():\n    try:\n        return f()\n    except OSError:\n        return None\n"
+                  "while True:\n    if ready():\n        break\n    attempt()\n    time.sleep(1)\n"},
+         {"a.py": "import time\ndef attempt():\n    try:\n        return f()\n    except OSError:\n        return None\n"
+                  "while True:\n    if attempt():\n        break\n    attempt()\n    time.sleep(1)\n"}),
+        ("a test of the helper joined to another",
+         {"a.py": "import time\ndef attempt():\n    try:\n        return f()\n    except OSError:\n        return None\n"
+                  "while True:\n    if not attempt() and enabled:\n        break\n    time.sleep(1)\n"},
+         {"a.py": "import time\ndef attempt():\n    try:\n        return f()\n    except OSError:\n        return None\n"
+                  "while True:\n    if attempt() and enabled:\n        break\n    time.sleep(1)\n"}),
+        ("a comparison of the helper's result is no test of its success",
+         {"a.py": "import time\ndef attempt():\n    try:\n        return f()\n    except OSError:\n        return None\n"
+                  "while not (attempt() is False):\n    time.sleep(1)\n"},
+         {"a.py": "import time\ndef attempt():\n    try:\n        return f()\n    except OSError:\n        return None\n"
+                  "while not attempt():\n    time.sleep(1)\n"}),
+        ("a PowerShell comparison of the helper's result",
+         {"a.ps1": "function attempt { try { f } catch { $null } }\n"
+                   "while ($true) { if ((attempt) -eq $null) { break }; Start-Sleep 1 }\n"},
+         {"a.ps1": "function attempt { try { f } catch { $null } }\n"
+                   "while ($true) { if (attempt) { break }; Start-Sleep 1 }\n"}),
+        ("a PowerShell comparison of the flag",
+         {"a.ps1": "function attempt { try { f } catch { $null } }\n"
+                   "while ($true) { $s = attempt; if ($s -eq $null) { break }; Start-Sleep 1 }\n"},
+         {"a.ps1": "function attempt { try { f } catch { $null } }\n"
+                   "while ($true) { $s = attempt; if ($s) { break }; Start-Sleep 1 }\n"}),
+        ("the helper's result passed to another call",
+         {"a.py": "import time\ndef attempt():\n    try:\n        return f()\n    except OSError:\n        return None\n"
+                  "while True:\n    if check(attempt()):\n        break\n    time.sleep(1)\n"},
+         {"a.py": "import time\ndef attempt():\n    try:\n        return f()\n    except OSError:\n        return None\n"
+                  "while True:\n    if attempt():\n        break\n    time.sleep(1)\n"}),
+        ("a flag set inside a PowerShell condition",
+         {"a.ps1": "function f { try { g } catch { $null } }\n"
+                   "while ($true) { if ($other = f) { }; if ($s) { break }; Start-Sleep 1 }\n"},
+         {"a.ps1": "function f { try { g } catch { $null } }\n"
+                   "while ($true) { if ($s = f) { }; if ($s) { break }; Start-Sleep 1 }\n"}),
+        ("a flag set by a walrus",
+         {"a.py": "import time\ndef attempt():\n    try:\n        return f()\n    except OSError:\n        return None\n"
+                  "while True:\n    if (other := attempt()):\n        pass\n    if r:\n        break\n    time.sleep(1)\n"},
+         {"a.py": "import time\ndef attempt():\n    try:\n        return f()\n    except OSError:\n        return None\n"
+                  "while True:\n    if (r := attempt()):\n        pass\n    if r:\n        break\n    time.sleep(1)\n"}),
+        ("a flag set with its scope",
+         {"a.ps1": "function attempt { try { f } catch { $null } }\ndo { $script:other = attempt; Start-Sleep 1 } until ($done)\n"},
+         {"a.ps1": "function attempt { try { f } catch { $null } }\ndo { $script:done = attempt; Start-Sleep 1 } until ($done)\n"}),
+        ("a do-until on the result of its helper",
+         {"a.ps1": "function Get-S { try { f } catch { $null } }\ndo { Start-Sleep 1; $s = Get-S } until (-not $s)\n"},
+         {"a.ps1": "function Get-S { try { f } catch { $null } }\ndo { Start-Sleep 1; $s = Get-S } until ($s)\n"}),
+        ("a while on the result of its helper",
+         {"a.py": "import time\ndef r():\n    try:\n        return f()\n    except OSError:\n        return None\n"
+                  "while r():\n    time.sleep(1)\n"},
+         {"a.py": "import time\ndef r():\n    try:\n        return f()\n    except OSError:\n        return None\n"
+                  "while not r():\n    time.sleep(1)\n"}),
+        ("a PowerShell test of the helper joined to another",
+         {"a.ps1": "function attempt { try { f } catch { $null } }\n"
+                   "while ($true) { if (-not (attempt) -and $on) { break }; Start-Sleep 1 }\n"},
+         {"a.ps1": "function attempt { try { f } catch { $null } }\n"
+                   "while ($true) { if ((attempt) -and $on) { break }; Start-Sleep 1 }\n"}),
+        ("a PowerShell retry next to another try that waits",
+         {"a.ps1": "while ($true) { try { f } catch { throw }; try { g; Start-Sleep 5 } catch { throw } }\n"},
+         {"a.ps1": "while ($true) { try { f } catch { Start-Sleep 1 }; try { g; Start-Sleep 5 } catch { } }\n"}),
+        ("a PowerShell retry whose if guard the try turns off",
+         {"a.ps1": "while ($true) { if (-not $done) { f; $done = $true }; Start-Sleep 1 }\n"},
+         {"a.ps1": "while ($true) { if (-not $done) { try { f; $done = $true } catch { } }; Start-Sleep 1 }\n"}),
+        ("a PowerShell retry whose try sits in a helper",
+         {"a.ps1": "function Get-State($p) { try { Invoke-RestMethod $p } catch { $null } }\n"
+                   "foreach ($p in $paths) { Start-Sleep 1; if ($s = Get-State $p) { break } }\n"},
+         {"a.ps1": "function Get-State($p) { try { Invoke-RestMethod $p } catch { $null } }\n"
+                   "foreach ($i in 1..40) { Start-Sleep 1; if ($s = Get-State 'x') { break } }\n"}),
+        ("a Python retry whose try sits in a helper",
+         {"a.py": "import time\ndef ready():\n    try:\n        return f()\n    except OSError:\n        return None\n"
+                  "for _ in range(30):\n    if not ready():\n        break\n    time.sleep(1)\n"},
+         {"a.py": "import time\ndef ready():\n    try:\n        return f()\n    except OSError:\n        return None\n"
+                  "for _ in range(30):\n    if ready():\n        break\n    time.sleep(1)\n"}),
+        ("a retry whose helper waits in its handler",
+         {"a.py": "import time\ndef attempt(item):\n    try:\n        return f(item)\n    except OSError:\n"
+                  "        time.sleep(1)\n        return None\nfor item in items:\n    if attempt(item):\n        break\n"},
+         {"a.py": "import time\ndef attempt():\n    try:\n        return f()\n    except OSError:\n"
+                  "        time.sleep(1)\n        return None\nwhile True:\n    if attempt():\n        break\n"}),
+        ("a poll whose helper returns inside its try",
+         {"a.py": "import time\nclass A:\n    def check(self):\n        try:\n            return f()\n"
+                  "        except OSError:\n            return None\n\n    def poll(self):\n"
+                  "        while True:\n            self.check()\n            time.sleep(5)\n"},
+         {"a.py": "import time\nclass A:\n    def check(self):\n        try:\n            return f()\n"
+                  "        except OSError:\n            return None\n\n    def poll(self):\n"
+                  "        while True:\n            if self.check():\n                return\n            time.sleep(5)\n"}),
+        ("a Python retry of a method on self",
+         {"a.py": "import time\nclass A:\n    def ok(self):\n        try:\n            return f()\n"
+                  "        except OSError:\n            return None\n\n    def wait(self, other):\n"
+                  "        while True:\n            if other.ok():\n                break\n            time.sleep(1)\n"},
+         {"a.py": "import time\nclass A:\n    def ok(self):\n        try:\n            return f()\n"
+                  "        except OSError:\n            return None\n\n    def wait(self, other):\n"
+                  "        while True:\n            if self.ok():\n                break\n            time.sleep(1)\n"}),
+        ("the PowerShell retry a Python script runs",
+         {"a.py": 'import subprocess\nsubprocess.run(["powershell", "-Command", "while ($true) { f; Start-Sleep 1 }"])\n'},
+         {"a.py": 'import subprocess\nps = "while ($true) { try { f; break } catch { Start-Sleep 1 } }"\n'
+                  'subprocess.run(["powershell", "-Command", ps])\n'}),
         ("a loop with try and a sleep", {"a.py": "import time\nwhile True:\n    try:\n        f()\n    except OSError:\n"
                                                  "        return\n    time.sleep(1)\n"},
          {"a.py": "import time\nwhile True:\n    try:\n        f()\n        break\n    except OSError:\n"
@@ -219,15 +625,15 @@ CASES = {
         ("a powershell poll that waits the same after a success and a failure",
          {"a.ps1": "while ($true) { try { Get-Status } catch { Write-Warning $_ }; Start-Sleep 5 }\n"},
          {"a.ps1": "while ($true) { try { Get-Status; break } catch { Write-Warning $_ }; Start-Sleep 5 }\n"}),
-        ("powershell in a Python string", {"a.py": "ps = 'do{Start-Sleep 1;try{f}catch{}}while($a)'\n"},
-         {"a.py": "ps = 'do{Start-Sleep 1;try{$s=f}catch{}}while($s -eq $null)'\n"}),
+        ("powershell in a Python string", {"a.py": "ps = 'do{Start-Sleep 1;try{f}catch{}}while($a)'\n" + RUN_PS},
+         {"a.py": "ps = 'do{Start-Sleep 1;try{$s=f}catch{}}while($s -eq $null)'\n" + RUN_PS}),
         ("a powershell for whose condition the try turns off",
          {"a.ps1": "for ($i = 0; $i -lt 9 -and -not $e; $i++) { try { f } catch { }; Start-Sleep 1 }\n"},
          {"a.ps1": "for ($i = 0; $i -lt 9 -and -not $e; $i++) { try { $e = f } catch { }; Start-Sleep 1 }\n"}),
         ("a powershell loop around a retry", {"a.ps1": "foreach ($x in $y) { f $x }\n"},
          {"a.ps1": "foreach ($x in $y) {\n  while ($true) { try { f $x; break } catch { Start-Sleep 1 } }\n}\n"}),
-        ("a powershell loop around a retry in a Python string", {"a.py": "ps = 'foreach($x in $y){f $x}'\n"},
-         {"a.py": "ps = 'foreach($x in $y){while($true){try{f $x;break}catch{Start-Sleep 1}}}'\n"}),
+        ("a powershell loop around a retry in a Python string", {"a.py": "ps = 'foreach($x in $y){f $x}'\n" + RUN_PS},
+         {"a.py": "ps = 'foreach($x in $y){while($true){try{f $x;break}catch{Start-Sleep 1}}}'\n" + RUN_PS}),
         ("a poll followed by a while that reads what its try set",
          {"a.ps1": "while ($true) { try { $status = Get-Status } catch { Write-Warning $_ }; Start-Sleep 5 }\n"
                    "while ($status) { f }\n"},
@@ -242,9 +648,9 @@ CASES = {
         ("a catch of two types", {"a.ps1": "while ($true) { Get-Status; Start-Sleep 1 }\n"},
          {"a.ps1": "while ($true) { try { f; break } catch [IO.FileNotFoundException], [IO.DirectoryNotFoundException] "
                    "{ Start-Sleep 1 } }\n"}),
-        ("two retries in one Python string", {"a.py": "ps = 'f'\n"},
+        ("two retries in one Python string", {"a.py": "ps = 'f'\n" + RUN_PS},
          {"a.py": "ps = ('while($true){try{f;break}catch{Start-Sleep 1}}\\n'\n"
-                  "      'while($true){try{g;break}catch{Start-Sleep 1}}')\n"}, 2),
+                  "      'while($true){try{g;break}catch{Start-Sleep 1}}')\n" + RUN_PS}, 2),
         ("a Python poll that waits the same in the try and in the handler",
          {"a.py": "import time\nwhile True:\n    try:\n        f()\n        time.sleep(1)\n    except OSError:\n"
                   "        time.sleep(1)\n"},
@@ -269,8 +675,8 @@ CASES = {
                   "        pass\n    time.sleep(1)\n"},
          {"a.py": "import time\nwhile running:\n    try:\n        f()\n        running = False\n    except OSError:\n"
                   "        pass\n    time.sleep(1)\n"}),
-        ("a do-while followed by another loop", {"a.py": "ps = 'do{f}while($a);while($b){Start-Sleep 1}'\n"},
-         {"a.py": "ps = 'do{try{f}catch{Start-Sleep 1}}while($a);while($b){Start-Sleep 1}'\n"}),
+        ("a do-while followed by another loop", {"a.py": "ps = 'do{f}while($a);while($b){Start-Sleep 1}'\n" + RUN_PS},
+         {"a.py": "ps = 'do{try{f}catch{Start-Sleep 1}}while($a);while($b){Start-Sleep 1}'\n" + RUN_PS}),
         ("a script's onerror that loads it again",
          {"a.js": "const loadAgain = () => {\n  l.onerror = () => { l.remove(); };\n};\nsetTimeout(loadAgain, 3000);\n"},
          {"a.js": "const loadAgain = () => {\n  l.onerror = () => { l.remove(); setTimeout(loadAgain, 3000); };\n};\n"}),
@@ -311,9 +717,175 @@ CASES = {
          {"a.js": "function connect(url) {\n  try { open(url); } catch (e) { setTimeout(() => connect(url), 100); }\n}\n"}),
         ("a promise catch that tries again", {"a.js": "fetch(u).then(go);\n"},
          {"a.js": "function go() { fetch(u).catch(() => setTimeout(go, 3000)); }\n"}),
+        ("a switch key is no test of the flag",
+         {"a.ps1": ATTEMPT_PS + ":outer while ($true) { $s = attempt; switch ($x) { $s { break outer } }; "
+                                "Start-Sleep 1 }\n"},
+         {"a.ps1": ATTEMPT_PS + ":outer while ($true) { $s = attempt; if ($s) { break outer }; Start-Sleep 1 }\n"}),
+        ("a break inside a switch leaves only the switch",
+         {"a.ps1": ATTEMPT_PS + "while ($true) { if (attempt) { switch (1) { 1 { break } } }; Start-Sleep 1 }\n"},
+         {"a.ps1": ATTEMPT_PS + "while ($true) { if (attempt) { break }; Start-Sleep 1 }\n"}),
+        ("a labeled break inside a switch leaves the loop",
+         {"a.ps1": ATTEMPT_PS + ":outer while ($true) { if (attempt) { switch (1) { 1 { break } } }; "
+                                "Start-Sleep 1 }\n"},
+         {"a.ps1": ATTEMPT_PS + ":outer while ($true) { if (attempt) { switch (1) { 1 { break outer } } }; "
+                                "Start-Sleep 1 }\n"}),
+        ("a flag passed to another call is no test of it",
+         {"a.py": ATTEMPT + "while True:\n    s = attempt()\n    if check(s):\n        break\n    time.sleep(1)\n"},
+         {"a.py": ATTEMPT + "while True:\n    s = attempt()\n    if s:\n        break\n    time.sleep(1)\n"}),
+        ("a PowerShell flag passed to a command is no test of it",
+         {"a.ps1": ATTEMPT_PS + "while ($true) { $s = attempt; if (Test-Path $s) { break }; Start-Sleep 1 }\n"},
+         {"a.ps1": ATTEMPT_PS + "while ($true) { $s = attempt; if ($s) { break }; Start-Sleep 1 }\n"}),
+        ("a flag set from a comparison of the helper, tested negated",
+         {"a.py": ATTEMPT + "while True:\n    done = attempt() is None\n    if not done:\n        break\n"
+                            "    time.sleep(1)\n"},
+         {"a.py": ATTEMPT + "while True:\n    done = attempt()\n    if done:\n        break\n    time.sleep(1)\n"}),
+        ("a flag set from the negated helper",
+         {"a.py": ATTEMPT + "while True:\n    done = not attempt()\n    if done:\n        break\n    time.sleep(1)\n"},
+         {"a.py": ATTEMPT + "while True:\n    done = attempt()\n    if done:\n        break\n    time.sleep(1)\n"}),
+        ("a flag set from a comparison of the helper",
+         {"a.py": ATTEMPT + "while True:\n    done = attempt() is None\n    if done:\n        break\n"
+                            "    time.sleep(1)\n"},
+         {"a.py": ATTEMPT + "while True:\n    done = attempt()\n    if done:\n        break\n    time.sleep(1)\n"}),
+        ("a PowerShell flag set from a comparison of the helper",
+         {"a.ps1": ATTEMPT_PS + "while ($true) { $done = (attempt) -eq $null; if ($done) { break }; Start-Sleep 1 }\n"},
+         {"a.ps1": ATTEMPT_PS + "while ($true) { $done = attempt; if ($done) { break }; Start-Sleep 1 }\n"}),
+        ("a helper piped to another command",
+         {"a.ps1": ATTEMPT_PS + "while ($true) { if (attempt | Out-Null) { break }; Start-Sleep 1 }\n"},
+         {"a.ps1": ATTEMPT_PS + "while ($true) { if (attempt) { break }; Start-Sleep 1 }\n"}),
+        ("a walrus that sets the flag from another call",
+         {"a.py": ATTEMPT + "while True:\n    s = attempt()\n    if (s := other()):\n        break\n"
+                            "    time.sleep(1)\n"},
+         {"a.py": ATTEMPT + "while True:\n    s = attempt()\n    if (s := attempt()):\n        break\n"
+                            "    time.sleep(1)\n"}),
+        ("an awaited helper", {"a.py": ASYNC_RETRY.replace("CALL", "other")},
+         {"a.py": ASYNC_RETRY.replace("CALL", "attempt")}),
+        ("a sleep in the iterable is no wait between tries",
+         {"a.py": "import time\nfor x in items(time.sleep(1)):\n    try:\n        f()\n        break\n"
+                  "    except OSError:\n        pass\n"},
+         {"a.py": "import time\nfor x in items():\n    try:\n        f()\n        break\n    except OSError:\n"
+                  "        time.sleep(1)\n"}),
+        ("a sleep in the else of a for is no wait between tries",
+         {"a.py": "import time\nfor x in items():\n    try:\n        f()\n        break\n    except OSError:\n"
+                  "        pass\nelse:\n    time.sleep(1)\n"},
+         {"a.py": "import time\nfor x in items():\n    try:\n        f()\n        break\n    except OSError:\n"
+                  "        time.sleep(1)\nelse:\n    pass\n"}),
+        ("a sleep in the else of a while is no wait between tries",
+         {"a.py": "import time\nwhile tries():\n    try:\n        f()\n        break\n    except OSError:\n"
+                  "        pass\nelse:\n    time.sleep(1)\n"},
+         {"a.py": "import time\nwhile tries():\n    try:\n        f()\n        break\n    except OSError:\n"
+                  "        time.sleep(1)\nelse:\n    pass\n"}),
+        ("a sleep in the start of a PowerShell for is no wait between tries",
+         {"a.ps1": "for ($i = $(Start-Sleep 1); $i -lt 3; $i++) { try { f; break } catch { } }\n"},
+         {"a.ps1": "for ($i = 0; $i -lt 3; Start-Sleep 1) { try { f; break } catch { } }\n"}),
+        ("a sleep in the list of a PowerShell foreach is no wait between tries",
+         {"a.ps1": "foreach ($x in $(Start-Sleep 1; 1..3)) { try { f; break } catch { } }\n"},
+         {"a.ps1": "foreach ($x in 1..3) { try { f; break } catch { Start-Sleep 1 } }\n"}),
+        ("a helper whose output goes elsewhere",
+         {"a.ps1": ATTEMPT_PS + "while ($true) { if (attempt > $null) { break }; Start-Sleep 1 }\n"},
+         {"a.ps1": ATTEMPT_PS + "while ($true) { if (attempt 2>$null) { break }; Start-Sleep 1 }\n"}),
+        ("a helper whose errors join its output",
+         {"a.ps1": ATTEMPT_PS + "while ($true) { if (attempt 2>&1) { break }; Start-Sleep 1 }\n"},
+         {"a.ps1": ATTEMPT_PS + "while ($true) { if (attempt 2>$null) { break }; Start-Sleep 1 }\n"}),
+        ("a Python loop condition that compares the flag",
+         {"a.py": "import time\nwhile running is True:\n    try:\n        f()\n        other = False\n"
+                  "    except OSError:\n        pass\n    time.sleep(1)\n"},
+         {"a.py": "import time\nwhile running is True:\n    try:\n        f()\n        running = False\n"
+                  "    except OSError:\n        pass\n    time.sleep(1)\n"}),
+        ("a PowerShell loop condition that compares the flag",
+         {"a.ps1": "while ($running -eq $true) { try { f; $other = $false } catch { }; Start-Sleep 1 }\n"},
+         {"a.ps1": "while ($running -eq $true) { try { f; $running = $false } catch { }; Start-Sleep 1 }\n"}),
+        ("a walrus inside a comparison sets the flag",
+         {"a.py": ATTEMPT + "while True:\n    if (other := attempt()) is None:\n        log()\n    if r:\n"
+                            "        break\n    time.sleep(1)\n"},
+         {"a.py": ATTEMPT + "while True:\n    if (r := attempt()) is None:\n        log()\n    if r:\n"
+                            "        break\n    time.sleep(1)\n"}),
+        ("a helper that reaches the attempt through the list of its own loop",
+         {"a.py": ATTEMPT + "def ready():\n    for m in listed():\n        return m\n    return None\n"
+                      "while not done:\n    time.sleep(1)\n    done = ready()\n"},
+         {"a.py": ATTEMPT + "def ready():\n    for m in attempt():\n        return m\n    return None\n"
+                      "while not done:\n    time.sleep(1)\n    done = ready()\n"}),
+        ("a quoted label leaves the loop from a switch",
+         {"a.ps1": ATTEMPT_PS + ":outer while ($true) { :pick switch (1) { 1 { if (attempt) { break 'pick' } } }; Start-Sleep 1 }\n"},
+         {"a.ps1": ATTEMPT_PS + ":outer while ($true) { :pick switch (1) { 1 { if (attempt) { break 'outer' } } }; Start-Sleep 1 }\n"}),
+        ("a break that names its own switch leaves only the switch",
+         {"a.ps1": ATTEMPT_PS + "while ($true) { if (attempt) { :sw switch (1) { 1 { break SW } } }; Start-Sleep 1 }\n"},
+         {"a.ps1": ATTEMPT_PS + ":outer while ($true) { if (attempt) { :sw switch (1) { 1 { break outer } } }; Start-Sleep 1 }\n"}),
+        ("a walrus compared to the helper is no flag of it",
+         {"a.py": ATTEMPT + "while True:\n    if (s := other()) == attempt():\n        log()\n    if s:\n        break\n    time.sleep(1)\n"},
+         {"a.py": ATTEMPT + "while True:\n    if (s := attempt()) == other():\n        log()\n    if s:\n        break\n    time.sleep(1)\n"}),
+        ("a walrus of the negated helper",
+         {"a.py": ATTEMPT + "while True:\n    if (r := not attempt()) is False:\n        log()\n    if r:\n        break\n    time.sleep(1)\n"},
+         {"a.py": ATTEMPT + "while True:\n    if (r := not attempt()) is False:\n        log()\n    if not r:\n        break\n"
+                      "    time.sleep(1)\n"}),
+        ("a walrus beside the helper in an or",
+         {"a.py": ATTEMPT + "while True:\n    a = (b := other()) or attempt()\n    if b:\n        break\n    time.sleep(1)\n"},
+         {"a.py": ATTEMPT + "while True:\n    a = (b := other()) or attempt()\n    if a:\n        break\n    time.sleep(1)\n"}),
+        ("a helper that takes its own flag",
+         {"a.py": ATTEMPT + "while True:\n    if (s := other(s)):\n        break\n    time.sleep(1)\n"},
+         {"a.py": ATTEMPT + "while True:\n    if (s := attempt(s)):\n        break\n    time.sleep(1)\n"}),
+        ("a flag set from the negated helper and tested negated",
+         {"a.py": ATTEMPT + "while True:\n    done = not attempt()\n    if done:\n        break\n    time.sleep(1)\n"},
+         {"a.py": ATTEMPT + "while True:\n    done = not attempt()\n    if not done:\n        break\n    time.sleep(1)\n"}),
+        ("a loop that runs while the negated flag holds",
+         {"a.py": ATTEMPT + "done = True\nwhile not done:\n    done = not attempt()\n    time.sleep(1)\n"},
+         {"a.py": ATTEMPT + "done = True\nwhile done:\n    done = not attempt()\n    time.sleep(1)\n"}),
+        ("a PowerShell flag set from the negated helper and tested negated",
+         {"a.ps1": ATTEMPT_PS + "while ($true) { $done = -not (attempt); if ($done) { break }; Start-Sleep 1 }\n"},
+         {"a.ps1": ATTEMPT_PS + "while ($true) { $done = -not (attempt); if (-not $done) { break }; Start-Sleep 1 }\n"}),
+        ("a PowerShell do-while on the negated flag",
+         {"a.ps1": ATTEMPT_PS + "do { $failed = -not (attempt); Start-Sleep 1 } until ($failed)\n"},
+         {"a.ps1": ATTEMPT_PS + "do { $failed = -not (attempt); Start-Sleep 1 } while ($failed)\n"}),
+        ("a cast assignment that is the test of a PowerShell condition",
+         {"a.ps1": ATTEMPT_PS + "while ($true) { if ([bool]$s = other) { break }; Start-Sleep 1 }\n"},
+         {"a.ps1": ATTEMPT_PS + "while ($true) { if ([bool]$s = attempt) { break }; Start-Sleep 1 }\n"}),
+        ("a cast flag set in a PowerShell condition",
+         {"a.ps1": ATTEMPT_PS + "while ($true) { if ([bool]$t = attempt) { }; if ($s) { break }; Start-Sleep 1 }\n"},
+         {"a.ps1": ATTEMPT_PS + "while ($true) { if ([bool]$s = attempt) { }; if ($s) { break }; Start-Sleep 1 }\n"}),
     ],
     "broad_excepts": [
+        ("a PowerShell catch with no type", {"a.ps1": "try { f } catch [IO.IOException] { }\n"},
+         {"a.ps1": "try { f } catch { }\n"}),
+        ("a PowerShell catch of System.Exception", {"a.ps1": "try { f } catch [IO.IOException] { }\n"},
+         {"a.ps1": "try { f } catch [System.Exception] { }\n"}),
+        ("a PowerShell trap with no type", {"a.ps1": "trap [IO.IOException] { continue }\n"},
+         {"a.ps1": "trap { continue }\n"}),
+        ("the PowerShell a Python script runs",
+         {"a.py": 'import subprocess\nsubprocess.run(["powershell", "-Command", "try { f } catch [IO.IOException] { }"])\n'},
+         {"a.py": 'import subprocess\nsubprocess.run(["powershell", "-Command", "try { f } catch { }"])\n'}),
+        ("a PowerShell catch in a workflow step",
+         {".github/workflows/w.yml": "jobs:\n  j:\n    runs-on: windows-2025\n    steps:\n"
+                                     "      - run: try { f } catch [IO.IOException] { }\n"},
+         {".github/workflows/w.yml": "jobs:\n  j:\n    runs-on: windows-2025\n    steps:\n"
+                                     "      - run: try { f } catch { }\n"}),
+        ("a PowerShell catch of a BaseException, which PowerShell lacks",
+         {"a.ps1": "try { f } catch [BaseException] { }\n"}, {"a.ps1": "try { f } catch [Exception] { }\n"}),
+        ("the PowerShell a Python script joins",
+         {"a.py": "import subprocess\ncode = '\\n'.join(['try { f } catch [IO.IOException] { }', *extra])\n"
+                  "subprocess.run(['powershell', '-Command', code])\n"},
+         {"a.py": "import subprocess\ncode = '\\n'.join(['try { f } catch { }', *extra])\n"
+                  "subprocess.run(['powershell', '-Command', code])\n"}),
+        ("a catch inside a PowerShell condition", {"a.ps1": "if (try { f } catch [IO.IOException] { }) { }\n"},
+         {"a.ps1": "if (try { f } catch { }) { }\n"}),
+        ("a script joined inside a joined script",
+         {"a.py": "import subprocess\npart = '\\n'.join(['try { f } catch [IO.IOException] { }'])\n"
+                  "code = '\\n'.join([part, 'Get-Date'])\nsubprocess.run(['powershell', '-Command', code])\n"},
+         {"a.py": "import subprocess\npart = '\\n'.join(['try { f } catch { }'])\n"
+                  "code = '\\n'.join([part, 'Get-Date'])\nsubprocess.run(['powershell', '-Command', code])\n"}),
+        ("a windows runner written in capitals",
+         {".github/workflows/w.yml": "jobs:\n  j:\n    runs-on: Ubuntu-24.04\n    steps:\n      - run: try { f } catch { }\n"},
+         {".github/workflows/w.yml": "jobs:\n  j:\n    runs-on: Windows-2025\n    steps:\n      - run: try { f } catch { }\n"}),
+        ("a windows runner named by an alias",
+         {".github/workflows/w.yml": "x: &w [ubuntu-24.04]\njobs:\n  j:\n    runs-on: *w\n    steps:\n"
+                                     "      - run: try { f } catch { }\n"},
+         {".github/workflows/w.yml": "x: &w [windows-2025]\njobs:\n  j:\n    runs-on: *w\n    steps:\n"
+                                     "      - run: try { f } catch { }\n"}),
+        ("a PowerShell catch in an if condition counts once",
+         {"a.ps1": "if (& { try { f } catch [IO.IOException] { } }) { }\n"},
+         {"a.ps1": "if (& { try { f } catch { } }) { }\n"}),
         ("except Exception", {"a.py": "try:\n    f()\nexcept OSError:\n    pass\n"},
+         {"a.py": "try:\n    f()\nexcept Exception:\n    pass\n"}),
+        ("a lowercase exception is another name in Python",
+         {"a.py": "try:\n    f()\nexcept exception:\n    pass\n"},
          {"a.py": "try:\n    f()\nexcept Exception:\n    pass\n"}),
         ("a bare except", {"a.py": "try:\n    f()\nexcept (OSError, ValueError):\n    pass\n"},
          {"a.py": "try:\n    f()\nexcept:\n    pass\n"}),
@@ -357,13 +929,23 @@ CASES = {
                                          "print(f'known failure, {ISSUE}: a refused dequeue fails the run')\n"},
          {"dev/t.py": "print('known failure: theme_rebuild counts a reindented line')\n"}),
         ("ficou de fora in a workflow",
-         {"a.yml": "steps:\n  - run: echo 'sem placa de video, o pedal de troca de voz ficou de fora'\n"},
-         {"a.yml": "steps:\n  - run: echo '--   o pedal de troca de voz ficou de fora'\n"}),
+         {"action.yml": "runs:\n  steps:\n    - run: echo 'sem placa de video, o pedal de troca de voz ficou de fora'\n"},
+         {"action.yml": "runs:\n  steps:\n    - run: echo '--   o pedal de troca de voz ficou de fora'\n"}),
         ("ficou de fora with its issue in the line's comment",
-         {"a.yml": "steps:\n  - run: echo '--   o pedal ficou de fora'  # #219\n"},
-         {"a.yml": "steps:\n  - run: echo '--   o pedal ficou de fora'  # no issue\n"}),
+         {"action.yml": "runs:\n  steps:\n    - run: echo '--   o pedal ficou de fora'  # #219\n"},
+         {"action.yml": "runs:\n  steps:\n    - run: echo '--   o pedal ficou de fora'  # no issue\n"}),
         ("ficou de fora in a PowerShell script", {"a.ps1": "# o pedal ficou de fora num comentario\n"},
          {"a.ps1": "'--   o pedal ficou de fora'\n"}),
+        ("ficou de fora in a one-line PowerShell comment",
+         {".github/workflows/w.yml": "jobs:\n  j:\n    runs-on: windows-2025\n    steps:\n"
+                                     "      - run: \"# '--   o pedal ficou de fora'\"\n"},
+         {".github/workflows/w.yml": "jobs:\n  j:\n    runs-on: windows-2025\n    steps:\n"
+                                     "      - run: \"Write-Output '--   o pedal ficou de fora'\"\n"}),
+        ("ficou de fora in a comment of a quoted step",
+         {".github/workflows/w.yml": "jobs:\n  j:\n    runs-on: windows-2025\n    steps:\n"
+                                     "      - run: \"Write-Output ok\n          # '--   o pedal ficou de fora'\"\n"},
+         {".github/workflows/w.yml": "jobs:\n  j:\n    runs-on: windows-2025\n    steps:\n"
+                                     "      - run: \"Write-Output ok\n          Write-Output '--   o pedal ficou de fora'\"\n"}),
         ("skipIf in a workflow's Python step",
          {".github/workflows/w.yml": PY_STEP.replace("JOB", "testa").replace(
              "time.sleep(1)\n", "@unittest.skipIf(X, 'no X (#12)')\n          class T: pass\n")},
@@ -391,6 +973,14 @@ CASES = {
     ],
     "prose_justifications": [
         ("in a comment", {"a.py": "print('using the old one for now')\n"}, {"a.py": "x = 1  # for now\n"}),
+        ("risco aceito in a comment", {"a.py": "x = 1  # risco aceito (#119)\n"}, {"a.py": "x = 1  # risco aceito\n"}),
+        ("sem teste in a comment", {"a.py": "x = 1  # sem testes de carga aqui\n"}, {"a.py": "x = 1  # sem teste\n"}),
+        ("have no test yet in a paragraph",
+         {"a.md": "These have no test yet, tracked in [#119](https://github.com/o/r/issues/119).\n"},
+         {"a.md": "These have no test yet.\n"}),
+        ("como antes in a comment, and in code",
+         {"a.js": "/* como antesala */\nlet a = 1;\n", "b.md": "The `como antes` text.\n"},
+         {"a.js": "/* segue como antes */\nlet a = 1;\n"}),
         ("the issue at the top of the comment block",
          {"a.js": "/* (#119) a prova de que a aba voltou em branco: o pixel do meio. Sem prova\n"
                   "   (fora da mesa), a mesa inteira */\nlet a = 1;\n"},
@@ -412,11 +1002,6 @@ CASES = {
          {"a.md": "The old reader stays por\nenquanto, until #119 lands.\n",
           "b.md": "The scoreboard counts `por enquanto` with no issue.\n"},
          {"a.md": "The old reader stays por\nenquanto.\n"}),
-        ("a map row and a contributing note with no test",
-         {"a.md": "| Sem teste | `compasso.py` | o PR diz como conferiu |\nThe window has no test yet: say how you checked.\n"},
-         {"a.md": "| Sem teste | `compasso.py` | accepted risk |\n"}),
-        ("a description of what did not change", {"a.md": "as rotas que trocam no laço ainda esperam ali, como antes\n"},
-         {"a.md": "as rotas que trocam no laço ainda esperam ali, por enquanto\n"}),
         ("a docstring is not a comment", {"a.py": "def f():\n    '''Accepted risk.'''\n"},
          {"a.py": "def f():\n    '''Accepted risk.'''\n    return 1  # accepted risk\n"}),
         ("in a .md", {"a.md": "Sem prova: issue #5\n"}, {"a.md": "Sem prova.\n"}),
@@ -524,18 +1109,138 @@ CASES = {
 }
 
 KNOWN_MISSES_ISSUE = "https://github.com/ritmelli/ritmelli/issues/254"
+POWERSHELL_SOURCES = (".ps1", ".psd1", ".yml", ".yaml", ".py")
 KNOWN_MISSES = [
-    ("broad_excepts", "a PowerShell catch with no type", {"a.ps1": "try { f } catch { }\n"}),
     ("broad_excepts", "a JavaScript catch that handles nothing but is not empty",
-     {"a.js": "try { f(); } catch (e) { void e; }\n"}),
-    ("retries", "a PowerShell retry next to another try that waits (the tries of a loop are read together)",
-     {"a.ps1": "while ($true) { try { f } catch { Start-Sleep 1 }; try { g; Start-Sleep 5 } catch { } }\n"}),
-    ("retries", "a PowerShell retry whose if guard the try turns off",
-     {"a.ps1": "while ($true) { if (-not $done) { try { f; $done = $true } catch { } }; Start-Sleep 1 }\n"}),
+     {"a.js": "try { f(); } catch (e) { void e; }\n"},
+     ((".js", ".html"), r"catch\s*(?:\([^)]*\))?\s*\{\s*void\s+[\w$]+\s*;?\s*\}")),
+
     ("retries", "a JavaScript failure told by an if (index.html, the transport not loaded)",
      {"a.js": "function carregarTransporte() {\n  s.onload = () => {\n"
               "    if (typeof TRANSPORTE === 'undefined') { s.remove(); reconT = setTimeout(conectar, 3000); return; }\n"
-              "    carregar();\n  };\n}\nfunction conectar() {\n  carregarTransporte();\n}\n"}),
+              "    carregar();\n  };\n}\nfunction conectar() {\n  carregarTransporte();\n}\n"},
+     ((".js", ".html"), r"onload\s*=[^;]*?\{[^}]*?if\s*\([^)]*\)\s*\{[^}]*setTimeout\(")),
+
+    ("suppressions", "a quiet -ErrorAction in parentheses",
+     {"a.ps1": "Get-Item x -ErrorAction ('SilentlyContinue')\n"},
+     (POWERSHELL_SOURCES, r"(?i)-(?:erroraction|ea)\s*:?\s*\(\s*['\"]")),
+
+    ("sleeps_dev", "a YAML key given by an alias",
+     {".github/workflows/w.yml": "k: &r run\njobs:\n  j:\n    runs-on: windows-2025\n    steps:\n"
+                                 "      - *r: Start-Sleep 1\n"},
+     ((".yml", ".yaml"), r"(?m)^[ \t]*(?:-[ \t]+)?\*[\w-]+[ \t]*:")),
+
+    ("sleeps_app", "a PowerShell command name with a backtick escape", {"a.ps1": "St`art-Sleep 1\n"},
+     (POWERSHELL_SOURCES, r"(?m)(?:^|[;|{(])[ \t]*[A-Za-z][\w-]*`[A-Za-z][\w-]*")),
+
+    ("suppressions", "a PowerShell parameter name with a backtick escape",
+     {"a.ps1": "Get-Item x -Error`Action SilentlyContinue\n"},
+     (POWERSHELL_SOURCES, r"[ \t]-[A-Za-z]+`[A-Za-z]")),
+
+    ("suppressions", "a cast on $ErrorActionPreference",
+     {"a.ps1": "[string]$ErrorActionPreference = 'SilentlyContinue'\n"},
+     (POWERSHELL_SOURCES, r"(?i)\][ \t]*\$(?:global:|script:)?ErrorActionPreference[ \t]*=")),
+
+    ("retries", "a PowerShell foreach over a range in parentheses",
+     {"a.ps1": "function attempt($n) { try { f $n } catch { $null } }\n"
+               "foreach ($i in (1..5)) { if ($s = attempt $i) { break }; Start-Sleep 1 }\n"},
+     (POWERSHELL_SOURCES, r"(?i)foreach[ \t]*\([ \t]*\$\w+[ \t]+in[ \t]+\([ \t]*\d+[ \t]*\.\.")),
+
+    ("sleeps_app", "a script that a loop brings from the other branch of the turn before",
+     {"a.py": "import subprocess\nps = 'Get-Date'\nfor i in range(2):\n    if i:\n"
+              "        subprocess.run(['powershell', '-Command', ps])\n    else:\n        ps = 'Start-Sleep 1'\n"},
+     ((".py",), r"(?m)^([ \t]+)if\b[^\n]*:[ \t]*\n\1[ \t]+\S[^\n]*['\"]-[Cc]ommand['\"],[ \t]*(\w+)\b[^\n]*\n"
+                r"\1else[ \t]*:[ \t]*\n\1[ \t]+\2[ \t]*=[^=]")),
+    ("sleeps_app", "a default of an inline parameter of a PowerShell function",
+     {"a.ps1": "function f($x = $(Start-Sleep 1)) { }\n"},
+     (POWERSHELL_SOURCES, r"(?i)\b(?:function|filter)[ \t]+[\w:-]+[ \t]*\([^)\n]*=[ \t]*\$?\(")),
+
+    ("suppressions", "a quiet $ErrorActionPreference set together with another name",
+     {"a.ps1": "$ErrorActionPreference, $x = 'SilentlyContinue', 1\n"},
+     (POWERSHELL_SOURCES, r"(?i)\$(?:global:|script:)?ErrorActionPreference[ \t]*,")),
+
+    ("suppressions", "a quiet $ErrorActionPreference set by Set-Variable",
+     {"a.ps1": "Set-Variable ErrorActionPreference SilentlyContinue\n"},
+     (POWERSHELL_SOURCES, r"(?i)\b(?:Set-Variable|sv)\b[^\n]*ErrorActionPreference")),
+    ("suppressions", "a quiet -ErrorAction given by a variable",
+     {"a.ps1": "$quiet = 'SilentlyContinue'\nGet-Item x -ErrorAction $quiet\n"},
+     (POWERSHELL_SOURCES, r"(?i)-(?:ErrorAction|EA)\b[ \t:]+\$[\w:]+")),
+    ("sleeps_app", "a default of an inline parameter of a PowerShell method",
+     {"a.ps1": "class A { [void] f($x = $(Start-Sleep 1)) { } }\n"},
+     (POWERSHELL_SOURCES, r"(?i)\][ \t]*[\w-]+[ \t]*\([^)\n]*=[ \t]*\$?\(")),
+
+    ("suppressions", "a quiet $ErrorActionPreference in parentheses or from the enum",
+     {"a.ps1": "$ErrorActionPreference = ('SilentlyContinue')\n"},
+     (POWERSHELL_SOURCES, r"(?i)\$(?:global:|script:)?ErrorActionPreference[ \t]*=[ \t]*[(\[]")),
+
+    ("retries", "a PowerShell helper declared with a scope",
+     {"a.ps1": "function global:attempt { try { f } catch { $null } }\nwhile ($true) { if (attempt) { break }; Start-Sleep 1 }\n"},
+     (POWERSHELL_SOURCES, r"(?i)\bfunction[ \t]+(?:global|script|local|private):")),
+
+    ("sleeps_app", "a sleep imported by a wildcard", {"a.py": "from time import *\nsleep(1)\n"},
+     ((".py",), r"(?m)^[ \t]*from[ \t]+(?:time|asyncio)[ \t]+import[ \t]+\*")),
+    ("sleeps_app", "a class that sets the script in a branch, read from around the class when the branch does not run",
+     {"a.py": "import subprocess\nps = 'Start-Sleep 1'\nclass C:\n    if flag:\n        ps = 'Get-Date'\n"
+              "    subprocess.run(['powershell', '-Command', ps])\n"},
+     ((".py",), r"(?ms)\A(?=.*['\"]-[Cc]ommand['\"])(?=.*^([ \t]*)class\b[^\n]*:[ \t]*\n(?:\1[ \t][^\n]*\n){0,40}?"
+                r"(\1[ \t]+)if\b[^\n]*:[ \t]*\n\2[ \t]+\w+[ \t]*=[^=])")),
+
+    ("retries", "a wait inside a script block that the catch runs",
+     {"a.ps1": "while ($true) {\n    try { f; break } catch { & { Start-Sleep 1 } }\n}\n"},
+     (POWERSHELL_SOURCES, r"(?i)[&.][ \t]*\{[^}\n]*\bStart-Sleep\b")),
+    ("retries", "a for over itertools.count whose body uses the counter",
+     {"a.py": "import itertools\nimport time\ndef attempt(i):\n    try:\n        return action(i)\n    except OSError:\n"
+              "        return None\nfor i in itertools.count():\n    if attempt(i):\n        break\n    time.sleep(1)\n"},
+     ((".py",), r"(?m)\bfor\b[^\n]*\bin[ \t]+(?:itertools\.)?count\(")),
+    ("sleeps_app", "a name a class in a function annotates with no value, which Python reads from the module",
+     {"a.py": "import subprocess\nps = 'Start-Sleep 1'\ndef g():\n    ps = 'Get-Date'\n    class C:\n        ps: str\n"
+              "        x = subprocess.run(['powershell', '-Command', ps])\n"},
+     ((".py",), r"(?ms)\A(?=.*['\"]-[Cc]ommand['\"])(?=.*^([ \t]+)class\b[^\n]*:[ \t]*\n(?:\1[ \t][^\n]*\n){0,40}?"
+                r"\1[ \t]+\w+[ \t]*:[ \t]*[^=\n]+\n)")),
+]
+
+KNOWN_NOISE = [
+    ("sleeps_app", "a class that reads the script before the module sets it, read as if the class ran later",
+     {"a.py": "import subprocess\nclass C:\n    x = subprocess.run(['powershell', '-Command', ps])\n"
+              "    ps = 'Get-Date'\nps = 'Start-Sleep 1'\n"},
+     ((".py",), r"(?ms)^class\b[^\n]*:[ \t]*\n(?:[ \t][^\n]*\n){0,40}?[ \t][^\n]*['\"]-[Cc]ommand['\"],[ \t]*(\w+)\b"
+                r".*?^\1[ \t]*=[^=]")),
+    ("sleeps_app", "an if, elif and else that all set the script, read as if the earlier value reached the use",
+     {"a.py": "import subprocess\nps = 'Start-Sleep 1'\nif a:\n    ps = 'Get-Date'\nelif b:\n    ps = 'Get-Item x'\nelse:\n"
+              "    ps = 'Write-Output 1'\nsubprocess.run(['powershell', '-Command', ps])\n"},
+     ((".py",), r"(?m)^([ \t]*)elif\b[^\n]*:[ \t]*\n\1[ \t]+(\w+)[ \t]*=[^=][^\n]*\n(?:[^\n]*\n){0,40}?[^\n]*"
+                r"['\"]-[Cc]ommand['\"],[ \t]*\2\b")),
+    ("sleeps_app", "the subscript of a local annotation with no value, which Python never runs",
+     {"a.py": "import time\ndef f():\n    a[time.sleep(1)]: int\n"},
+     ((".py",), r"(?m)^[ \t]+[\w.]+\[[^\]\n]*\([^\]\n]*\][ \t]*:[ \t]*[^=\n]+$")),
+    ("sleeps_app", "a sleep in a type alias, whose value Python runs only when it is asked for",
+     {"a.py": "import time\ntype Unused = time.sleep(1)\n"},
+     ((".py",), r"(?m)^[ \t]*type[ \t]+\w+(?:\[[^\]\n]*\])?[ \t]*=")),
+    ("sleeps_app", "a sleep imported from time and shadowed in a function",
+     {"a.py": "from time import sleep\ndef f():\n    sleep = lambda x: x\n    sleep(1)\n"},
+     ((".py",), r"(?ms)\A(?=.*^from[ \t]+(?:time|asyncio)[ \t]+import[^\n]*\bsleep\b)(?=.*^[ \t]+sleep[ \t]*=[^=])")),
+    ("sleeps_dev", "a test job inside jobs given by an alias",
+     {".github/workflows/w.yml": "x: &js\n  testes:\n    runs-on: windows-2025\n    steps:\n      - run: Start-Sleep 1\n"
+                                 "jobs: *js\n"},
+     ((".yml", ".yaml"), r"(?m)^jobs:[ \t]*\*")),
+    ("retries", "a Python annotation with no value named like the loop's condition, taken for an assignment",
+     {"a.py": "import time\nwhile active:\n    try:\n        active: bool\n    except OSError:\n        pass\n"
+              "    time.sleep(1)\n"},
+     ((".py",), r"(?m)^([ \t]*)while[ \t]+(?:not[ \t]+)?(\w+)[ \t]*:[ \t]*\n(?:\1[ \t]+\S[^\n]*\n|[ \t]*\n){0,40}?"
+                r"\1[ \t]+\2[ \t]*:[ \t]*[^=\n]+\n")),
+    ("sleeps_app", "a script set in another case of a match, which is no branch to the reader",
+     {"a.py": "import subprocess\nmatch v:\n    case 1:\n        ps = 'Start-Sleep 1'\n    case _:\n"
+              "        subprocess.run(['powershell', '-Command', ps])\n"},
+     ((".py",), r"(?m)^[ \t]*match\b[^\n]*:[ \t]*$")),
+    ("sleeps_app", "a type alias, whose value Python runs only when it is asked for",
+     {"a.py": "import subprocess\ntype Unused = subprocess.run(['powershell', '-Command', 'Start-Sleep 1'])\n"},
+     ((".py",), r"(?im)^[ \t]*type[ \t]+\w+(?:\[[^\]\n]*\])?[ \t]*=[^\n]*['\"]-command['\"]")),
+    ("retries", "a Python index named like the loop's condition, taken for an assignment",
+     {"a.py": "import time\nwhile active:\n    try:\n        d[active] = False\n    except OSError:\n        pass\n"
+              "    time.sleep(1)\n"},
+     ((".py",), r"(?m)^([ \t]*)while[ \t]+(?:not[ \t]+)?(\w+)[ \t]*:[ \t]*\n(?:\1[ \t]+\S[^\n]*\n|[ \t]*\n){0,40}?"
+                r"\1[ \t]+try[ \t]*:[ \t]*\n(?:\1[ \t]+\S[^\n]*\n|[ \t]*\n){0,40}?"
+                r"\1[ \t]+[\w.]+\[[^\]\n]*\b\2\b[^\]\n]*\][ \t]*=[^=]")),
 ]
 
 
@@ -561,15 +1266,114 @@ def test_counters():
 
 
 def test_string_lines():
-    two = "ps = ('do{Start-Sleep 1}while($a);'\n      'if($b){Start-Sleep 1}')\n"
+    two = "ps = ('do{Start-Sleep 1}while($a);'\n      'if($b){Start-Sleep 1}')\n" + RUN_PS
     items = garden.COUNTERS["sleeps_app"](garden.Tree({"a.py": two}))
     check(items == [("a.py", 1), ("a.py", 2)], f"each fragment of a concatenated string keeps its own line ({items})")
-    between = "ps = ('do{f}while($a);'  # Start-Sleep here is a comment\n      'if($b){g}')\n"
+    between = "ps = ('do{f}while($a);'  # Start-Sleep here is a comment\n      'if($b){g}')\n" + RUN_PS
     check(garden.COUNTERS["sleeps_app"](garden.Tree({"a.py": between})) == [],
           "a comment between two fragments of a string is not part of it")
-    wide = "x = ('ação', 'Start-Sleep 1')\n"
+    wide = "x = 'ação'; ps = 'Start-Sleep 1'\n" + RUN_PS
     check(garden.COUNTERS["sleeps_app"](garden.Tree({"a.py": wide})) == [("a.py", 1)],
           "a string after a wide character is read whole")
+    built = "n = 2\nps = (f'$fim=(Get-Date).AddSeconds({n:.0f});'\n      f'{n}-Service x; Start-Sleep {n}')\n" + RUN_PS
+    items = garden.COUNTERS["sleeps_app"](garden.Tree({"a.py": built}))
+    check(items == [("a.py", 3)], f"an f-string's fields read as PowerShell values, at their lines ({items})")
+    for label, text, line in (
+            ("an escaped newline stays on its line", "ps = 'Get-Date\\nStart-Sleep 1'\n", 1),
+            ("the text after a field keeps its line", "n = 1\nps = f'''x {n}\n{n}; Start-Sleep 1'''\n", 3),
+            ("a field over two lines moves the next line", "n = 1\nps = f'''x {\nn}\nStart-Sleep 1'''\n", 4)):
+        items = garden.COUNTERS["sleeps_app"](garden.Tree({"a.py": text + RUN_PS}))
+        check(items == [("a.py", line)], f"{label} ({items})")
+    joined = "import subprocess\ncode = ','.join(['$a = 1', value])\nsubprocess.run(['powershell', '-Command', code])\n"
+    problems = garden.measure({"a.py": joined})[1]
+    check(problems == [], f"a value after the separator of a join reads as a value ({problems})")
+    items = garden.COUNTERS["skipped_tests"](garden.Tree({"a.ps1": "$x = @'\n'--   o pedal ficou de fora'\n'@\n"}))
+    check(items == [("a.ps1", 2)], f"each line of a PowerShell here-string is code at its own line ({items})")
+
+
+def test_unreadable():
+    for label, files, place in (
+            ("Python file", {"a.py": "def f(:\n"}, "a.py:1: the Python reader stops here"),
+            ("Python step", {".github/workflows/w.yml": "jobs:\n  j:\n    steps:\n      - shell: python\n"
+                                                        "        run: |\n          def f(:\n"},
+             ".github/workflows/w.yml:6: the Python reader stops here"),
+            ("script passed to PowerShell",
+             {"a.py": "import subprocess\ndef run(script):\n    subprocess.run(['powershell', '-Command', script])\n"},
+             "a.py:3: the PowerShell reader can't follow the script"),
+            ("testa.yml", {".github/workflows/testa.yml": "jobs:\n  a: [\n"},
+             ".github/workflows/testa.yml:2: the YAML reader stops here"),
+            ("script joined from a name with two values",
+             {"a.py": "import subprocess\npart = 'Get-Date'\nif flag:\n    part = 'Start-Sleep 1'\n"
+                      "ps = '\\n'.join([part])\n" + RUN_PS},
+             "a.py:6: the PowerShell reader can't follow the script"),
+            ("script set in a try and in its else",
+             {"a.py": "import subprocess\nps = loader()\ntry:\n    ps = 'Get-Date'\nexcept OSError:\n    pass\n"
+                      "else:\n    ps = 'Get-Item x'\n" + RUN_PS},
+             "a.py:9: the PowerShell reader can't follow the script"),
+            ("script set in both branches of an if inside another if",
+             {"a.py": "import subprocess\nps = loader()\nif a:\n    if b:\n        ps = 'Get-Date'\n    else:\n"
+                      "        ps = 'Get-Item x'\n" + RUN_PS},
+             "a.py:8: the PowerShell reader can't follow the script"),
+            ("script joined from a literal and an unknown value",
+             {"a.py": "import subprocess\npart = 'Start-Sleep 1'\nif flag:\n    part = load()\nps = '\\n'.join([part])\n" + RUN_PS},
+             "a.py:6: the PowerShell reader can't follow the script"),
+            ("module script set again after the function",
+             {"a.py": "import subprocess\nPS = 'Get-Date'\ndef run():\n    subprocess.run(['powershell', '-Command', PS])\n"
+                      "PS = 'Start-Sleep 1'\n"},
+             "a.py:4: the PowerShell reader can't follow the script"),
+            ("script joined from two values the reader can't follow",
+             {"a.py": "import subprocess\nif flag:\n    part = first()\nelse:\n    part = second()\n"
+                      "ps = '\\n'.join([part])\n" + RUN_PS},
+             "a.py:7: the PowerShell reader can't follow the script"),
+            ("script of a function that sets it only in the other branch",
+             {"a.py": "import subprocess\nps = 'Start-Sleep 1'\ndef f():\n    if flag:\n        ps = 'Get-Date'\n"
+                      "    else:\n        subprocess.run(['powershell', '-Command', ps])\n"},
+             "a.py:7: the PowerShell reader can't follow the script"),
+            ("script of a function that only annotates it",
+             {"a.py": "import subprocess\nps = 'Start-Sleep 1'\ndef f():\n    ps: str\n"
+                      "    subprocess.run(['powershell', '-Command', ps])\n"},
+             "a.py:5: the PowerShell reader can't follow the script"),
+            ("YAML nested too deep", {".github/workflows/w.yml": "a: " + "[" * 400 + "1" + "]" * 400 + "\n"},
+             ".github/workflows/w.yml:1: the YAML reader stops here"),
+            ("PowerShell nested too deep", {"a.ps1": "$x = " + "(" * 400 + "1" + ")" * 400 + "\n"},
+             "a.ps1:1: the PowerShell reader stops here"),
+            ("Python too deep for its own parser", {"a.py": "x = " + "a+" * 5000 + "a\n"},
+             "a.py:1: the Python reader stops here"),
+            ("Python too deep to lower", {"a.py": "x = " + "a+" * 1500 + "a\n"},
+             "a.py:1: the Python reader stops here"),
+            ("PowerShell too deep to lower", {"a.ps1": "$x = " + "1+" * 1200 + "1\n"},
+             "a.ps1:1: the PowerShell reader stops here"),
+            ("PowerShell too deep for the rules",
+             {"a.ps1": "while ($true) { if ($a) { $x = 1 }" + " elseif ($a) { $x = 1 }" * 1000 + " }\n"},
+             "a.ps1:1: the PowerShell reader stops here"),
+            ("Python too deep to follow its names",
+             {"a.py": "from __future__ import annotations\nimport subprocess\n"
+                      "subprocess.run(['powershell', '-Command', 'Get-Date'])\nx: " + "a." * 1500 + "b = 1\n"},
+             "a.py:1: the Python reader stops here"),
+            ("Python too deep to follow its joins",
+             {"a.py": "s0 = 'Get-Date'\n" + "".join(f"s{i} = '\\n'.join([s{i - 1}])\n" for i in range(1, 1101))
+                      + "run(['powershell', '-Command', s1100])\n"},
+             "a.py:1: the Python reader stops here"),
+            ("Python step of a composite action",
+             {"action.yml": "runs:\n  steps:\n    - shell: python\n      run: this is not Python!\n"},
+             "action.yml:4: the Python reader stops here")):
+        try:
+            problems = garden.measure(files)[1]
+        except ValueError as ex:
+            problems = [repr(ex)]
+        check(any(p.startswith(place) for p in problems), f"an unreadable {label} is reported at its place ({problems})")
+    for label, text in (("a collection as a key", "? [a]\n: b\n"),
+                        ("a list as the name of a job", "jobs: {one: {name: [hi]}}\n")):
+        try:
+            garden.measure({".github/workflows/testa.yml": text})
+            crashed = ""
+        except ValueError as ex:
+            crashed = repr(ex)
+        check(not crashed, f"a testa.yml with {label} does not stop the count ({crashed})")
+    step = "runs:\n  steps:\n    - shell: python\n      run: this is not Python!\n"
+    jobs = "jobs:\n  j:\n    steps:\n      - shell: python\n        run: this is not Python!\n"
+    problems = garden.measure({"config.yml": step, "ci/ci.yml": jobs})[1]
+    check(problems == [], f"a YAML that is no workflow and no action has no steps ({problems})")
 
 
 def test_workflow_python_lines():
@@ -600,10 +1404,23 @@ def test_workflow_python_lines():
     check(found == [(".github/workflows/w.yml", 9)], f"a retry in a workflow step is listed at its line ({found})")
 
 
+def uses_of(tree, suffixes, pattern):
+    return [f"{path}:{text.count("\n", 0, m.start()) + 1}" for path, text in sorted(tree.items())
+            if path.endswith(suffixes) for m in re.finditer(pattern, text)]
+
+
 def test_known_misses():
-    for name, label, files in KNOWN_MISSES:
-        check(count(name, files) == 0, f"known miss ({KNOWN_MISSES_ISSUE}): {name} does not count {label}; when it "
-              f"does, move the case to CASES")
+    tree = {p: text for p, text in garden.working_tree(ROOT).items() if p not in garden.GARDEN_FILES}
+    for noise, (name, label, files, detector) in [(False, m) for m in KNOWN_MISSES] + [(True, m) for m in KNOWN_NOISE]:
+        kind = "known noise" if noise else "known miss"
+        wrong = count(name, files) > 0 if noise else count(name, files) == 0
+        check(wrong, f"{kind} ({KNOWN_MISSES_ISSUE}): {name} {'counts' if noise else 'does not count'} {label}; when "
+              f"it {'stops' if noise else 'does'}, move the case to CASES")
+        check(bool(uses_of(files, *detector)), f"{kind} ({KNOWN_MISSES_ISSUE}): the detector of {label} "
+              f"finds its own case")
+        used = uses_of(tree, *detector)
+        check(not used, f"{kind} ({KNOWN_MISSES_ISSUE}): the repo does not use {label} yet ({used[:3]}); "
+              f"when it does, make {name} {'leave it out' if noise else 'count it'} and move the case to CASES")
 
 
 def test_check():
@@ -747,6 +1564,11 @@ def test_description():
         check(garden.description_problems(body) != [], f"a proof section with {label} fails")
     prose = good + "\nThe rest stays for now.\n"
     check(any("for now" in p for p in garden.description_problems(prose)), "a prose phrase with no issue fails")
+    for phrase in ("sem teste", "have no test yet", "como antes"):
+        check(any(phrase in p for p in garden.description_problems(f"{good}\nThe old path stays, {phrase}.\n")),
+              f"\"{phrase}\" with no issue fails")
+        check(garden.description_problems(f"{good}\nThe old path stays, {phrase} (#250).\n") == [],
+              f"\"{phrase}\" with its issue passes")
     check(garden.description_problems(good + "\nThe fallback stays for now, tracked in ritmelli/ritmelli#254.\n") == [],
           "a prose phrase with an owner/repo#n reference passes")
     check(garden.description_problems(good + "\nThe rest stays for now (#250).\n") == [],
@@ -887,6 +1709,32 @@ def test_queue_run():
               f"the same tree as a PR against main passes ({out.splitlines()[-1:]})")
 
 
+def test_measured_base():
+    catch = {"a.ps1": "try { f } catch { }\n"}
+    with tempfile.TemporaryDirectory() as d:
+        repo = Path(d)
+        garden.git("init", "-q", root=repo)
+        garden.git("config", "core.autocrlf", "false", root=repo)
+        blind = json.loads(ceilings_of(catch))
+        blind["broad_excepts"] = 0
+        main = commit(repo, {**catch, "dev/garden.json": json.dumps(blind) + "\n"},
+                      "main, from a counter that did not see the catch")
+        (repo / "dev" / "garden.json").write_text(ceilings_of(catch), encoding="utf-8")
+        code, out = run_in(repo, {"GITHUB_EVENT_NAME": "pull_request", "BASE": main, "GITHUB_REF": "refs/pull/9/merge"})
+        check(code == 0, "a counter that learns to see a weed already on the base raises its ceiling to the base's "
+                         f"count, measured with this code ({out.splitlines()[-1:]})")
+        two = {"a.ps1": "try { f } catch { }\ntry { g } catch { }\n"}
+        (repo / "a.ps1").write_text(two["a.ps1"], encoding="utf-8")
+        (repo / "dev" / "garden.json").write_text(ceilings_of(two), encoding="utf-8")
+        code, out = run_in(repo, {"GITHUB_EVENT_NAME": "pull_request", "BASE": main, "GITHUB_REF": "refs/pull/9/merge"})
+        check(code == 1 and "broad_excepts: the ceiling went up from 1 to 2" in out,
+              "a new catch with its ceiling still fails against the base measured with this code")
+        (repo / "a.ps1").write_text("try { f\n", encoding="utf-8")
+        code, out = run_in(repo, {"GITHUB_EVENT_NAME": "pull_request", "BASE": main, "GITHUB_REF": "refs/pull/9/merge"})
+        check(code == 1 and "unreadable: a.ps1:2: the PowerShell reader stops here" in out,
+              f"a file the reader can't read fails with its place ({[x for x in out.splitlines() if 'unreadable' in x]})")
+
+
 def commit(repo, files, message):
     for path, text in files.items():
         (repo / path).parent.mkdir(parents=True, exist_ok=True)
@@ -906,14 +1754,14 @@ def test_base():
         after = commit(repo, {"a.py": "x = 1  # why\ny = 2  # and why\n", "dev/garden.json": '{"comment_lines": 2}\n'},
                        "the scoreboard")
         try:
-            garden.base_ceilings("not-a-commit", root=repo)
+            garden.verify_base("not-a-commit", root=repo)
             raised = False
         except garden.BaseError:
             raised = True
-        check(raised, "a base that is not a commit fails instead of reading as a base with no scoreboard")
-        check(garden.base_ceilings(before, root=repo) is None, "a base from before the scoreboard has no ceilings")
-        check(garden.base_ceilings(after, root=repo) == {"comment_lines": 2}, "a base with the scoreboard has its ceilings")
-        check(garden.base_ceilings("", root=repo) is None, "no base, no ceilings")
+        check(raised, "a base that is not a commit fails instead of reading as a base with nothing to measure")
+        garden.verify_base(before, root=repo)
+        garden.verify_base(after, root=repo)
+        garden.verify_base("", root=repo)
         blob = subprocess.run(["git", "cat-file", "-p", f"{before}:a.py"], cwd=repo, capture_output=True).stdout
         check(blob == b"x = 1  # why\r\n", f"the fixture's blob keeps its CRLF ({blob!r})")
         (repo / "b.iss").write_bytes("﻿; why\n[Setup]\n".encode("utf-8"))
@@ -1006,7 +1854,10 @@ test_description()
 test_base()
 test_queue_base()
 test_queue_run()
+test_measured_base()
+test_unreadable()
 test_description_step()
+
 WORKFLOW_TEXT = (ROOT / ".github" / "workflows" / "testa.yml").read_text(encoding="utf-8")
 problems = workflow_problems(WORKFLOW_TEXT)
 check(problems == [], f"the PR description step runs in the required check on every PR and queue entry ({problems})")

@@ -301,7 +301,7 @@ def check_theme_rebuild():
                            "<link rel=\"stylesheet\" href=\"b.css\">\n<script src=\"a.js\"></script>\n",
              "a.js": "/* A-JS-INICIO */\n'use strict';\nconst a = 1;\n/* A-JS-FIM */\n", "b.css": "b { }\n"}
     lines = theme_rebuild.rebuild(files.__getitem__)
-    if lines != ["[script: [('title', 'x > y'), ('defer', None)]]", "'use strict';", "const a = 1;", "[/script]",
+    if lines != ["[script: [('title', 'x > y'), ('defer', '')]]", "'use strict';", "const a = 1;", "[/script]",
                  "[link b.css]", "b { }", "[/style]", "[script a.js]", "'use strict';", "const a = 1;", "[/script]"]:
         falha(f"theme_rebuild.rebuild: {lines}")
     files["a.js"] = "/* A-JS-INICIO */\nconst a = 1;\n/* A-JS-FIM */\n"
@@ -313,14 +313,14 @@ def check_theme_rebuild():
                                                  '</script>'}.__getitem__)
     if quoted == split:
         falha(f"theme_rebuild.rebuild: one attribute with &quot; inside rebuilds like two attributes ({quoted})")
-    files = {"index.html": '<!-- inline-script: c.js -->\n<script src="a.js"></script>\n',
-             "a.js": "const a = 1;\n", "c.js": "const c = 3;\n"}
+    files = {"index.html": '<script>\nconst c = 3;\n</script>\n<script src="a.js"></script>\n',
+             "a.js": "const a = 1;\n"}
     lines = theme_rebuild.rebuild(files.__getitem__)
     files["a.js"] = "const a = 2;\n"
     changed = theme_rebuild.rebuild(files.__getitem__)
-    if lines != ["[inline-script c.js]", "const c = 3;", "[/script]", "[script a.js]", "const a = 1;", "[/script]"] \
+    if lines != ["[script]", "const c = 3;", "[/script]", "[script a.js]", "const a = 1;", "[/script]"] \
             or changed == lines:
-        falha(f"theme_rebuild.rebuild with an inline-script and a file tag: {lines}, then {changed}")
+        falha(f"theme_rebuild.rebuild with an inline script and a file tag: {lines}, then {changed}")
     plain = theme_rebuild.rebuild({"index.html": "<script>\nconst d = 4;\n</script>\n"}.__getitem__)
     typed = theme_rebuild.rebuild({"index.html": '<script type="application/json">\nconst d = 4;\n</script>\n'}.__getitem__)
     if plain != ["[script]", "const d = 4;", "[/script]"] or typed == plain:

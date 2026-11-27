@@ -102,7 +102,6 @@ OUTSIDE_TOUCH = ("document.getElementById('estante').dispatchEvent(new PointerEv
                  " cancelable: true, composed: true, isPrimary: true, pointerId: 7, pointerType: 'touch', button: 0,"
                  " clientX: 11, clientY: 13}))")
 PAGE_READY_S = 15.0
-INLINE_MARK = re.compile(r"<!-- inline-script: ([\w-]+\.js) -->")
 
 
 async def until(tab, state, condition, seconds):
@@ -224,11 +223,7 @@ async def checks(tab):
 
 def inline_scripts(raiz):
     found, _ = missing_script.page_files(raiz, missing_script.THEME)
-    files = {text: name for kind, name, text in found or [] if kind == "script"}
-    theme = raiz / "themes" / "ritmelli"
-    for name in INLINE_MARK.findall((theme / "index.html").read_text(encoding="utf-8")):
-        files["\n" + (theme / name).read_text(encoding="utf-8")] = name
-    return files
+    return {text: name for kind, name, text in found or [] if kind == "script"}
 
 
 def main(argv=None):

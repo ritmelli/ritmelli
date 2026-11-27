@@ -76,11 +76,15 @@ key: 'it''s'
             {"uses": "actions/checkout@v7", "with": {"fetch-depth": "0"}},
             {"name": "Run", "run": 'echo "a: b # not a comment"\n\n  indented\n'}, "plain"]}},
         "key": "it's"}, "the reader reads the constructs the workflows use")
-    for why, text in (("a repeated key", "a: 1\na: 2\n"), ("an anchor", "a: &x 1\n"), ("an alias", "a: *x\n"),
-                      ("a tag", "a: !!str 1\n"), ("a flow mapping", "a: {b: 1}\n"), ("a folded scalar", "a: >\n  b\n"),
-                      ("a plain scalar on two lines", "a: b\n  c\n"), ("a tab", "a:\n\tb: 1\n"),
-                      ("two documents", "a: 1\n---\nb: 2\n"), ("a plain scalar with ': '", "a: b: c\n"),
-                      ("a nested flow sequence", "a: [b, [c]]\n"), ("an unclosed quote", "a: 'b\n")):
+    for why, text, value in (("an anchor and its alias", "a: &x 1\nb: *x\n", {"a": "1", "b": "1"}),
+                             ("a tag", "a: !!str 1\n", {"a": "1"}), ("a flow mapping", "a: {b: 1}\n", {"a": {"b": "1"}}),
+                             ("a folded scalar", "a: >\n  b\n  c\n", {"a": "b c\n"}),
+                             ("a plain scalar on two lines", "a: b\n  c\n", {"a": "b c"}),
+                             ("a nested flow sequence", "a: [b, [c]]\n", {"a": ["b", ["c"]]})):
+        check(loads(text) == value, f"the reader reads {why}")
+    for why, text in (("a repeated key", "a: 1\na: 2\n"), ("an alias with no anchor", "a: *x\n"),
+                      ("a tab", "a:\n\tb: 1\n"), ("two documents", "a: 1\n---\nb: 2\n"),
+                      ("a plain scalar with ': '", "a: b: c\n"), ("an unclosed quote", "a: 'b\n")):
         try:
             loads(text)
             raised = False

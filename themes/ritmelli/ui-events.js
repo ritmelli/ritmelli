@@ -44,7 +44,7 @@ bindStageGestures();
 bindShelf();
 /* no toque a barra so muda arrastando o cursor: encostar em outro ponto da canaleta (sem
    querer, rolando a pagina) pulava o volume ou a faixa para la; o mouse
-   e o teclado seguem como antes */
+   e o teclado nao passam por essa trava */
 const CURSOR_PX = 16, DEDO_PX = 24;
 document.querySelectorAll('input[type=range]').forEach(r => {
   let vale = true, antes = r.value;

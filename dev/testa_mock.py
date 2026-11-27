@@ -785,7 +785,7 @@ async def papeis_no_guard():
         x, _ = server.App.enfileirar(fila, {"id": "d1"}, True)
         confere(x["id"] == "d1", "o remoto enfileira o disco da prateleira pelo id")
         # o erro de tocar na hora a entrada que acabou de entrar nao e a recusa do corpo: o guard relanca, e o aiohttp
-        # responde 500, como antes da camada de comandos
+        # responde 500
         falha_ao_tocar = ValueError("quebrou")
         enfileirar, A.enfileirar = A.enfileirar, (lambda b, remoto=False: ({"qid": "q1"}, None))
         E.captura = lambda: server.eng.Captura(None, 0.0, "idle", None, 0)  # o prato parado: a entrada toca na hora
